@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c23</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c24</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c23';
+const BUILD = 'c24';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -338,17 +338,133 @@ THREE.MeshStandardMaterial.prototype.onBeforeCompile = function (sh) { toonPatch
 THREE.MeshStandardMaterial.prototype.customProgramCacheKey = function () { return 'toon' + (this.userData.tag || ''); };
 
 // ---------- sky ----------
+// SKY, from Plutopia: the same value-noise cloud layer projected onto a plane overhead so
+// it lies flat and recedes toward the horizon, drifting on the same wind vector the cloud
+// models use, over the same gradient and sun disc. Its HDRI rides underneath at a low
+// weight -- enough to give the sky some structure and the horizon some warmth without a
+// photograph competing with a low-poly city.
+const SKY = { cloud: .52, wind: new THREE.Vector2(1, .28), speed: 1, envK: .16, t: 0 };
+const skyUni = {
+  uZen: { value: new THREE.Color(.16, .40, .86) }, uHor: { value: new THREE.Color(.60, .76, .92) },
+  uGnd: { value: new THREE.Color(.30, .37, .44) }, uSun: { value: LIGHT.sunDir },
+  uSunC: { value: new THREE.Color(1.6, 1.35, 1.0) },
+  uCloud: { value: SKY.cloud }, uCloudT: { value: 0 }, uWind: { value: SKY.wind },
+  uEnv: { value: null }, uEnvK: { value: 0 },
+};
 const skyMat = new THREE.ShaderMaterial({
-  uniforms: { uZen: { value: new THREE.Color(.16, .40, .86) }, uHor: { value: new THREE.Color(.60, .76, .92) }, uGnd: { value: new THREE.Color(.30, .37, .44) }, uSun: { value: LIGHT.sunDir }, uSunC: { value: new THREE.Color(1.6, 1.35, 1.0) } },
+  uniforms: skyUni,
   vertexShader: 'varying vec3 vW; void main(){ vW = (modelMatrix*vec4(position,1.)).xyz - cameraPosition; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-  fragmentShader: `uniform vec3 uZen,uHor,uGnd,uSun,uSunC; varying vec3 vW;
-    void main(){ vec3 d = normalize(vW); float t = d.y;
-      vec3 c = mix(uHor, uZen, pow(max(t,0.), .5));
-      c = mix(uGnd, c, smoothstep(-.10, .015, t));
-      float s = max(dot(d,uSun),0.); c += uSunC * (pow(s,300.)*2.2 + pow(s,10.)*.10);
+  fragmentShader: `uniform vec3 uZen,uHor,uGnd,uSun,uSunC; uniform float uCloud,uCloudT,uEnvK;
+    uniform vec2 uWind; uniform sampler2D uEnv; varying vec3 vW;
+    // Value noise is all the clouds need: they are far away, soft, and never looked at closely.
+    float hsh(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+    float vno(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+      return mix(mix(hsh(i),hsh(i+vec2(1.0,0.0)),f.x), mix(hsh(i+vec2(0.0,1.0)),hsh(i+vec2(1.0,1.0)),f.x), f.y); }
+    float fbm(vec2 p){ float v=0.0, a=0.5; for(int i=0;i<4;i++){ v+=a*vno(p); p=p*2.03+vec2(17.3,9.1); a*=0.5; } return v; }
+    void main(){
+      vec3 d = normalize(vW); float h = d.y;
+      vec3 c = mix(uHor, uZen, pow(max(h,0.), .5));
+      c = mix(uGnd, c, smoothstep(-.10, .015, h));
+      // the panorama, under everything, faded out of the horizon band and off below it
+      if (uEnvK > 0.002) {
+        vec2 euv = vec2(atan(d.z, d.x) * 0.15915494 + 0.5, asin(clamp(d.y,-1.0,1.0)) * 0.31830988 + 0.5);
+        vec3 e = pow(texture2D(uEnv, euv).rgb, vec3(2.2));
+        c = mix(c, c * 0.45 + e * 1.15, uEnvK * smoothstep(-0.02, 0.30, h));
+      }
+      // clouds: the dome projected onto a plane overhead, so they sit flat and recede
+      float hm = smoothstep(0.015, 0.22, h);
+      vec2 cuv = d.xz / max(h, 0.06) * 0.9 + uWind * uCloudT * 0.018;
+      float nz = fbm(cuv * 1.25);
+      float cl = smoothstep(0.64 - uCloud*0.44, 0.80 - uCloud*0.22, nz) * smoothstep(0.02, 0.25, uCloud) * hm;
+      vec3 sn = normalize(uSun);
+      float lit = clamp(dot(normalize(vec3(d.x, 0.35, d.z)), sn) * 0.5 + 0.72, 0.35, 1.15);
+      c = mix(c, vec3(1.06, 1.04, 1.02) * lit, cl * 0.92);
+      float sd = max(dot(d,sn),0.);
+      c += uSunC * (pow(sd,300.)*2.2 + pow(sd,10.)*.10) * (1.0 - cl * 0.7);
       gl_FragColor = vec4(c,1.); }`,
   depthWrite: false, depthTest: false, side: THREE.BackSide, fog: false });
 const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 24, 12), skyMat); sky.frustumCulled = false; sky.renderOrder = -100; scene.add(sky);
+
+// The panorama does two jobs. Prefiltered into a cubemap it is scene.environment, which is
+// what puts a sky reflection on the cars; flat, it is the backdrop the dome blends in.
+// Colin is opted OUT of it -- he is meant to be matte and a reflective man is the whole
+// thing we just spent a day removing.
+const ENV = { url: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
+(() => {
+  if (!THREE.PMREMGenerator) return;
+  new THREE.TextureLoader().load(ENV.url, t => {
+    t.mapping = THREE.EquirectangularReflectionMapping;
+    const p = new THREE.PMREMGenerator(renderer);
+    ENV.map = p.fromEquirectangular(t).texture; p.dispose();
+    scene.environment = ENV.map;
+    scene.environmentIntensity = ENV.k;
+    // the dome wants the flat original, and mipmaps on an equirect put a full-width
+    // derivative cliff at the wrap seam, which reads as a bright column floor to zenith
+    t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping;
+    t.generateMipmaps = false; t.minFilter = t.magFilter = THREE.LinearFilter;
+    t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true;
+    ENV.tex = t; skyUni.uEnv.value = t; skyUni.uEnvK.value = SKY.envK;
+  }, undefined, () => console.warn('no environment map; the sky keeps its gradient'));
+})();
+
+// ---------- the cloud deck ----------
+// Plutopia's, and its reasoning carries over unchanged: a local field rather than a
+// world-wide one. Sixteen kept within a couple of hundred metres of him and recycled to
+// the upwind side when they drift out of reach, because a deck spread over a kilometre
+// would need hundreds to read as anything and all but a dozen would be past the far plane.
+const CLOUDS = { url: 'models/fluffy_cloud.glb', n: 16, lo: 78, hi: 150, span: [40, 96], near: 260, drift: 2.2, fade: 5, opacity: .82 };
+const clouds = [];
+function buildClouds(gltf) {
+  const root = gltf.scene;
+  const box = new THREE.Box3().setFromObject(root);
+  const sz = box.getSize(new THREE.Vector3());
+  const big = Math.max(sz.x, sz.y, sz.z) || 1;
+  for (let i = 0; i < CLOUDS.n; i++) {
+    const inst = root.clone(true);
+    const span = CLOUDS.span[0] + Math.random() * (CLOUDS.span[1] - CLOUDS.span[0]);
+    const k = span / big;
+    inst.scale.set(k, k * (.62 + Math.random() * .28), k);
+    inst.position.set(-(box.max.x + box.min.x) * .5 * k, -box.min.y * k, -(box.max.z + box.min.z) * .5 * k);
+    inst.rotation.y = Math.random() * 6.283;
+    const mats = [];
+    inst.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false;
+      // its own material: these fade as they recycle, and the shared one is used by all
+      o.material = o.material.clone();
+      o.material.transparent = true; o.material.depthWrite = true; o.material.opacity = 0;
+      o.material.roughness = 1; o.material.metalness = 0; o.material.envMapIntensity = 0;
+      o.material.userData.tag = 'cloud';
+      mats.push(o.material);
+    });
+    const g = new THREE.Group(); g.add(inst); scene.add(g);
+    const c = { g, mats, k: 0 };
+    clouds.push(c); cloudPlace(c, true);
+  }
+}
+function cloudPlace(c, anywhere) {
+  const p = player.pos, w = SKY.wind;
+  const wl = Math.hypot(w.x, w.y) || 1;
+  const a = anywhere ? Math.random() * 6.283 : Math.atan2(-w.x / wl, -w.y / wl) + (Math.random() - .5) * 1.4;
+  const r = anywhere ? 30 + Math.random() * (CLOUDS.near - 30) : CLOUDS.near * (.86 + Math.random() * .13);
+  c.g.position.set(p.x + Math.sin(a) * r, CLOUDS.lo + Math.random() * (CLOUDS.hi - CLOUDS.lo), p.z + Math.cos(a) * r);
+  c.k = 0;
+}
+function stepClouds(dt) {
+  SKY.t += dt * SKY.speed; skyUni.uCloudT.value = SKY.t;
+  if (!clouds.length) return;
+  const p = player.pos, w = SKY.wind, sp = CLOUDS.drift * SKY.speed;
+  for (const c of clouds) {
+    c.g.position.x += w.x * sp * dt; c.g.position.z += w.y * sp * dt;
+    const d = Math.hypot(c.g.position.x - p.x, c.g.position.z - p.z);
+    if (d > CLOUDS.near * 1.25) cloudPlace(c, false);
+    // fade in on arrival and out again at the rim, so a recycle is never a pop
+    const edge = clamp((CLOUDS.near * 1.25 - d) / 45, 0, 1);
+    c.k = damp(c.k, CLOUDS.opacity * edge, .14, dt);
+    c.g.visible = c.k > .01;
+    for (const m of c.mats) m.opacity = c.k;
+  }
+}
 
 // ---------- post: scene -> bright -> blur -> composite (FXAA, depth outline, bloom, ACES, grade) ----------
 function makeRT(w, h, depth) {
@@ -1012,7 +1128,7 @@ function buildColin(gltf) {
     if (m.emissive) m.emissive.setScalar(1);
     m.emissiveMap = m.map || null; m.emissiveIntensity = m.map ? COLINM.emis : 0;
     if (m.specularColor) m.specularColor.setScalar(1); m.specularIntensity = 1;
-    m.roughness = COLINM.rough; m.metalness = COLINM.metal;
+    m.roughness = COLINM.rough; m.metalness = COLINM.metal; m.envMapIntensity = 0;
     // A PRIVATE uSpec, without a second shader program. The toon uniforms are shared
     // objects handed to every material; replacing the entry after toonPatch has run gives
     // this material its own value, because three keeps a uniform set per material while
@@ -1434,6 +1550,7 @@ function frame() {
   toonSync();
   stepPlayer(dt);
   stepTraffic(dt);
+  stepClouds(dt);
   stepCam(dt);
   if (colin.mixer) colin.mixer.update(dt);
   renderPost();
@@ -1451,6 +1568,7 @@ frame();
     setBoot('building the streets', 1);
     await new Promise(r => setTimeout(r, 30));
     buildCity(city);
+    try { buildClouds(await loadGLB('models/fluffy_cloud.glb', 'loading the sky')); } catch (e) { console.warn('no clouds', e); }
     setBoot('waking colin', 1);
     try { const c = await loadGLB('models/colin.glb', 'loading colin'); buildColin(c); } catch (e) { console.warn('colin failed', e); }
     const sg = groundAt(player.pos.x, player.pos.z, 60, 0);
@@ -1459,7 +1577,7 @@ frame();
     document.getElementById('boot').classList.add('off');
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TOON, COLINM, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TOON, COLINM, SKY, CLOUDS, ENV, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

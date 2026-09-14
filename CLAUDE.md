@@ -37,6 +37,13 @@ playwright unless he asks for it by name.
   distance to its dominant bone — proved the rig clean), `inspect.mjs` (reads both
   GLBs: per-mesh UVs, skin weights, morph counts, and the upward-facing triangle heights
   of the bridge and elevated roads — this is how the deck/tower bug was found).
+- `images/HDRI_01_2K.jpg`, `models/fluffy_cloud.glb` — both taken from Plutopia. The
+  panorama does two jobs: prefiltered by `PMREMGenerator` it is `scene.environment` (the
+  sky reflection on the cars), and flat it is the backdrop the sky dome blends in at
+  `SKY.envK`. Colin is opted out with `envMapIntensity = 0`. The cloud deck (`CLOUDS`,
+  `stepClouds`) is Plutopia's: a LOCAL field of 16 kept near the player and recycled
+  upwind, not a world-wide one. `SKY.wind` drives both the models and the dome's noise
+  layer, so they always agree.
 - `version.json` — written by `bump.mjs`; the running game polls it to detect its successor.
 - `.github/workflows/pages.yml` — deploys the repo root. Harmless if Pages is set to
   "deploy from a branch" instead; both paths deploy the same commit.
