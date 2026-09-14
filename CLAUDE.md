@@ -36,7 +36,11 @@ playwright unless he asks for it by name.
 - `tools/` — `syntax.mjs` (the gate), `bake.mjs`, `bump.mjs`, `skin.mjs` (every vertex's
   distance to its dominant bone — proved the rig clean), `inspect.mjs` (reads both
   GLBs: per-mesh UVs, skin weights, morph counts, and the upward-facing triangle heights
-  of the bridge and elevated roads — this is how the deck/tower bug was found).
+  of the bridge and elevated roads — this is how the deck/tower bug was found),
+  `cols.mjs` (`npm run cols`) — runs the column splitter offline over `city.glb` and prints
+  how many solid boxes come out, how long the rasterise takes, and how many of them float
+  above head height. That last number is the one that says whether you can walk under a
+  gantry; it went 0 → 658 across 107 meshes when the splitter landed.
 - `images/HDRI_02_galaxy_2K.jpg`, `models/fluffy_cloud*.glb` — from Plutopia. **The galaxy
   is the one he wants, not `HDRI_01` (the daylight sky beside it), and it has to be SEEN.**
   The panorama does two jobs: prefiltered by `PMREMGenerator` it is `scene.environment` (the
@@ -121,6 +125,28 @@ playwright unless he asks for it by name.
   combining an exact surface with a smeared one just puts the smear back.
   Buildings, trees, fences, props and cars are still axis-aligned boxes; a box top within
   `step` of the feet is a floor, which is how roofs work.
+- **A MESH IS NOT A BOX, AND THAT IS WHY YOU COULD NOT WALK UNDER A SIGN.** Every solid mesh
+  used to contribute its bounding box and nothing else. A gantry, a traffic light, an
+  overhanging shopfront: all of them are a thin post plus something out in the air, and their
+  bounding box is a SLAB from the pavement to the top of the overhang across its whole reach.
+  `solidAdd` rasterises each solid mesh into COLUMNS instead — an XZ grid whose cells hold the
+  lowest and highest triangle over them — then:
+  - a mesh whose columns nearly all span its full height IS its bounding box (that is what a
+    building is) and **collapses back to one**, which is most of them and costs nothing;
+  - anything else is emitted as runs of columns merged along X, so the post stays solid to the
+    ground, the arm is solid only where the arm is, and the air under it is air.
+  Measured with `npm run cols`: 844 meshes → 14.6k boxes, ~350 ms of rasterise, 658 of them
+  with their bottom above 2.2 m. The cell size GROWS to fit `COLS.max` rather than the mesh
+  being skipped, so a stadium gets coarse columns and a bollard fine ones.
+  **The tree hack stays and must stay**: a canopy rasterised honestly is a solid ceiling at
+  head height, and a trunk box is the right abstraction for a tree. The equivalent street-sign
+  hack is gone — it threw the sign away and put a 70 cm post wherever the mesh origin happened
+  to be.
+- **CARS ARE ORIENTED BOXES (`b.yaw`), NOT THE AABB OF A ROTATED ONE.** The axis-aligned
+  bounds of a car at 45° are forty per cent bigger than the car along BOTH axes — that is the
+  phantom hit, where the box touches you and the mesh plainly does not. `resolveBoxes` tests
+  any box carrying a `yaw` in its own frame, and its roof is a floor on its real footprint,
+  which is what makes standing on one possible. The AABB is still there as the broad phase.
 - **A CAR IS A CUSHION, NOT A WALL. `carHit` works along the CONTACT NORMAL.** The face is
   whichever of the two axes he is least deep into — nose or flank — and everything is
   expressed along the normal out of it: the closing speed that picks the tier, the
@@ -200,6 +226,12 @@ playwright unless he asks for it by name.
     reaches it. The history is seeded at the CENTRE on pointerdown, because on an absolute
     pad a thumb slammed onto the top edge is a flick and a delta from where it landed says
     the stick never moved.
+- **IN THE AIR THE STICK IS A RATE, NOT A TARGET.** `steer` is the angle between the thumb
+  and his nose, which is exactly right on the ground: he comes round until he is pointing
+  where you asked and then stops, because the wheels have arrived. Held over in the air the
+  same number is a 45° turn and then nothing, when what was asked for was to keep spinning.
+  The air branch reads the pad's OWN X axis and turns at that rate for as long as it is held,
+  which never runs out. Do not "fix" this back into `steer`.
 - **AIR YAW BEATS GROUND YAW, AND THE CAMERA LETS GO.** `SK8.spin` is 9.5 rad/s — a 360 in
   .66 s against 5.0 s at ground cruising rate — because in the air nothing is holding him.
   And `stepCam` forces `cam.idle = 0` while he is airborne on the board, so the auto-follow

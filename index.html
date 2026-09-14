@@ -82,7 +82,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c43</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c44</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -94,7 +94,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c43';
+const BUILD = 'c44';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -992,7 +992,8 @@ function census() {
   // cloudN with vis0 means they loaded and are off the edge of the frame. Different bugs.
   let vis = 0; for (const c of clouds) if (c.g.visible) vis++;
   dbgInfo = ' · pts' + pts + ' spr' + spr + ' line' + ln + ' onBone' + bone + ' skin' + skin + ' mesh' + mesh
-    + ' cloud' + clouds.length + '/vis' + vis + ' env' + (ENV.tex ? 1 : 0);
+    + ' cloud' + clouds.length + '/vis' + vis + ' env' + (ENV.tex ? 1 : 0)
+    + ' box' + solids.length + '/' + COLS.split;
 }
 // ALBEDO ONLY: his textures with no lighting of any kind. If his hair and face read
 // correctly here, the grey is coming from the lights and not from the maps or the
@@ -1183,8 +1184,10 @@ function groundNormal(x, z, y, out) {
 }
 function hmNormal(x, z, out) { const d = .6; const dx = hmAt(x + d, z) - hmAt(x - d, z), dz = hmAt(x, z + d) - hmAt(x, z - d); return out.set(-dx, 2 * d, -dz).normalize(); }
 
-// ---------- solids: axis-aligned boxes in a hash grid ----------
-const CELL = 16;
+// ---------- solids: boxes in a hash grid ----------
+// 8 rather than 16 because a mesh is no longer one box: `solidAdd` can emit a few dozen for
+// one gantry, and a 16 m cell full of them is a list the broad phase walks every frame.
+const CELL = 8;
 const solids = [];
 const grid = new Map();
 const gkey = (i, k) => i * 100003 + k;
@@ -1192,11 +1195,16 @@ function gridAdd(b) {
   const i0 = Math.floor(b.minx / CELL), i1 = Math.floor(b.maxx / CELL), k0 = Math.floor(b.minz / CELL), k1 = Math.floor(b.maxz / CELL);
   for (let i = i0; i <= i1; i++) for (let k = k0; k <= k1; k++) { const key = gkey(i, k); let l = grid.get(key); if (!l) grid.set(key, l = []); l.push(b); }
 }
-const _q = [];
+// A STAMP, NOT AN indexOf. A box spanning four cells must only be returned once, and the
+// linear scan that used to do that was fine at a hundred boxes and is not at ten thousand.
+let _qid = 0;
 function gridQuery(x, z, r, out) {
-  out.length = 0;
+  out.length = 0; const q = ++_qid;
   const i0 = Math.floor((x - r) / CELL), i1 = Math.floor((x + r) / CELL), k0 = Math.floor((z - r) / CELL), k1 = Math.floor((z + r) / CELL);
-  for (let i = i0; i <= i1; i++) for (let k = k0; k <= k1; k++) { const l = grid.get(gkey(i, k)); if (l) for (const b of l) if (out.indexOf(b) < 0) out.push(b); }
+  for (let i = i0; i <= i1; i++) for (let k = k0; k <= k1; k++) {
+    const l = grid.get(gkey(i, k)); if (!l) continue;
+    for (const b of l) { if (b._q === q) continue; b._q = q; out.push(b); }
+  }
   return out;
 }
 // Push a vertical capsule (radius r, feet at feetY, height h) out of the boxes. Boxes whose top
@@ -1205,22 +1213,116 @@ function gridQuery(x, z, r, out) {
 function resolveBoxes(p, r, h, step, boxes, vel) {
   let floor = -Infinity, hitWall = false;
   for (const b of boxes) {
-    if (b.maxy <= p.y + step) { if (p.x > b.minx - r && p.x < b.maxx + r && p.z > b.minz - r && p.z < b.maxz + r && p.y >= b.maxy - step - .01) floor = Math.max(floor, b.maxy); continue; }
-    if (b.miny >= p.y + h) continue;
-    const cx = clamp(p.x, b.minx, b.maxx), cz = clamp(p.z, b.minz, b.maxz);
-    let dx = p.x - cx, dz = p.z - cz; const d2 = dx * dx + dz * dz;
-    if (d2 >= r * r) continue;
-    if (d2 < 1e-8) { // centre inside the box: leave by the nearest face
-      const l = p.x - b.minx, rr = b.maxx - p.x, f = p.z - b.minz, bk = b.maxz - p.z; const m = Math.min(l, rr, f, bk);
-      if (m === l) { p.x = b.minx - r; if (vel && vel.x > 0) vel.x = 0; } else if (m === rr) { p.x = b.maxx + r; if (vel && vel.x < 0) vel.x = 0; }
-      else if (m === f) { p.z = b.minz - r; if (vel && vel.z > 0) vel.z = 0; } else { p.z = b.maxz + r; if (vel && vel.z < 0) vel.z = 0; }
-      hitWall = true; continue;
+    // ORIENTED WHEN IT CARRIES A YAW, which is what cars do. The axis-aligned bounds of a car
+    // at 45 degrees are forty per cent bigger than the car along BOTH axes -- that is the
+    // phantom hit, where the box touches you and the mesh plainly does not. A car is tested
+    // in its own frame, and its roof becomes a floor on its own footprint rather than on a
+    // rectangle draped over it, which is also what makes standing on one possible.
+    const ob = b.yaw !== undefined;
+    let ax, az, fx = 0, fz = 0, al = 0, si = 0;
+    if (ob) {
+      fx = Math.sin(b.yaw); fz = Math.cos(b.yaw);
+      const rx = p.x - b.cx, rz = p.z - b.cz;
+      al = rx * fx + rz * fz; si = -rx * fz + rz * fx;
+      const oa = al - clamp(al, -b.hl, b.hl), os = si - clamp(si, -b.hw, b.hw);
+      ax = oa * fx - os * fz; az = oa * fz + os * fx;
+    } else {
+      ax = p.x - clamp(p.x, b.minx, b.maxx); az = p.z - clamp(p.z, b.minz, b.maxz);
     }
-    const d = Math.sqrt(d2); dx /= d; dz /= d; const push = r - d;
-    p.x += dx * push; p.z += dz * push; hitWall = true;
-    if (vel) { const vn = vel.x * dx + vel.z * dz; if (vn < 0) { vel.x -= vn * dx; vel.z -= vn * dz; } }
+    const d2 = ax * ax + az * az;
+    if (b.maxy <= p.y + step) { if (d2 < r * r && p.y >= b.maxy - step - .01) floor = Math.max(floor, b.maxy); continue; }
+    if (b.miny >= p.y + h) continue;
+    if (d2 >= r * r) continue;
+    // one outward unit and one distance, whatever kind of box it was
+    let ux, uz, push;
+    if (d2 > 1e-8) { const d = Math.sqrt(d2); ux = ax / d; uz = az / d; push = r - d; }
+    else if (ob) {                                   // centre inside: out by the shallower axis
+      const pa = b.hl - Math.abs(al), pw = b.hw - Math.abs(si);
+      if (pa < pw) { const g = al >= 0 ? 1 : -1; ux = fx * g; uz = fz * g; push = pa + r; }
+      else { const g = si >= 0 ? 1 : -1; ux = -fz * g; uz = fx * g; push = pw + r; }
+    } else {
+      const l = p.x - b.minx, rr = b.maxx - p.x, f = p.z - b.minz, bk = b.maxz - p.z;
+      const m = Math.min(l, rr, f, bk);
+      if (m === l) { ux = -1; uz = 0; } else if (m === rr) { ux = 1; uz = 0; }
+      else if (m === f) { ux = 0; uz = -1; } else { ux = 0; uz = 1; }
+      push = m + r;
+    }
+    p.x += ux * push; p.z += uz * push; hitWall = true;
+    if (vel) { const vn = vel.x * ux + vel.z * uz; if (vn < 0) { vel.x -= vn * ux; vel.z -= vn * uz; } }
   }
   return { floor, hitWall };
+}
+
+// A MESH IS NOT A BOX, AND THIS IS WHY YOU COULD NOT WALK UNDER A SIGN.
+// Every solid mesh used to contribute its bounding box and nothing else. A gantry, a traffic
+// light, an overhanging shopfront sign: all of them are a thin pole plus something out in the
+// air, and their bounding box is a SLAB from the pavement to the top of the overhang across
+// the whole reach of it. The empty space under the arm was solid, and the arm itself was as
+// thick as the distance from the ground to its top.
+//
+// So each solid mesh is rasterised into COLUMNS instead -- an XZ grid whose cells each hold
+// the lowest and highest triangle over them. A mesh whose columns nearly all span its whole
+// height IS its bounding box (that is what a building is) and collapses straight back to one,
+// which costs nothing and is most of them. Anything else is emitted as runs of columns merged
+// along X, so the pole stays solid to the ground, the arm is solid only where the arm is, and
+// the air under it is air.
+//
+// The cell size grows to fit the budget rather than the mesh being skipped, so a stadium gets
+// coarse columns and a bollard gets fine ones. Only a mesh with more triangles than `tris` is
+// taken on trust, and at that size it is a tower -- and a tower really is its bounding box.
+const COLS = {
+  cell: .7,        // target column size in metres
+  max: 16384,      // cells per mesh; the cell GROWS to fit this rather than the mesh skipping
+  tris: 40000,     // above this, take the bounding box
+  flat: .80,       // a column spanning this much of the mesh's height counts as prismatic
+  most: .90,       // and this many prismatic columns means the whole mesh is one box
+  tol: .45,        // how far a run of columns may disagree before it is split in two
+  built: 0, split: 0,
+};
+const _lo = new Float32Array(COLS.max), _hi = new Float32Array(COLS.max);
+function solidAdd(mesh, b) {
+  const box = () => { solids.push(b); gridAdd(b); COLS.built++; };
+  const g = mesh.geometry, pa = g.attributes.position, m = mesh.matrixWorld, idx = g.index;
+  const cnt = idx ? idx.count : pa.count;
+  const sx = b.maxx - b.minx, sz = b.maxz - b.minz, sy = b.maxy - b.miny;
+  if (cnt > COLS.tris * 3 || sy < .8 || !(sx > 0) || !(sz > 0)) return box();
+  let cell = COLS.cell, w = Math.ceil(sx / cell), d = Math.ceil(sz / cell);
+  while (w * d > COLS.max) { cell *= 1.4; w = Math.ceil(sx / cell); d = Math.ceil(sz / cell); }
+  w = Math.max(1, w); d = Math.max(1, d);
+  const n = w * d;
+  for (let i = 0; i < n; i++) { _lo[i] = Infinity; _hi[i] = -Infinity; }
+  for (let i = 0; i + 2 < cnt; i += 3) {
+    const ia = idx ? idx.getX(i) : i, ib = idx ? idx.getX(i + 1) : i + 1, ic = idx ? idx.getX(i + 2) : i + 2;
+    _a.fromBufferAttribute(pa, ia).applyMatrix4(m); _b.fromBufferAttribute(pa, ib).applyMatrix4(m); _c.fromBufferAttribute(pa, ic).applyMatrix4(m);
+    // the triangle's own box, which is conservative -- and conservative is the right way for
+    // a collider to be wrong
+    const y0 = Math.min(_a.y, _b.y, _c.y), y1 = Math.max(_a.y, _b.y, _c.y);
+    let i0 = ((Math.min(_a.x, _b.x, _c.x) - b.minx) / cell) | 0, i1 = ((Math.max(_a.x, _b.x, _c.x) - b.minx) / cell) | 0;
+    let k0 = ((Math.min(_a.z, _b.z, _c.z) - b.minz) / cell) | 0, k1 = ((Math.max(_a.z, _b.z, _c.z) - b.minz) / cell) | 0;
+    if (i0 < 0) i0 = 0; if (i1 > w - 1) i1 = w - 1; if (k0 < 0) k0 = 0; if (k1 > d - 1) k1 = d - 1;
+    for (let k = k0; k <= k1; k++) { const row = k * w;
+      for (let j = i0; j <= i1; j++) { const o = row + j; if (y0 < _lo[o]) _lo[o] = y0; if (y1 > _hi[o]) _hi[o] = y1; } }
+  }
+  let cov = 0, prism = 0;
+  for (let o = 0; o < n; o++) if (_hi[o] > -Infinity) { cov++; if (_hi[o] - _lo[o] >= COLS.flat * sy) prism++; }
+  if (!cov || prism >= cov * COLS.most) return box();
+  for (let k = 0; k < d; k++) {
+    const row = k * w; let j = 0;
+    while (j < w) {
+      if (_hi[row + j] === -Infinity) { j++; continue; }
+      let lo = _lo[row + j], hi = _hi[row + j], e = j;
+      while (e + 1 < w) {
+        const o2 = row + e + 1; if (_hi[o2] === -Infinity) break;
+        const nlo = Math.min(lo, _lo[o2]), nhi = Math.max(hi, _hi[o2]);
+        if (nhi - nlo > hi - lo + COLS.tol) break;          // this cell disagrees: close the run
+        lo = nlo; hi = nhi; e++;
+      }
+      const t = { minx: b.minx + j * cell, maxx: b.minx + (e + 1) * cell, minz: b.minz + k * cell, maxz: b.minz + (k + 1) * cell, miny: lo, maxy: hi };
+      solids.push(t); gridAdd(t); COLS.built++;
+      j = e + 1;
+    }
+  }
+  COLS.split++;
 }
 
 // ---------- traffic ----------
@@ -1472,7 +1574,9 @@ function stepTraffic(dt) {
     c.g.position.set(c.x, c.y, c.z); c.g.rotation.y = c.yaw;
     // world box for the player to bump into
     const ex = Math.abs(fx) * c.hl + Math.abs(fz) * c.hw, ez = Math.abs(fz) * c.hl + Math.abs(fx) * c.hw;
+    // the AABB is the broad phase; yaw/cx/cz/hl/hw are what resolveBoxes actually tests
     c.box.minx = c.x - ex; c.box.maxx = c.x + ex; c.box.minz = c.z - ez; c.box.maxz = c.z + ez; c.box.miny = c.y - c.lift; c.box.maxy = c.y - c.lift + c.hh;
+    c.box.yaw = c.yaw; c.box.cx = c.x; c.box.cz = c.z; c.box.hl = c.hl; c.box.hw = c.hw;
     if (Math.abs(c.x - player.pos.x) < 12 && Math.abs(c.z - player.pos.z) < 12) carHit(c);
   }
 }
@@ -1541,9 +1645,13 @@ function buildCity(gltf) {
         /^(land|green_|sand_|road_|parking_area|bridge|basketballcourt)/.test(name));
     } else if (isTree(name)) {
       const t = { minx: _v.x - .45, maxx: _v.x + .45, minz: _v.z - .45, maxz: _v.z + .45, miny: b.miny, maxy: b.maxy }; solids.push(t); gridAdd(t);
-    } else if (/^streetsign/.test(name) && (b.maxx - b.minx > 4 || b.maxz - b.minz > 4)) {
-      const t = { minx: _v.x - .35, maxx: _v.x + .35, minz: _v.z - .35, maxz: _v.z + .35, miny: b.miny, maxy: b.maxy }; solids.push(t); gridAdd(t);
-    } else if (!/^(airballoon|landscape)/.test(name)) { solids.push(b); gridAdd(b); }
+    } else if (!/^(airballoon|landscape)/.test(name)) { solidAdd(mesh, b); }
+    // A GANTRY IS NOT A TRUNK EITHER. Big street signs used to be replaced by a 70 cm post at
+    // the mesh's origin -- a hack to stop their bounding box walling off the pavement, which
+    // threw the sign away and put the post wherever the origin happened to be. Columns give
+    // the real shape: the post is solid to the ground, the arm is solid only where the arm
+    // is, and there is air under it. The TREE hack stays: a canopy rasterised honestly is a
+    // solid ceiling at head height, and a trunk is the right abstraction for a tree.
     // static geometry -> chunk
     const key = gkey(Math.floor(_v.x / CH), Math.floor(_v.z / CH)); let l = chunks.get(key); if (!l) chunks.set(key, l = []);
     l.push(normGeo(mesh.geometry, mesh.matrixWorld, mesh.userData.flat)); statics++;
@@ -1601,7 +1709,8 @@ function buildCity(gltf) {
     merged.computeBoundingSphere(); merged.computeBoundingBox();
     const m = new THREE.Mesh(merged, cityMat); m.castShadow = true; m.receiveShadow = true; m.matrixAutoUpdate = false; cityGroup.add(m); drawn++;
   }
-  console.log('city: statics', statics, 'chunks', drawn, 'tiles', tiles.length, 'cars moving', cars.length, 'solids', solids.length);
+  console.log('city: statics', statics, 'chunks', drawn, 'tiles', tiles.length, 'cars moving', cars.length,
+    'solids', solids.length, '(' + COLS.split + ' meshes split into columns, the rest kept their box)');
 }
 const pendingCars = [];
 
@@ -2082,9 +2191,17 @@ function stepSkate(dt) {
       }
     } else { p.pushing = false; p.pushT = 0; }
   } else { p.pushing = false; p.pushT = 0; }
-  const rate = p.grounded ? (speed < .4 ? SK8.pivot : lerp(SK8.turnLo, SK8.turnHi, clamp(speed / 12, 0, 1))) : SK8.spin;
-  // the switch reversal belongs to the wheels. In the air he is just turning.
-  const turn = steer * rate * (p.grounded && along < -.5 ? -1 : 1) * dt;
+  // IN THE AIR THE STICK IS A RATE, NOT A TARGET -- and that is the whole bug. `steer` is
+  // the angle between the thumb and his nose, which is exactly right on the ground: he comes
+  // round until he is pointing where you asked and then stops, because the wheels have
+  // arrived. Held over in the air the same number is a 45 degree turn and then nothing,
+  // when what was asked for was to keep spinning. So the air reads the pad's OWN X axis
+  // and turns at that rate for as long as it is held, which never runs out.
+  // The switch reversal belongs to the wheels too. In the air he is just turning.
+  const rate = speed < .4 ? SK8.pivot : lerp(SK8.turnLo, SK8.turnHi, clamp(speed / 12, 0, 1));
+  const airX = clamp(stick.L.x + ((keys.d || keys.arrowright) ? 1 : 0) - ((keys.a || keys.arrowleft) ? 1 : 0), -1, 1);
+  const turn = p.grounded ? steer * rate * (along < -.5 ? -1 : 1) * dt
+    : (Math.abs(airX) > MOVE.dead ? airX : 0) * SK8.spin * dt;
   // ON THE GROUND ONLY. In the air the same addition would put his TRAJECTORY on the new
   // heading a few lines down -- see the block after the velocity is rebuilt.
   if (p.grounded) p.heading += turn;
