@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c31</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c32</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c31';
+const BUILD = 'c32';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -152,7 +152,10 @@ const MOVE = {
 // quadratically, which is about two metres over a second and a half -- a roll on the spot.
 // Coming out of a run he should cover five or six, so the speed he had in the air is what
 // carries him, bled off linearly over the clip.
-const ROLL = { at: -7, min: 4, max: 10 };
+// free is the tail of the roll that belongs to YOU. The clip still plays whole, but once
+// he is past this much of it the stick takes over and he runs out of it, instead of
+// standing about finishing a last half second nobody is watching.
+const ROLL = { at: -7, min: 4, max: 10, free: .42 };
 const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7 };
 const SK8 = {
   pushV: 3.8,        // m/s added by one shove
@@ -930,6 +933,10 @@ const HIT = {
   // prone stage gets up on its own after this long even if the stick is never touched,
   // because a state you cannot leave is worse than one that ends early.
   maxProne: 6,
+  // He gets up on his own. rest is the beat he spends on the road after the fall lands,
+  // getup is how fast the standing-up plays, and free is the tail of it that belongs to
+  // you -- so the last third can be run out of rather than waited through.
+  rest: .22, getup: 1.35, free: .34,
   min: 3,            // a car slower than this shoulders him aside rather than launching him
   ref: 9,            // the car speed the two numbers below are quoted at
   out: 11.5, up: 9,  // how hard he goes, along the car's heading and upward
@@ -978,23 +985,32 @@ function stepHit(dt) {
       // thrown backwards he lands on his back -- the same flag decides both.
       p.hitFace = p.hitFwd;
       p.hit = 'down'; p.hitSnap = true; p.proneT = 0;
-      p.hitT = clipLen(p.hitFace ? 'fall_to_face_down' : 'fall_to_back', 1.2);
+      p.hitT = clipLen(p.hitFace ? 'fall_to_face_down' : 'fall_to_back', 1.2) + HIT.rest;
       p.vel.x *= .18; p.vel.z *= .18;
     }
   } else if (p.hit === 'down') {
     hitMove(dt, 1, .09);
     p.hitT -= dt; p.proneT += dt;
-    // and then he lies there. The stick is what picks him up -- or, failing that, patience.
-    if (p.hitT <= 0 && (stickWorld().mag > .25 || p.jump || p.proneT > HIT.maxProne)) {
+    // and then he gets up, on his own, after a beat on the road. Waiting for the stick
+    // made a knockdown read as a failure state rather than as a knock.
+    if (p.hitT <= 0) {
       p.jump = 0; p.hit = 'up'; p.hitSnap = true;
-      p.hitT = clipLen(p.hitFace ? 'get_up_from_face' : 'get_up_from_back', 1.4);
+      const nm = p.hitFace ? 'get_up_from_face' : 'get_up_from_back';
+      colinScale(nm, HIT.getup);
+      p.upDur = p.hitT = clipLen(nm, 1.4) / HIT.getup;
     }
   } else {
     hitMove(dt, 1, .07);
     p.hitT -= dt;
-    // everything the hit interrupted goes back to a known state, or the next push plays
-    // the standing clip while he moves -- which is what happened to you after the truck
-    if (p.hitT <= 0) { p.hit = ''; p.hitSnap = true; p.goT = 0; p.pushing = false; p.pushT = 0; p.popT = 0; p.crouch = 0; p.landT = 0; p.rollT = 0; }
+    // The tail of standing up is his: the stick cuts it short and he walks out of it.
+    // Everything the hit interrupted goes back to a known state on the way out, or the
+    // next push plays the standing clip while he moves.
+    const free = p.hitT > 0 && p.hitT < p.upDur * HIT.free && stickWorld().mag > .25;
+    if (p.hitT <= 0 || free) {
+      // NOT snapped here. A hard cut into the walk is the one transition in this sequence
+      // where a blend is right, and the blend is quick enough to feel immediate.
+      p.hit = ''; p.goT = MOVE.pushT * .4; p.pushing = false; p.pushT = 0; p.popT = 0; p.crouch = 0; p.landT = 0; p.rollT = 0;
+    }
   }
   p.speed = Math.hypot(p.vel.x, p.vel.z);
   // the same floor everything else has: a hit cannot drop him out of the world
@@ -1274,7 +1290,9 @@ function colinSet(t, dt) {
   for (const nm in colin.actions) {
     const a = colin.actions[nm], want = t[nm] || 0, cur = CW[nm] || 0;
     if (cur < .01 && want > .01) { a.reset(); a.play(); }
-    const w = CW[nm] = snap ? want : damp(cur, want, .085, dt);
+    // .085 was a quarter of a second to cross, which on anything sharp reads as mush.
+    // .055 is about a sixth and still hides the seam between two clips.
+    const w = CW[nm] = snap ? want : damp(cur, want, .055, dt);
     if (w > .002) { if (!a.isRunning()) a.play(); a.setEffectiveWeight(w); }
     else if (a.isRunning()) { a.setEffectiveWeight(0); a.stop(); }
   }
@@ -1383,7 +1401,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -1434,6 +1452,8 @@ function stepRoll(dt) {
   const k = clamp(p.rollT / Math.max(.01, p.rollDur), 0, 1);
   const sp = p.rollV * k;                              // bled off evenly across the clip
   p.vel.x = Math.sin(p.rollH) * sp; p.vel.z = Math.cos(p.rollH) * sp;
+  // his again for the tail of it, carrying whatever speed the roll still had
+  if (p.rollT < p.rollDur * ROLL.free && stickWorld().mag > .25) { p.rollT = 0; p.goT = MOVE.pushT * .5; return; }
   p.vel.y -= MOVE.g * dt;
   const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
