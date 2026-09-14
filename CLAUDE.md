@@ -109,10 +109,8 @@ playwright unless he asks for it by name.
   Two skies four stops apart both look fine in a viewer and only one looks like a sky in here:
       HDRI_02_galaxy   mean .031 linear  ->  envB 6 to reach .19 and read as a starfield
       hdr_toon_03      mean .380 linear  ->  TWELVE TIMES brighter, envB 1.9 to reach .72
-  **`?v=IMGV` on the sky URL**, for the same reason the sounds carry `SFXV`: he repaints a sky
-  and drops it in under the SAME NAME, and a phone that already has that URL keeps what it has.
-  Bump `IMGV` by hand whenever an image is replaced in place — it is megabytes, so it must not
-  ride on the build number.
+  **Re-measure after every swap** — he repaints and re-uploads under the same name, and the
+  exposure belongs to the image.
   At the galaxy's 6 the painted sky renders at a mean of 2.15, over `POST.bloomTh` across the
   WHOLE sky — a white smear, not a picture. **Re-measure on every new sky.**
   **`t.colorSpace` must be set BEFORE `PMREMGenerator.fromEquirectangular`, not after.**
@@ -150,6 +148,22 @@ playwright unless he asks for it by name.
   JPG` also appear in the fps chip unasked**, because a `console.warn` is invisible on a
   phone and "you never put it in" and "it is in and it did not load" are the same picture
   from where he is standing.
+- **ASSET URLS CARRY A CONTENT HASH, WRITTEN BY `npm run bump`. HE REPLACES FILES IN PLACE.**
+  He repaints a sky, re-exports `colin.glb`, re-cuts a sound — same folder, same filename, new
+  contents — and a phone that already has that URL keeps what it has for ever. Nothing is
+  baked, the file really did change, the browser simply never asked again. From where he sits
+  that is indistinguishable from the game ignoring him, and it has cost several rounds.
+  Hand-bumped constants (`SFXV`, `MUSICV`, `IMGV`) worked only when somebody remembered, and
+  **"somebody remembered" is not a mechanism.** Stamping `BUILD` on everything works too and
+  re-downloads fifteen megabytes on every push.
+  So `bump.mjs` writes the sha1 of each file's CONTENTS into the `ASSETS` block in
+  `index.html`, and **every runtime asset URL goes through `A(path)`**. A file that changed
+  gets a new URL and arrives; a file that did not keeps its URL and stays cached. The bump
+  prints which ones moved, because "I replaced it and nothing happened" is the bug it prevents.
+  **`icons/` is deliberately NOT in it** — iOS drops an `apple-touch-icon` link whose href
+  carries a query string, so those version their FILENAME instead.
+  Add a new asset folder to `DIRS` in `bump.mjs` and load it through `A()`, or it will go
+  stale silently.
 - **SOUND IS `SFX`, PORTED FROM PLUTOPIA, AND TWO OF ITS IDEAS ARE LOAD-BEARING.**
   1. **Two-stage load.** A browser will not build an `AudioContext` outside a gesture but it
      will happily fetch, so the bytes come down at page load and decode on the first touch.

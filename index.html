@@ -91,7 +91,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c56</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c58</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -103,7 +103,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c56';
+const BUILD = 'c58';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -324,6 +324,13 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // The files are Plutopia's and Robits' -- swooshes, clangs, bamboo, box breaks and two of the
 // songs. The cars, the horns and the rolling wheels are his to record; the roll is a synth
 // stand-in until then, and it is marked as one.
+// WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
+// file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
+/* ASSETS:START */
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+/* ASSETS:END */
+// EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
+const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
 const SFXV = 1, MUSICV = 1;
 const SND_FILES = {
   swoosh: ['swoosh_01', 'swoosh_02', 'swoosh_03', 'swoosh_04', 'swoosh_05', 'swoosh_06'],
@@ -345,7 +352,7 @@ const SFX = {
         // makes every build re-download all of them against the same connection the GLBs are
         // coming down. Bump it by hand when a sound is replaced in place -- that is the only
         // time a phone's cache is actually wrong.
-        fetch('audio/' + f + '.mp3?v=' + SFXV).then(r => r.ok ? r.arrayBuffer() : null)
+        fetch(A('audio/' + f + '.mp3')).then(r => r.ok ? r.arrayBuffer() : null)
           .then(b => { if (b) { this.raw[k][i] = b; if (this.ctx) this.decode(); } else this.miss.push(f); })
           .catch(() => this.miss.push(f));
       });
@@ -490,7 +497,7 @@ const MUSIC = {
       const set = [].concat(this.files[k]); this.raw[k] = this.raw[k] || [];
       // its own key: these are two megabytes each, and a build stamp would re-fetch both on
       // every push. Bump MUSICV when a track is replaced in place.
-      set.forEach((f, i) => fetch('audio/' + f + '.mp3?v=' + MUSICV).then(r => r.ok ? r.arrayBuffer() : null)
+      set.forEach((f, i) => fetch(A('audio/' + f + '.mp3')).then(r => r.ok ? r.arrayBuffer() : null)
         .then(b => { if (b) { this.raw[k][i] = b; this.decode(); } }).catch(() => {}));
     }
   },
@@ -839,15 +846,10 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 24, 12), skyMat); sky.f
 // `city.SKY.envK = x` moves it live now rather than only at load.
 // hdr_toon_03 is his own painted sky. The other two are still here to flip back to:
 // HDRI_02_galaxy_2K (the Plutopia galaxy) and HDRI_01_2K (its daylight neighbour).
-// ?v=IMGV, for the same reason the sounds carry SFXV: he repaints a sky and drops it in under
-// the SAME NAME, and a phone that has the URL keeps what it has. Bump this by hand whenever an
-// image in here is replaced in place -- that is the only time the cache is wrong, and it is a
-// megabyte or two, so it has no business riding on the build number.
-const IMGV = 2;
-const ENV = { url: 'images/hdr_toon_03.png?v=' + IMGV, galaxy: 'images/HDRI_02_galaxy_2K.jpg', day: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
+const ENV = { url: 'images/hdr_toon_03.png', galaxy: 'images/HDRI_02_galaxy_2K.jpg', day: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
 (() => {
   if (!THREE.PMREMGenerator) return;
-  new THREE.TextureLoader().load(ENV.url, t => {
+  new THREE.TextureLoader().load(A(ENV.url), t => {
     t.mapping = THREE.EquirectangularReflectionMapping;
     // THE COLOUR SPACE HAS TO BE SET BEFORE THE PREFILTER, not after it. PMREMGenerator reads
     // the texture as it finds it, and TextureLoader hands one back tagged linear -- so every
@@ -1835,7 +1837,7 @@ const setBoot = (t, p) => { bootMsg.textContent = t; if (p != null) bootBar.styl
 const draco = new DRACOLoader(); draco.setDecoderPath('vendor/draco/'); draco.setDecoderConfig({ type: 'wasm' });
 const loader = new GLTFLoader(); loader.setDRACOLoader(draco);
 function loadGLB(url, label) {
-  return new Promise((res, rej) => loader.load(url, res, e => { if (e.total) setBoot(label + ' ' + ((e.loaded / e.total) * 100 | 0) + '%', e.loaded / e.total); }, rej));
+  return new Promise((res, rej) => loader.load(A(url), res, e => { if (e.total) setBoot(label + ' ' + ((e.loaded / e.total) * 100 | 0) + '%', e.loaded / e.total); }, rej));
 }
 const _f32 = (attr, n) => { const c = attr.count, out = new Float32Array(c * n); for (let i = 0; i < c; i++) { out[i * n] = attr.getX(i); if (n > 1) out[i * n + 1] = attr.getY(i); if (n > 2) out[i * n + 2] = attr.getZ(i); } return new THREE.BufferAttribute(out, n); };
 function normGeo(g, m, flat) {
