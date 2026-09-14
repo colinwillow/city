@@ -82,7 +82,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c44</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c45</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -94,7 +94,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c44';
+const BUILD = 'c45';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1329,13 +1329,18 @@ function solidAdd(mesh, b) {
 const tiles = [];      // road tiles: {cx,cz,minx,maxx,minz,maxz,sx,sz,nb:[]}
 const cars = [];       // moving cars
 const carGrid = new Map();
+// ITS OWN CELL, and bigger than the solids grid. There are four hundred cars and each one
+// now asks its neighbours twice a frame; at the solids' 8 m a single query walks twenty-five
+// buckets. Cars are points in this grid, so a coarse cell costs nothing but a slightly longer
+// list, and it is a third of the lookups.
+const CARCELL = 16;
 function carGridBuild() {
   carGrid.clear();
-  for (const c of cars) { const key = gkey(Math.floor(c.x / CELL), Math.floor(c.z / CELL)); let l = carGrid.get(key); if (!l) carGrid.set(key, l = []); l.push(c); }
+  for (const c of cars) { const key = gkey(Math.floor(c.x / CARCELL), Math.floor(c.z / CARCELL)); let l = carGrid.get(key); if (!l) carGrid.set(key, l = []); l.push(c); }
 }
 function carsNear(x, z, r, out) {
   out.length = 0;
-  const i0 = Math.floor((x - r) / CELL), i1 = Math.floor((x + r) / CELL), k0 = Math.floor((z - r) / CELL), k1 = Math.floor((z + r) / CELL);
+  const i0 = Math.floor((x - r) / CARCELL), i1 = Math.floor((x + r) / CARCELL), k0 = Math.floor((z - r) / CARCELL), k1 = Math.floor((z + r) / CARCELL);
   for (let i = i0; i <= i1; i++) for (let k = k0; k <= k1; k++) { const l = carGrid.get(gkey(i, k)); if (l) for (const c of l) out.push(c); }
   return out;
 }
@@ -1364,6 +1369,14 @@ function segTarget(car, s, out) {
   out.x = a.cx + rx + dx * l * s; out.z = a.cz + rz + dz * l * s; out.len = l; return out;
 }
 const _tg = { x: 0, z: 0, len: 1 }, _cn = [];
+const TRAF = {
+  r: 2.4,          // the circle a car is treated as, for the PREDICTION only
+  look: 2.2,       // how many seconds ahead it looks
+  gap: 6.5,        // the following distance in a queue
+  stuck: 2.5,      // stopped this long and it takes priority whatever give-way says
+  sep: .92,        // how much of (hl + hl) two cars are pushed back out to
+  brake: 14, acc: 4,
+};
 // A car that reaches him throws him. Its own speed decides how far; HIS FACING decides
 // which way he goes over, which is the only thing the two clips differ by.
 // A CAR HIT IS A SEQUENCE, NOT A TIMER. Flying, then the road, then lying on it, then
@@ -1553,15 +1566,44 @@ function stepTraffic(dt) {
     const want = Math.atan2(tx - c.x, tz - c.z);
     const dh = wrapAngle(want - c.yaw); const rate = clamp(c.speed * .35, .8, 2.2);
     c.yaw += clamp(dh, -rate * dt, rate * dt);
-    // the car ahead
-    let cap = c.top; const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
-    for (const o of carsNear(c.x, c.z, 14, _cn)) {
-      if (o === c) continue; const ox = o.x - c.x, oz = o.z - c.z; const d = Math.hypot(ox, oz); if (d > 13 || d < 1e-3) continue;
-      const ahead = (ox * fx + oz * fz) / d; if (ahead < .8) continue;
-      if (Math.sin(o.yaw) * fx + Math.cos(o.yaw) * fz < .3) continue;
-      cap = Math.min(cap, d < 6 ? 0 : o.speed * (d - 6) / 7 + .5);
+    // FOLLOWING AND CROSSING ARE TWO DIFFERENT PROBLEMS AND ONLY ONE WAS SOLVED.
+    // Following is longitudinal: a car in my lane going my way, and I match its speed at a
+    // gap. Crossing is not -- at a junction the other car is at ninety degrees, its heading
+    // says nothing about whether we are going to meet, and the old test (`is he pointing
+    // roughly the way I am?`) threw every crossing car away. That is why they drove through
+    // each other: they were never looking.
+    let cap = c.top; const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), rx = -fz, rz = fx;
+    c.stop = c.speed < .5 ? c.stop + dt : 0;
+    for (const o of carsNear(c.x, c.z, 18, _cn)) {
+      if (o === c) continue;
+      const ox = o.x - c.x, oz = o.z - c.z, d2 = ox * ox + oz * oz;
+      if (d2 > 324 || d2 < 1e-4) continue;
+      const d = Math.sqrt(d2);
+      const ahead = ox * fx + oz * fz, side = ox * rx + oz * rz;
+      const ofx = Math.sin(o.yaw), ofz = Math.cos(o.yaw);
+      if (ofx * fx + ofz * fz > .55 && ahead > 0 && Math.abs(side) < 2.6) {
+        cap = Math.min(cap, Math.max(0, o.speed + (ahead - TRAF.gap) * .9));   // queue behind him
+        continue;
+      }
+      // PREDICT instead of guessing from headings. Constant velocity, closest approach, and
+      // if the two would come inside a car's width of each other within TRAF.look seconds,
+      // it is a conflict worth slowing for.
+      const vx = ofx * o.speed - fx * c.speed, vz = ofz * o.speed - fz * c.speed;
+      const vv = vx * vx + vz * vz; if (vv < .05) continue;
+      const t = -(ox * vx + oz * vz) / vv;
+      if (t < 0 || t > TRAF.look) continue;
+      const mx = ox + vx * t, mz = oz + vz * t;
+      if (mx * mx + mz * mz > 4 * TRAF.r * TRAF.r) continue;
+      // GIVE WAY TO THE RIGHT. It settles a pair without either car having to know what the
+      // other decided, which is the whole trick -- two cars that both yield is a deadlock
+      // and two that both go is a crash. The stuck timer is the escape hatch: a car that has
+      // sat still long enough takes priority whatever the rule says, so a four-way standoff
+      // creeps out of itself instead of sitting there for ever.
+      if (c.stop > TRAF.stuck) continue;
+      if (side <= 0 && o.stop < TRAF.stuck) continue;
+      cap = Math.min(cap, Math.max(0, (d - 2 * TRAF.r) * .8));
     }
-    c.speed = cap < c.speed ? Math.max(cap, c.speed - 12 * dt) : Math.min(cap, c.speed + 4 * dt);
+    c.speed = cap < c.speed ? Math.max(cap, c.speed - TRAF.brake * dt) : Math.min(cap, c.speed + TRAF.acc * dt);
     c.x += fx * c.speed * dt; c.z += fz * c.speed * dt;
     // progress along the segment = projection of our position onto it
     const a = c.from, b = c.to; const dx = b.cx - a.cx, dz = b.cz - a.cz;
@@ -1578,6 +1620,20 @@ function stepTraffic(dt) {
     c.box.minx = c.x - ex; c.box.maxx = c.x + ex; c.box.minz = c.z - ez; c.box.maxz = c.z + ez; c.box.miny = c.y - c.lift; c.box.maxy = c.y - c.lift + c.hh;
     c.box.yaw = c.yaw; c.box.cx = c.x; c.box.cz = c.z; c.box.hl = c.hl; c.box.hw = c.hw;
     if (Math.abs(c.x - player.pos.x) < 12 && Math.abs(c.z - player.pos.z) < 12) carHit(c);
+  }
+  // AND A LAST RESORT, because the rule above is a driver and drivers get it wrong. Two cars
+  // that have ended up inside each other are pushed apart. Each pair is seen twice, once from
+  // either side, so each pushes half and the separation comes out whole.
+  for (const c of cars) {
+    for (const o of carsNear(c.x, c.z, 9, _cn)) {
+      if (o === c) continue;
+      const ox = c.x - o.x, oz = c.z - o.z, d2 = ox * ox + oz * oz;
+      const rr = (c.hl + o.hl) * TRAF.sep;
+      if (d2 >= rr * rr || d2 < 1e-6) continue;
+      const d = Math.sqrt(d2), push = (rr - d) * .5;
+      c.x += ox / d * push; c.z += oz / d * push;
+      c.speed = Math.min(c.speed, o.speed * .6 + 1);
+    }
   }
 }
 
@@ -1695,7 +1751,7 @@ function buildCity(gltf) {
     pc.mesh.geometry.computeBoundingBox(); const bb = pc.mesh.geometry.boundingBox;
     const hy = (/^truck/.test(pc.name) ? 9 : 12) + (hmAt(tile.cx, tile.cz) > 4 ? 5 : 0);   // m/s; the highway is faster
     const car = { g, x: pc.pos.x, z: pc.pos.z, y: pc.pos.y, yaw, lift: Math.max(0, lift), from: tile, to, s: 0, lane: Math.random() < .5 ? 0 : 1,
-      speed: 5 + Math.random() * 4, top: hy * (0.8 + Math.random() * .4),
+      speed: 5 + Math.random() * 4, top: hy * (0.8 + Math.random() * .4), stop: 0,
       hw: (bb.max.x - bb.min.x) / 2 * sx, hl: (bb.max.y - bb.min.y) / 2 * sx, hh: (bb.max.z - bb.min.z) * sx, box: { minx: 0, maxx: 0, minz: 0, maxz: 0, miny: 0, maxy: 0 } };
     g.position.set(car.x, car.y, car.z); g.rotation.y = yaw; cityGroup.add(g); cars.push(car);
   }
@@ -2201,7 +2257,10 @@ function stepSkate(dt) {
   const rate = speed < .4 ? SK8.pivot : lerp(SK8.turnLo, SK8.turnHi, clamp(speed / 12, 0, 1));
   const airX = clamp(stick.L.x + ((keys.d || keys.arrowright) ? 1 : 0) - ((keys.a || keys.arrowleft) ? 1 : 0), -1, 1);
   const turn = p.grounded ? steer * rate * (along < -.5 ? -1 : 1) * dt
-    : (Math.abs(airX) > MOVE.dead ? airX : 0) * SK8.spin * dt;
+    // NEGATED. Heading grows from +Z toward +X, which reads as anticlockwise from behind
+    // him -- so a thumb pushed right was spinning him left. Checked on the device, not
+    // derived: the handedness argument is the kind that comes out backwards half the time.
+    : -(Math.abs(airX) > MOVE.dead ? airX : 0) * SK8.spin * dt;
   // ON THE GROUND ONLY. In the air the same addition would put his TRAJECTORY on the new
   // heading a few lines down -- see the block after the velocity is rebuilt.
   if (p.grounded) p.heading += turn;

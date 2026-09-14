@@ -115,6 +115,23 @@ playwright unless he asks for it by name.
   `travel agency` as `travel_agency`. Every category test in `buildCity` is a prefix regex.
 - **Cars**: local −Z is up, local Y is the length; `CAR_FWD` says which end is the nose.
   Mirrored placements (scale −1) get their heading from `matrixWorld`, not the quaternion.
+- **FOLLOWING AND CROSSING ARE TWO DIFFERENT PROBLEMS AND ONLY ONE WAS SOLVED.** Following is
+  longitudinal — a car in my lane going my way, match its speed at a gap. Crossing is not: at
+  a junction the other car is at ninety degrees and its heading says nothing about whether we
+  are going to meet, so the old test ("is he pointing roughly the way I am?") threw away every
+  crossing car. That is why they drove through each other — they were never looking. It
+  PREDICTS now: constant velocity, closest approach, conflict if the two would come inside a
+  car's width within `TRAF.look`.
+  **Priority is GIVE WAY TO THE RIGHT**, which settles a pair without either car knowing what
+  the other decided — two that both yield is a deadlock and two that both go is a crash. The
+  rule is anti-symmetric on a real crossing (verified numerically, not argued: exactly one of
+  each pair yields). `TRAF.stuck` is the escape hatch — a car sat still that long takes
+  priority whatever give-way says, so a four-way standoff creeps out of itself.
+  A second pass pushes overlapping cars apart, because the rule above is a driver and drivers
+  get it wrong; each pair is seen from both sides so each pushes half.
+  Cars have **their own grid cell (`CARCELL` 16)**, not the solids' 8: four hundred cars each
+  asking their neighbours twice a frame is the one place in this file where the bucket size
+  shows up in the frame time.
 - **Ground is a REAL triangle collider now (`TRI`, `groundAt`), not the heightmap.** Every
   ground triangle — roads, land, grass, sand, parking, bridge, courts — is stored in world
   space in a 4 m grid and queried by point-in-triangle. It returns TWO answers: the highest
@@ -231,7 +248,9 @@ playwright unless he asks for it by name.
   where you asked and then stops, because the wheels have arrived. Held over in the air the
   same number is a 45° turn and then nothing, when what was asked for was to keep spinning.
   The air branch reads the pad's OWN X axis and turns at that rate for as long as it is held,
-  which never runs out. Do not "fix" this back into `steer`.
+  which never runs out. Do not "fix" this back into `steer`. **The sign is negated** — heading
+  grows from +Z toward +X, so a thumb pushed right spun him left. That was checked on the
+  device rather than derived; the handedness argument comes out backwards half the time.
 - **AIR YAW BEATS GROUND YAW, AND THE CAMERA LETS GO.** `SK8.spin` is 9.5 rad/s — a 360 in
   .66 s against 5.0 s at ground cruising rate — because in the air nothing is holding him.
   And `stepCam` forces `cam.idle = 0` while he is airborne on the board, so the auto-follow
