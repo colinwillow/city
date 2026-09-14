@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c27</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c28</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c27';
+const BUILD = 'c28';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -148,7 +148,11 @@ const MOVE = {
 // nothing: a roll carries you forward a couple of metres and stops, it does not steer.
 // That is also what stops the slide -- there is no target velocity to chase, only the
 // carry the roll itself implies, falling away as he comes back to his feet.
-const ROLL = { at: -7, carry: 4.6 };   // how hard a landing starts one, and its speed at impact
+// He rolls THROUGH the landing at the speed he arrived with. It was a fixed 4.6 decaying
+// quadratically, which is about two metres over a second and a half -- a roll on the spot.
+// Coming out of a run he should cover five or six, so the speed he had in the air is what
+// carries him, bled off linearly over the clip.
+const ROLL = { at: -7, min: 4, max: 10 };
 const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7 };
 const SK8 = {
   pushV: 3.8,        // m/s added by one shove
@@ -1350,7 +1354,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, initClip: '', hit: '', hitT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -1399,8 +1403,8 @@ function groundUnder(p, step, vel, fromY) {
 function stepRoll(dt) {
   const p = player;
   const k = clamp(p.rollT / Math.max(.01, p.rollDur), 0, 1);
-  const sp = ROLL.carry * k * k;                       // most of the carry is in the first half
-  p.vel.x = Math.sin(p.faceH) * sp; p.vel.z = Math.cos(p.faceH) * sp;
+  const sp = p.rollV * k;                              // bled off evenly across the clip
+  p.vel.x = Math.sin(p.rollH) * sp; p.vel.z = Math.cos(p.rollH) * sp;
   p.vel.y -= MOVE.g * dt;
   const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
@@ -1467,6 +1471,12 @@ function stepFoot(dt) {
     const a = colin.actions['landing_roll'];
     p.rollDur = a ? a.getClip().duration : 1.6;        // the clip decides how long it lasts
     p.rollT = p.rollDur;
+    // the speed and the LINE he arrived on, so he rolls out along his travel rather than
+    // along whatever he happened to be facing
+    const land = Math.hypot(p.vel.x, p.vel.z);
+    p.rollV = clamp(land, ROLL.min, ROLL.max);
+    p.rollH = land > .5 ? Math.atan2(p.vel.x, p.vel.z) : p.faceH;
+    p.faceH = p.rollH;
   }
   p.speed = Math.hypot(p.vel.x, p.vel.z); p.moving = damp(p.moving, sp > .3 ? 1 : 0, .1, dt);
 }
@@ -1488,7 +1498,14 @@ function stepSkate(dt) {
         // writing the action's time from my own phase counter every frame, which is one
         // more thing to get stuck -- and it did. The clip and the timer are both one
         // cycle long, so they stay together without either driving the other.
-        const shove = () => { along += SK8.pushV * (1 - .45 * speed / SK8.pushMax) * fwdC; p.pushK = 1; };
+        // THE STICK IS A GATE, NOT A THROTTLE. The shove used to be multiplied by fwdC --
+        // how squarely the stick pointed along his nose -- so any angle between the two
+        // quietly cut his acceleration, and since braking leaves the camera, his heading
+        // and his travel all slightly out of line, every brake left him weaker than
+        // before. It compounds, which is exactly what you described. A push is a push
+        // now: the angle decides WHETHER he pushes and which way he steers, never how
+        // hard he pushes. Only his current speed tapers it.
+        const shove = () => { along += SK8.pushV * (1 - .45 * speed / SK8.pushMax); p.pushK = 1; };
         if (!p.pushing) { p.pushing = true; p.pushT = 0; shove(); }   // the first one lands at once
         else { p.pushT += dt; if (p.pushT >= SK8.pushDur) { p.pushT -= SK8.pushDur; shove(); } }
       } else {
@@ -1503,6 +1520,7 @@ function stepSkate(dt) {
   p.steer = damp(p.steer, steer * clamp(speed / 4, 0, 1), .08, dt);
   // grip and drag
   if (p.grounded) { lat *= Math.exp(-SK8.grip * dt); along *= Math.exp(-SK8.drag * dt); }
+  if (Math.abs(along) < .25) lat *= .2;                // a stopped board does not keep drifting
   along -= Math.sign(along) * SK8.air * along * along * dt;
   // rebuild the velocity on the (turned) heading, then let the hill have its say
   const nfx = Math.sin(p.heading), nfz = Math.cos(p.heading), nrx = -nfz, nrz = nfx;
