@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c21</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c22</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c21';
+const BUILD = 'c22';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -477,8 +477,8 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
 // world is drawn at eight tenths of the canvas and upscaled, and an upscale is its own
 // possible source of pale specks on a silhouette.
 let DBG = 0;
-const DBGN = ['', 'rim off', 'outline off', 'fxaa off', 'bloom off', 'full res', 'no post', 'flat colin',
-  'no shadow', 'nan map'];
+const DBGN = ['', 'rim off', 'outline off', 'fxaa off', 'bloom off', 'full res', 'no post', 'albedo only',
+  'sun only', 'nan map'];
 // What is actually IN the scene graph, counted rather than assumed. Answers the question
 // directly on the phone, where there is no console to traverse from.
 let dbgInfo = '';
@@ -491,7 +491,17 @@ function census() {
   });
   dbgInfo = ' · pts' + pts + ' spr' + spr + ' line' + ln + ' onBone' + bone + ' skin' + skin + ' mesh' + mesh;
 }
+// ALBEDO ONLY: his textures with no lighting of any kind. If his hair and face read
+// correctly here, the grey is coming from the lights and not from the maps or the
+// material. SUN ONLY drops the hemisphere and the fill and the rim, which are all cold
+// blue-white -- three of them stacked on a dark head is the other candidate for a grey
+// wash, and it is one I would rather you saw than have me guess at a fourth time.
 const dbgMat = new THREE.MeshBasicMaterial({ color: 0x9fb0c4 });
+const _albedo = new Map();
+function albedoFor(m) {
+  if (!_albedo.has(m)) _albedo.set(m, new THREE.MeshBasicMaterial({ map: m.map || null, color: m.map ? 0xffffff : 0xb0b6bd }));
+  return _albedo.get(m);
+}
 function applyDbg() {
   buildNEl.textContent = BUILD + (DBG ? ' /' + DBGN[DBG] : '');
   TOON.rim = DBG === 1 ? 0 : TOON.rim0;
@@ -505,10 +515,13 @@ function applyDbg() {
   renderer.toneMapping = DBG === 6 ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
   if (colin.model) colin.model.traverse(o => {
     if (!o.isMesh) return;
-    o.receiveShadow = DBG !== 8;
-    if (DBG === 7) { o.userData.m0 = o.userData.m0 || o.material; o.material = dbgMat; }
+    if (DBG === 7) { o.userData.m0 = o.userData.m0 || o.material; o.material = albedoFor(o.userData.m0); }
     else if (o.userData.m0) { o.material = o.userData.m0; o.userData.m0 = null; }
   });
+  // sun only: the cold half of the lighting off, so what is left is the sun and his texture
+  hemi.intensity = DBG === 8 ? 0 : LIGHT.hemi;
+  fill.intensity = DBG === 8 ? 0 : LIGHT.fill;
+  if (DBG === 8) TOON.rim = 0;
   if (DBG) census(); else dbgInfo = '';
 }
 // The composite still wants a bloom texture bound even at zero strength; give it the
@@ -1029,7 +1042,7 @@ function colinSet(t, dt) {
   }
 }
 function colinAnim(dt) {
-  const p = player, sp = p.speed, t = {}; let push = '';
+  const p = player, sp = p.speed, t = {};
   // HIT BY A CAR. Which clip is not about the car, it is about which way he was facing:
   // struck from the front he goes over backwards, struck from behind he is thrown forwards.
   if (p.hitT > 0) { t[p.hitFwd ? 'flying_forwards' : 'flying_backwards'] = 1; colinSet(t, dt); return; }
@@ -1042,7 +1055,7 @@ function colinAnim(dt) {
     // decaying impulse and back out again, which cut the shove off partway through and is
     // the twitch you saw. Held forward it simply loops -- and its clock is the very phase
     // the shove is fired from, so the foot and the push cannot drift apart.
-    else if (p.pushing) { push = p.crouch > .5 ? 'skate_push_crouch' : 'skate_push_standing'; t[push] = 1; }
+    else if (p.pushing) t[p.crouch > .5 ? 'skate_push_crouch' : 'skate_push_standing'] = 1;
     else if (p.crouch > .04) { t['skate_idol_crouch'] = p.crouch; t['skate_idol_standing'] = 1 - p.crouch; }
     else t['skate_idol_standing'] = 1;
   } else if (!p.grounded) {
@@ -1061,8 +1074,6 @@ function colinAnim(dt) {
     colinScale('run_fwd', clamp(sp / GAIT.runRef, GAIT.tsLo, GAIT.tsHi));
   }
   colinSet(t, dt);
-  // the push clip is driven from the same phase the shove is fired from
-  if (push) { const a = colin.actions[push]; if (a) a.time = p.pushPh * a.getClip().duration; }
 }
 
 // ---------- skateboard (procedural stand-in) ----------
@@ -1128,9 +1139,9 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushPh: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, initClip: '', hitT: 0, hitFwd: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, initClip: '', hitT: 0, hitFwd: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
-function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushPh = 0; } }
+function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
@@ -1258,19 +1269,19 @@ function stepSkate(dt) {
     if (Math.abs(ang) > Math.PI * .72) steer = 0;     // pulling straight back is the brake, not a turn
     if (p.grounded) {
       if (fwdC > .35 && speed < SK8.pushMax) {
+        // A PLAIN REPEATING TIMER, and the clip simply loops beside it. I had been
+        // writing the action's time from my own phase counter every frame, which is one
+        // more thing to get stuck -- and it did. The clip and the timer are both one
+        // cycle long, so they stay together without either driving the other.
         const shove = () => { along += SK8.pushV * (1 - .45 * speed / SK8.pushMax) * fwdC; p.pushK = 1; };
-        if (!p.pushing) { p.pushing = true; p.pushPh = SK8.pushPlant; shove(); }   // the first one lands at once
-        else {
-          const prev = p.pushPh;
-          p.pushPh = (p.pushPh + dt / SK8.pushDur) % 1;
-          if (prev < SK8.pushPlant ? p.pushPh >= SK8.pushPlant : p.pushPh < prev) shove();
-        }
+        if (!p.pushing) { p.pushing = true; p.pushT = 0; shove(); }   // the first one lands at once
+        else { p.pushT += dt; if (p.pushT >= SK8.pushDur) { p.pushT -= SK8.pushDur; shove(); } }
       } else {
-        p.pushing = false;
+        p.pushing = false; p.pushT = 0;
         if (fwdC < -.35) along = along > 0 ? Math.max(0, along - SK8.brake * dt * -fwdC) : Math.min(0, along + SK8.brake * dt * -fwdC);
       }
-    } else p.pushing = false;
-  } else p.pushing = false;
+    } else { p.pushing = false; p.pushT = 0; }
+  } else { p.pushing = false; p.pushT = 0; }
   const rate = p.grounded ? (speed < .4 ? SK8.pivot : lerp(SK8.turnLo, SK8.turnHi, clamp(speed / 12, 0, 1))) : SK8.spin;
   const turn = steer * rate * (along < -.5 ? -1 : 1) * dt;
   p.heading += turn;
