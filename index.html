@@ -95,7 +95,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c60</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c61</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -107,7 +107,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c60';
+const BUILD = 'c61';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -343,7 +343,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1160,7 +1160,8 @@ function census() {
   let vis = 0; for (const c of clouds) if (c.g.visible) vis++;
   dbgInfo = ' · pts' + pts + ' spr' + spr + ' line' + ln + ' onBone' + bone + ' skin' + skin + ' mesh' + mesh
     + ' cloud' + clouds.length + '/vis' + vis + ' env' + (ENV.tex ? 1 : 0)
-    + ' box' + solids.length + '/' + COLS.split + ' ramp' + PARK.built + ' rail' + RAILS.length;
+    + ' box' + solids.length + '/' + COLS.split + ' ramp' + PARK.built + ' rail' + RAILS.length
+    + ' deck' + BOARD.deck.toFixed(2) + (BOARD.got ? '' : '(proc)');
 }
 // ALBEDO ONLY: his textures with no lighting of any kind. If his hair and face read
 // correctly here, the grey is coming from the lights and not from the maps or the
@@ -2414,7 +2415,12 @@ function colinAnim(dt) {
   colinSet(t, dt);
 }
 
-// ---------- skateboard (procedural stand-in) ----------
+// ---------- skateboard ----------
+// His own model when it loads, the procedural one until then and if it does not. The Group is
+// the same object either way, so every line that positions, yaws, leans, kickflips or shove-its
+// the board is untouched by the swap -- it only ever had to be the right size and the right way
+// round inside it.
+const BOARD = { url: 'models/skateboard.glb', len: .80, deck: .11, got: 0 };
 const board = new THREE.Group(); scene.add(board);
 {
   const nh = { noHole: true };    // it is under his feet; cutting it out reveals nothing
@@ -2427,7 +2433,7 @@ const board = new THREE.Group(); scene.add(board);
     const t = new THREE.Mesh(new THREE.BoxGeometry(.16, .04, .06), truckM); t.position.set(0, .065, z); board.add(t);
     for (const x of [-.11, .11]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, .035, 10), wheelM); w.rotation.z = Math.PI / 2; w.position.set(x, .03, z); board.add(w); }
   }
-  board.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  board.traverse(o => { if (o.isMesh) { o.castShadow = true; o.userData.proc = 1; } });
   board.visible = false;
 }
 
@@ -2920,7 +2926,7 @@ function stepPlayer(dt) {
   poseColin(dt);
 }
 function poseColin(dt) {
-  colin.root.position.copy(player.pos); if (player.board) colin.root.position.y += .11;
+  colin.root.position.copy(player.pos); if (player.board) colin.root.position.y += BOARD.deck;
   colin.root.rotation.set(0, player.faceH, 0);
   const lean = damp(player.lean, player.board ? -player.steer * SK8.lean : 0, .1, dt); player.lean = lean;
   colin.root.rotation.z = lean * .6;
@@ -2944,6 +2950,54 @@ function poseColin(dt) {
     }
     board.rotation.z = lean + player.bRollA; board.position.y += player.pushK * .01;
   }
+}
+
+// THE MODEL IS 5.5 cm LONG AND HIS FEET HAVE TO LAND ON IT, so both numbers are measured off
+// the geometry rather than typed in: the scale from the long horizontal axis, and the deck
+// height from the AREA-WEIGHTED CENTRE OF EVERYTHING FACING UP -- which on a skateboard is the
+// flat of the grip. The bounding box top is the kicktails, and standing him on those would put
+// him three centimetres in the air. A re-export at any size lands right with no edit here.
+function buildBoard(gltf) {
+  const src = gltf.scene; src.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(src), sz = bb.getSize(new THREE.Vector3());
+  const len = Math.max(sz.x, sz.z);
+  if (!(len > 1e-6)) { console.warn('[board] no size'); return; }
+  const k = BOARD.len / len;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const u = new THREE.Vector3(), v = new THREE.Vector3(), nv = new THREE.Vector3();
+  let upA = 0, upY = 0;
+  src.traverse(o => {
+    if (!o.isMesh) return;
+    const g = o.geometry, pa = g.attributes.position, idx = g.index, m = o.matrixWorld;
+    const cnt = idx ? idx.count : pa.count;
+    for (let i = 0; i + 2 < cnt; i += 3) {
+      a.fromBufferAttribute(pa, idx ? idx.getX(i) : i).applyMatrix4(m);
+      b.fromBufferAttribute(pa, idx ? idx.getX(i + 1) : i + 1).applyMatrix4(m);
+      c.fromBufferAttribute(pa, idx ? idx.getX(i + 2) : i + 2).applyMatrix4(m);
+      u.subVectors(b, a); v.subVectors(c, a); nv.crossVectors(u, v);
+      const l = nv.length(); if (l < 1e-12 || nv.y / l < .7) continue;
+      const A = l * .5; upA += A; upY += A * (a.y + b.y + c.y) / 3;
+    }
+  });
+  const deckY = upA > 0 ? upY / upA : bb.min.y + sz.y * .6;
+  BOARD.deck = (deckY - bb.min.y) * k;          // what poseColin lifts him by
+  // The long axis is Z and that is not negotiable: rotation.z is the kickflip axis BECAUSE the
+  // deck runs along local Z, and rotation.y is the shove. A board whose length came in on X
+  // would kickflip end over end. His model already arrives the right way round; a future one
+  // that does not gets a quarter turn here rather than a rewrite of the trick code.
+  const turn = sz.x > sz.z ? Math.PI / 2 : 0;
+  src.scale.setScalar(k);
+  src.position.set(-(bb.min.x + bb.max.x) / 2 * k, -bb.min.y * k, -(bb.min.z + bb.max.z) / 2 * k);
+  const pivot = new THREE.Group(); pivot.rotation.y = turn; pivot.add(src);
+  for (let i = board.children.length - 1; i >= 0; i--) if (board.children[i].userData.proc || board.children[i].isMesh) board.remove(board.children[i]);
+  board.add(pivot);
+  src.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = true; o.receiveShadow = true;
+    for (const mt of [].concat(o.material || [])) if (mt) { mt.userData.noHole = true; mt.envMapIntensity = .25; }
+  });
+  BOARD.got = 1;
+  console.log('board: scaled x' + k.toFixed(2) + ' to ' + BOARD.len + ' m, deck at ' + BOARD.deck.toFixed(3) + ' m' + (turn ? ', turned a quarter' : ''));
 }
 
 // ---------- camera ----------
@@ -3045,6 +3099,8 @@ frame();
     let ramps = null;
     try { ramps = await loadGLB(PARK.url, 'building the park'); }
     catch (e) { console.warn('no ramps', e); }
+    try { buildBoard(await loadGLB(BOARD.url, 'shaping the board')); }
+    catch (e) { console.warn('no board model, keeping the procedural one', e); }
     buildCity(city, ramps);
     {
       const got = [];
@@ -3060,7 +3116,7 @@ frame();
     document.getElementById('boot').classList.add('off');
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

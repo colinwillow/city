@@ -90,6 +90,16 @@ playwright unless he asks for it by name.
   Their materials come with them and are toon shaded for free —
   `MeshStandardMaterial.prototype.onBeforeCompile` is the patch, so anything loaded anywhere
   gets it without being told.
+- `models/skateboard.glb` — his own deck, 3k tris, two materials (`skateboard` textured,
+  `grip`). It arrives **5.5 cm long**, so `buildBoard` scales it, and BOTH numbers are measured
+  off the geometry rather than typed: the scale from the long horizontal axis, and the deck
+  height from the **area-weighted centre of everything facing up**, which on a skateboard is
+  the flat of the grip. The bounding-box top is the KICKTAILS — standing him on those puts him
+  three centimetres in the air. Measured: ×14.55 to 0.80 m, deck at 0.100 m above the wheels
+  (the procedural stand-in assumed .11). A re-export at any size lands right with no edit.
+  The Group is the same object as the procedural board, so nothing that positions, yaws, leans,
+  kickflips or shove-its it changes — and the procedural one stays as the fallback if the load
+  fails. The chip reports `deck0.10`, or `deck0.11(proc)` if it is still the stand-in.
 - `version.json` — written by `bump.mjs`; the running game polls it to detect its successor.
 - `.github/workflows/pages.yml` — deploys the repo root. Harmless if Pages is set to
   "deploy from a branch" instead; both paths deploy the same commit.
@@ -385,7 +395,9 @@ playwright unless he asks for it by name.
   The switch reversal (`along < -.5`) is likewise ground-only: in the air he is just turning.
 - **Board tricks are pure geometry, no clip.** The deck runs along its local Z, so with Euler
   `YXZ`: `rotation.z` is the kickflip axis, `rotation.y` is the shove, `rotation.x` is the
-  body flip carrying the board round. `bRoll`/`bYaw` are radians REMAINING, `bRollA`/`bYawA`
+  body flip carrying the board round. **THE LENGTH MUST BE ON Z AND THAT IS NOT NEGOTIABLE** —
+  a board whose long axis came in on X would kickflip end over end. `buildBoard` gives one a
+  quarter turn if it arrives that way, which is a line there rather than a rewrite here. `bRoll`/`bYaw` are radians REMAINING, `bRollA`/`bYawA`
   what has been applied. **Wrap the applied pair on landing** or a landed 360 visibly settles
   back through a whole turn on the road. Colin holds the ordinary air pose through all of it.
 - **The trick fills the jump; the clip is stretched to fit the air he has left.** An ollie is
