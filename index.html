@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c17</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c18</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c17';
+const BUILD = 'c18';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -144,8 +144,13 @@ const MOVE = {
 // clip's clock is tied to the ground speed as well, so the feet do not skate.
 const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7 };
 const SK8 = {
-  pushV: 2.7,        // m/s added per push
-  pushPeriod: .52,   // seconds between pushes while the stick is held forward
+  pushV: 3.6,        // m/s added by one shove
+  // THE PUSH CLIP IS THE CLOCK. It is not a pose to blend in and out of -- it is a whole
+  // cycle, ride to push to ride, and holding the stick forward should simply loop it. The
+  // shove fires at the point in that cycle where his foot is actually on the road, so the
+  // physics answers to the animation rather than the other way round.
+  pushDur: 1.55,     // one cycle, matching skate_push_standing
+  pushPlant: .42,    // where in the cycle the foot shoves
   pushMax: 10.5,     // pushing stops adding above this; hills can
   brake: 9,          // m/s^2 with the stick pulled back
   drag: .09,         // rolling resistance, per second
@@ -926,8 +931,7 @@ function colinSet(t, dt) {
   }
 }
 function colinAnim(dt) {
-  const p = player, sp = p.speed, t = {};
-  const pushing = p.pushK > .08;
+  const p = player, sp = p.speed, t = {}; let push = '';
   // HIT BY A CAR. Which clip is not about the car, it is about which way he was facing:
   // struck from the front he goes over backwards, struck from behind he is thrown forwards.
   if (p.hitT > 0) { t[p.hitFwd ? 'flying_forwards' : 'flying_backwards'] = 1; colinSet(t, dt); return; }
@@ -936,13 +940,13 @@ function colinAnim(dt) {
     // resting on the pad settles into it and a tap goes straight past it to the pop.
     if (!p.grounded) t[p.airT < .28 ? 'skate_ollie_init_air' : 'skate_ollie_air'] = 1;
     else if (p.landT > 0) t['skate_ollie_landing'] = 1;
-    else if (p.crouch > .04) {
-      const c = p.crouch;
-      t[pushing ? 'skate_push_crouch' : 'skate_idol_crouch'] = c;
-      t[pushing ? 'skate_push_standing' : 'skate_idol_standing'] = 1 - c;
-    } else t[pushing ? 'skate_push_standing' : 'skate_idol_standing'] = 1;
-    colinScale('skate_push_standing', clamp(1 / Math.max(.25, SK8.pushPeriod), .8, 2));
-    colinScale('skate_push_crouch', clamp(1 / Math.max(.25, SK8.pushPeriod), .8, 2));
+    // A PUSH IS A WHOLE CYCLE, PLAYED WHOLE. It had been treated as a pose faded in on a
+    // decaying impulse and back out again, which cut the shove off partway through and is
+    // the twitch you saw. Held forward it simply loops -- and its clock is the very phase
+    // the shove is fired from, so the foot and the push cannot drift apart.
+    else if (p.pushing) { push = p.crouch > .5 ? 'skate_push_crouch' : 'skate_push_standing'; t[push] = 1; }
+    else if (p.crouch > .04) { t['skate_idol_crouch'] = p.crouch; t['skate_idol_standing'] = 1 - p.crouch; }
+    else t['skate_idol_standing'] = 1;
   } else if (!p.grounded) {
     // the wind-up he took off from, then the rising clip for the WHOLE flight. Swapping
     // to jump_coming_down at the apex was a hard cut in the middle of the one moment the
@@ -959,6 +963,8 @@ function colinAnim(dt) {
     colinScale('run_fwd', clamp(sp / GAIT.runRef, GAIT.tsLo, GAIT.tsHi));
   }
   colinSet(t, dt);
+  // the push clip is driven from the same phase the shove is fired from
+  if (push) { const a = colin.actions[push]; if (a) a.time = p.pushPh * a.getClip().duration; }
 }
 
 // ---------- skateboard (procedural stand-in) ----------
@@ -1024,7 +1030,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, initClip: '', hitT: 0, hitFwd: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushPh: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, initClip: '', hitT: 0, hitFwd: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) player.pushT = .1; }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; }
@@ -1131,11 +1137,20 @@ function stepSkate(dt) {
     steer = clamp(ang / .9, -1, 1) * s.mag;
     if (Math.abs(ang) > Math.PI * .72) steer = 0;     // pulling straight back is the brake, not a turn
     if (p.grounded) {
-      if (fwdC > .35 && speed < SK8.pushMax) { p.pushT -= dt; if (p.pushT <= 0) { along += SK8.pushV * (1 - .45 * speed / SK8.pushMax) * fwdC; p.pushT = SK8.pushPeriod; p.pushK = 1; } }
-      else if (fwdC < -.35) { along = along > 0 ? Math.max(0, along - SK8.brake * dt * -fwdC) : Math.min(0, along + SK8.brake * dt * -fwdC); }
-      else p.pushT = Math.min(p.pushT, .15);
-    }
-  } else p.pushT = Math.min(p.pushT, .15);
+      if (fwdC > .35 && speed < SK8.pushMax) {
+        const shove = () => { along += SK8.pushV * (1 - .45 * speed / SK8.pushMax) * fwdC; p.pushK = 1; };
+        if (!p.pushing) { p.pushing = true; p.pushPh = SK8.pushPlant; shove(); }   // the first one lands at once
+        else {
+          const prev = p.pushPh;
+          p.pushPh = (p.pushPh + dt / SK8.pushDur) % 1;
+          if (prev < SK8.pushPlant ? p.pushPh >= SK8.pushPlant : p.pushPh < prev) shove();
+        }
+      } else {
+        p.pushing = false;
+        if (fwdC < -.35) along = along > 0 ? Math.max(0, along - SK8.brake * dt * -fwdC) : Math.min(0, along + SK8.brake * dt * -fwdC);
+      }
+    } else p.pushing = false;
+  } else p.pushing = false;
   const rate = p.grounded ? (speed < .4 ? SK8.pivot : lerp(SK8.turnLo, SK8.turnHi, clamp(speed / 12, 0, 1))) : SK8.spin;
   const turn = steer * rate * (along < -.5 ? -1 : 1) * dt;
   p.heading += turn;
