@@ -78,7 +78,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c6</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c7</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -90,43 +90,55 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c6';
+const BUILD = 'c7';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
 // frame-rate independent smoothing: how far toward the target in one half-life
 const damp = (cur, tgt, half, dt) => lerp(cur, tgt, 1 - Math.pow(0.5, dt / half));
 const wrapAngle = a => { a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; };
-const dampAngle = (cur, tgt, half, dt) => cur + wrapAngle(tgt - cur) * (1 - Math.pow(0.5, dt / half));
+const smooth = (a, b, x) => { const t = clamp((x - a) / ((b - a) || 1e-6), 0, 1); return t * t * (3 - 2 * t); };
 
 // ---------- tuning ----------
-// LOCOMOTION, and the model matters more than the numbers. This is Peggy's, which is
-// Robits' before it, and the thing it gets right is WHERE the ramp lives.
+// LOCOMOTION, ported from Plutopia, where this has actually been through the mill.
+// Three separate ideas, and the moonwalk comes from missing the third.
 //
-// The gather from a walk to a sprint is a MOMENTUM term that raises the TARGET speed
-// over a couple of seconds. It is not slow acceleration. Velocity itself reaches
-// whatever the target currently is in about three frames -- a 60 ms half-life -- and it
-// is always pointed along his heading. That is the whole difference between a character
-// and a sled: turn the stick and the target turns with it, and he is travelling the new
-// way before the next footfall, instead of carrying the old direction across the turn
-// and moonwalking through it.
+// 1. THE GATHER IS IN HIS LEGS, NOT IN THE TARGET. `push` is how much of his
+//    acceleration he currently HAS: it starts at push0 and reaches all of it over pushT
+//    seconds of continuously asking, and falls back at pushOut rather than resetting, so
+//    a step, a pause and another step is not three standing starts. On top of it accFall
+//    thins the acceleration out again as he nears top speed, so the first units come
+//    quickly and the last take their time. He genuinely walks, then jogs, then runs.
 //
-// Slow acceleration was the bug. It reads as ice however the animation is blended,
-// because the velocity genuinely is pointing somewhere he is not facing.
+// 2. FACING IS NOT HEADING. `heading` is the thumb's direction, taken instantly.
+//    `faceH` is where his body actually points, and it comes round more slowly the
+//    faster he is going: quick on the spot, an arc at a run, because a running man arcs.
+//
+// 3. AND THE LEGS PUSH WHERE HIS FEET ARE PLANTED. Below plantAt the push goes where the
+//    thumb says, so a standing start goes where you point. Above plantFull it goes along
+//    HIS OWN FACING, so facing and travel cannot come apart and the only way to change
+//    direction at a run is to turn through it. This is the part I had missing, and its
+//    absence is exactly the moonwalk: without it the velocity keeps answering to the
+//    stick while the body has already swung round, so he faces one way and travels
+//    another. A hard turn also costs him speed, which is what plants the feet rather
+//    than merely pointing them.
+//
+// Steering is split from acceleration as well: `turn` caps how fast the velocity can be
+// pushed SIDEWAYS, separately from how fast it can be lengthened.
 const MOVE = {
-  walk: 2.4, run: 8.0,        // the two ends of the gather; everything between is real
-  gather: .5, decay: 1.7,     // momentum per second while the stick is out, and off it
-  floor: 0,                   // a fresh push starts at a walk, not at a jog
-  accelHL: .06,               // velocity -> target: ~3 frames. This is what kills the slide
-  brakeHL: .22,               // stick released: a short coast, not a stop on a sixpence
-  airHL: .40,                 // and much less authority off the ground
-  turnHL: .07,                // he turns deliberately, but the body goes where he faces
-  jump: 7.6, g: 22, dead: .12, curve: 1, step: .55, coyote: .12,
+  max: 9, acc: 24, accFall: .93, drag: 46,
+  push0: .30, pushT: .85, pushOut: 2.6,
+  airAcc: 11, airDrag: 1.2,
+  turn: 26, airTurn: 9,
+  face0: 11, face1: 5.2,
+  plantAt: 2.2, plantFull: 6.5,
+  turnBrake: .42,
+  jump: 7.6, g: 22, dead: .12, curve: 1.4, step: .55, coyote: .12,
 };
 // GAIT. Three clips at once, weighted by how fast he is ACTUALLY travelling, so the
 // blend is a consequence of the speed rather than a second decision about it. Each
 // clip's clock is tied to the ground speed as well, so the feet do not skate.
-const GAIT = { walkAt: 1.4, runAt: 5.6, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7 };
+const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7 };
 const SK8 = {
   pushV: 2.7,        // m/s added per push
   pushPeriod: .52,   // seconds between pushes while the stick is held forward
@@ -774,7 +786,7 @@ document.addEventListener('gesturestart', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushT: 0, pushK: 0, airT: 0, rHold: 0, mom: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) player.pushT = .1; }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; }
@@ -812,15 +824,42 @@ function groundUnder(p, step, vel) {
 function stepFoot(dt) {
   const s = stickWorld(); const p = player;
   p.rHold = stick.R.down ? p.rHold + dt : 0;
-  // the gather: walk, quick walk, jog, run, sprint, as one number climbing while he holds
-  p.mom = clamp(s.mag > .35 && p.grounded ? p.mom + MOVE.gather * dt : p.mom - MOVE.decay * dt, MOVE.floor, 1);
-  // he turns toward the stick, and the TARGET is along his heading -- never along the
-  // stick. A turn therefore redirects him rather than adding a sideways component.
-  if (s.mag > 0) p.heading = dampAngle(p.heading, Math.atan2(s.x, s.z), MOVE.turnHL, dt);
-  const want = lerp(MOVE.walk, MOVE.run, p.mom) * s.mag;
-  const tx = Math.sin(p.heading) * want, tz = Math.cos(p.heading) * want;
-  const hl = !p.grounded ? MOVE.airHL : (s.mag > 0 ? MOVE.accelHL : MOVE.brakeHL);
-  p.vel.x = damp(p.vel.x, tx, hl, dt); p.vel.z = damp(p.vel.z, tz, hl, dt);
+  const sp0 = Math.hypot(p.vel.x, p.vel.z);
+  if (s.mag > .1) p.heading = Math.atan2(s.x, s.z);        // the thumb, taken whole
+  // the body comes round toward it, briskly on the spot and slowly at a run
+  p.faceH += wrapAngle(p.heading - p.faceH) * Math.min(1, lerp(MOVE.face0, MOVE.face1, clamp(sp0 / MOVE.max, 0, 1)) * dt);
+  // whose direction the legs push in: the thumb's at a walk, his own facing at a run
+  const plant = p.grounded ? smooth(MOVE.plantAt, MOVE.plantFull, sp0) : 0;
+  let dvx = s.x, dvz = s.z, brake = 1;
+  if (plant > 1e-3) {
+    const hx = Math.sin(p.faceH), hz = Math.cos(p.faceH);
+    dvx += (hx - dvx) * plant; dvz += (hz - dvz) * plant;
+    const dl = Math.hypot(dvx, dvz);
+    if (dl > 1e-4) { dvx /= dl; dvz /= dl; } else { dvx = hx; dvz = hz; }
+    const er = wrapAngle(p.heading - p.faceH);
+    brake = 1 - MOVE.turnBrake * plant * Math.min(1, Math.abs(er) / (Math.PI * .55));
+  }
+  const want = s.mag > .1 ? MOVE.max * s.mag * brake : 0;
+  const tvx = dvx * want, tvz = dvz * want;
+  // how long he has been asking, and how much of his legs that has bought him
+  p.goT = want ? p.goT + dt : Math.max(0, p.goT - dt * MOVE.pushOut);
+  const push = p.grounded ? MOVE.push0 + (1 - MOVE.push0) * smooth(0, MOVE.pushT, p.goT) : 1;
+  const ramp = (p.grounded ? 1 - MOVE.accFall * smooth(0, 1, sp0 / MOVE.max) : 1) * push;
+  const rate = want ? (p.grounded ? MOVE.acc * ramp : MOVE.airAcc) : (p.grounded ? MOVE.drag : MOVE.airDrag);
+  const ax = tvx - p.vel.x, az = tvz - p.vel.z;
+  if (sp0 > .5) {
+    // lengthening the velocity and turning it are separately rate-limited
+    const ux = p.vel.x / sp0, uz = p.vel.z / sp0;
+    const along = ax * ux + az * uz;
+    const lx = ax - ux * along, lz = az - uz * along; const alat = Math.hypot(lx, lz);
+    const sA = Math.min(Math.abs(along), rate * dt) * Math.sign(along);
+    const tr = (p.grounded ? MOVE.turn : MOVE.airTurn) * dt;
+    const sL = alat > 1e-4 ? Math.min(alat, tr) / alat : 0;
+    p.vel.x += ux * sA + lx * sL; p.vel.z += uz * sA + lz * sL;
+  } else {
+    const al = Math.hypot(ax, az);
+    if (al > 1e-4) { const st = Math.min(al, rate * dt); p.vel.x += ax / al * st; p.vel.z += az / al * st; }
+  }
   const sp = Math.hypot(p.vel.x, p.vel.z);
   // jump
   p.coyote = p.grounded ? MOVE.coyote : p.coyote - dt;
@@ -878,7 +917,7 @@ function stepSkate(dt) {
     if (sp > 2) { const va = Math.atan2(p.vel.x, p.vel.z); const off = Math.abs(wrapAngle(va - p.heading)); const off2 = Math.min(off, Math.PI - off); if (off2 > SK8.bailAng) { p.vel.x *= .35; p.vel.z *= .35; } }
   }
   if (!p.grounded) p.airT += dt;
-  p.speed = Math.hypot(p.vel.x, p.vel.z);
+  p.speed = Math.hypot(p.vel.x, p.vel.z); p.faceH = p.heading;
   p.pushK = Math.max(0, p.pushK - dt * 3);
   if (colin.ready) colinGait(0);
 }
@@ -890,7 +929,7 @@ function stepPlayer(dt) {
   if (player.grounded && player.safeT > 2 && hmAt(player.pos.x, player.pos.z) > -.5 && !player.wall) { player.safe.copy(player.pos); player.safeT = 0; }
   // pose the character and the board
   colin.root.position.copy(player.pos); if (player.board) colin.root.position.y += .11;
-  colin.root.rotation.set(0, player.heading, 0);
+  colin.root.rotation.set(0, player.faceH, 0);
   const lean = damp(player.lean, player.board ? -player.steer * SK8.lean : 0, .1, dt); player.lean = lean;
   colin.root.rotation.z = lean * .6;
   if (player.board) {
@@ -907,7 +946,7 @@ function stepCam(dt) {
   else cam.idle += dt;
   const sp = player.speed;
   if (cam.idle > CAM.idle && sp > .8) {
-    const want = player.board ? Math.atan2(player.vel.x, player.vel.z) : player.heading;
+    const want = sp > 1.2 ? Math.atan2(player.vel.x, player.vel.z) : player.faceH;
     cam.az += wrapAngle(want - cam.az) * Math.min(1, CAM.follow * dt * clamp(sp / 5, .3, 1.4));
   }
   cam.el = CAM.el;

@@ -56,13 +56,24 @@ playwright unless he asks for it by name.
   material without a `map` to the head's. Any future mesh in that file needs the same care.
 - **Right stick is yaw only** and `CAM.el` is a constant. Up/down on that pad is reserved
   for verbs, and nothing may be bound to it without asking.
-- **The gather is in the TARGET speed, never in the acceleration.** `MOVE.gather` raises a
-  momentum term over ~2s which raises the target; velocity reaches that target in ~3
-  frames (`MOVE.accelHL`) and always points along `heading`. Ramping acceleration instead
-  is what produced the moonwalk — the velocity genuinely pointed where he wasn't facing.
-  This model is Peggy's (`src/player/Peggy.js`), which is Robits' before it; read it
-  before touching locomotion rather than rebuilding it a sixth time.
+- **Locomotion is Plutopia's model. Read `plutopia/index.html` (`const MOVE`, and the
+  integration in `stepPlayer`) before touching it — do not rebuild it, and do not look at
+  Peggy, which is the least developed of these games.** Robits is the other good one.
+  Three separate ideas, and the moonwalk came from missing the third:
+  1. The gather lives in `push` — how much of his acceleration he *has*, climbing from
+     `push0` over `pushT` — with `accFall` thinning it again near top speed. Not in the
+     target speed, and not in a momentum term.
+  2. `heading` is the thumb, taken instantly. `faceH` is the body, coming round at
+     `face0` on the spot and `face1` at a run. Colin is drawn at `faceH`.
+  3. **`plantAt`/`plantFull`**: at a walk the legs push where the thumb says, at a run
+     they push along `faceH`. Without this the velocity keeps answering the stick while
+     the body has already turned, which *is* the moonwalk. `turnBrake` costs him speed
+     through a hard turn, which is what plants the feet rather than just pointing them.
+  Steering is rate-limited (`turn`) separately from acceleration.
 - The gait blends three clips by measured speed (`GAIT`) — never add a run *flag*.
+- **The camera leads where he is GOING, not where he is heading.** Plutopia's own notes
+  record a "sliding" complaint there that was the camera's lead aiming at his heading,
+  not the locomotion. Suspect the camera before re-tuning movement.
 - **`Colin_Head_MIX` rides at weight 1.** It is the blend shape that turns the generic
   base head into his; the other 41 targets are visemes and stay at zero.
 - **Downsampling needs more than one tap.** The bloom bright pass writes a buffer a third
