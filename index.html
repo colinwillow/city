@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c11</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c12</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c11';
+const BUILD = 'c12';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -164,7 +164,12 @@ const SK8 = {
 // comes after it. So the elevation is a constant: a shallow look-down that keeps him
 // and the street he is on both in frame, and the pad's whole travel means yaw.
 const CAM = { dist: 6.4, distV: .11, el: .17, look: 1.3, yawRate: 2.4, follow: 1.8, idle: .55, half: .07, fov: 52, fovRush: 9 };
-const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rim0: .26, rimP: 3.4, rimCol: new THREE.Color('#dcefff') };
+const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rim0: .26, rimP: 3.4, rimCol: new THREE.Color('#dcefff'),
+  spec: 1, specG: .06 };   // how much specular survives overall, and at the GRAZING end
+// His materials: matte, and lifted out of the dark by feeding the base map back in as a
+// low emission, which is how he is authored in Blender. Emission lands after the toon
+// ramp and after shadows, so it is illumination without shine.
+const COLINM = { rough: .95, metal: 0, emis: .30 };
 const LIGHT = { sun: 3.4, hemi: 1.6, fill: .9, sunDir: new THREE.Vector3(.55, 1, .35).normalize() };
 // BLOOM IS OFF. Not because it is proven guilty -- the rig, the normals, the weights and
 // the materials have all been read and are all clean, and c5 fixed a real aliasing fault
@@ -222,14 +227,15 @@ const hemi = new THREE.HemisphereLight(0x9bc5ee, 0x4b5a48, LIGHT.hemi); scene.ad
 const fill = new THREE.DirectionalLight(0x9fd4e8, LIGHT.fill); fill.position.set(-1, .4, -.6); scene.add(fill);
 
 // ---------- the toon ramp (Plutopia's, on r180 chunk names) ----------
-const TOON_UNI = { uToonK: { value: 1 }, uToonN: { value: 2 }, uToonSoft: { value: .055 }, uToonFloor: { value: .34 }, uRim: { value: .26 }, uRimP: { value: 3.4 }, uRimCol: { value: TOON.rimCol } };
+const TOON_UNI = { uToonK: { value: 1 }, uToonN: { value: 2 }, uToonSoft: { value: .055 }, uToonFloor: { value: .34 }, uRim: { value: .26 }, uRimP: { value: 3.4 }, uRimCol: { value: TOON.rimCol }, uSpec: { value: 1 }, uSpecG: { value: .06 } };
 function toonSync() {
   TOON_UNI.uToonK.value = TOON.k; TOON_UNI.uToonN.value = Math.max(1, TOON.bands); TOON_UNI.uToonSoft.value = Math.max(.001, TOON.soft);
   TOON_UNI.uToonFloor.value = TOON.floor; TOON_UNI.uRim.value = TOON.rim; TOON_UNI.uRimP.value = TOON.rimP;
+  TOON_UNI.uSpec.value = TOON.spec; TOON_UNI.uSpecG.value = TOON.specG;
 }
 function toonPatch(sh) {
   for (const k in TOON_UNI) sh.uniforms[k] = TOON_UNI[k];
-  sh.fragmentShader = 'uniform float uToonK, uToonN, uToonSoft, uToonFloor, uRim, uRimP;\nuniform vec3 uRimCol;\n'
+  sh.fragmentShader = 'uniform float uToonK, uToonN, uToonSoft, uToonFloor, uRim, uRimP, uSpec, uSpecG;\nuniform vec3 uRimCol;\n'
     + 'float toonRamp(float x){\n  float s = x * uToonN, b = floor(s), f = s - b;\n'
     + '  float q = (b + smoothstep(0.5 - uToonSoft, 0.5 + uToonSoft, f)) / uToonN;\n'
     + '  q = uToonFloor + (1.0 - uToonFloor) * q;\n  return mix(x, q, uToonK);\n}\n'
@@ -237,7 +243,24 @@ function toonPatch(sh) {
       .replace('#include <lights_physical_pars_fragment>', THREE.ShaderChunk.lights_physical_pars_fragment.replace(
         'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );',
         'float dotNL = toonRamp( saturate( dot( geometryNormal, directLight.direction ) ) );'))
-      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n{ float _rf = 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ); totalEmissiveRadiance += uRimCol * (pow(_rf, uRimP) * uRim * uToonK); }');
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+      {
+        float _nv = saturate( dot( geometryNormal, geometryViewDir ) );
+        // THE WHITE SPECKS, AND WHY ROUGHNESS COULD NEVER FIX THEM. Schlick's Fresnel
+        // takes every dielectric to a mirror at grazing incidence: F goes to 1.0 however
+        // rough the surface is, so a 0.95-rough jacket still hands back the full 3.4 of
+        // the sun along its own silhouette. That is not a highlight, it is the EDGE of
+        // the model -- which is why the specks traced his outline, and why nothing done
+        // to roughness, metalness or the maps ever moved them. The bloom was only the
+        // amplifier: each sub-pixel mirror sits far above the threshold and comes back
+        // as a soft white ball. Held down at the grazing end, left alone head-on, which
+        // is where a highlight actually belongs.
+        float _sk = uSpec * mix( uSpecG, 1.0, _nv );
+        reflectedLight.directSpecular *= _sk;
+        reflectedLight.indirectSpecular *= _sk;
+        float _rf = 1.0 - _nv;
+        totalEmissiveRadiance += uRimCol * (pow(_rf, uRimP) * uRim * uToonK);
+      }`);
 }
 THREE.MeshStandardMaterial.prototype.onBeforeCompile = function (sh) { toonPatch(sh); };
 THREE.MeshStandardMaterial.prototype.customProgramCacheKey = function () { return 'toon' + (this.userData.tag || ''); };
@@ -296,7 +319,7 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
     tD: { value: null }, tB: { value: null }, tZ: { value: null }, uStr: { value: POST.bloom }, uVig: { value: POST.vig }, uExp: { value: POST.exposure },
     uPx: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uAA: { value: 1 }, uRush: { value: 0 },
     uOut: { value: POST.outline }, uOutW: { value: POST.outlineW }, uNear: { value: .3 }, uFar: { value: 1600 },
-    uOutC: { value: new THREE.Color(.30, .34, .46) }, uOutLo: { value: .0045 }, uOutHi: { value: .034 },
+    uOutC: { value: new THREE.Color(.09, .10, .14) }, uOutLo: { value: .0045 }, uOutHi: { value: .034 },
   }, vertexShader: VS, fragmentShader: `
   uniform sampler2D tD,tB,tZ; uniform float uStr,uVig,uExp,uAA,uRush,uOut,uOutW,uNear,uFar,uOutLo,uOutHi;
   uniform vec3 uOutC; uniform vec2 uPx; varying vec2 vUv;
@@ -552,6 +575,24 @@ function segTarget(car, s, out) {
   out.x = a.cx + rx + dx * l * s; out.z = a.cz + rz + dz * l * s; out.len = l; return out;
 }
 const _tg = { x: 0, z: 0, len: 1 }, _cn = [];
+// A car that reaches him throws him. Its own speed decides how far; HIS FACING decides
+// which way he goes over, which is the only thing the two clips differ by.
+function carHit(c) {
+  const p = player;
+  if (p.hitT > 0 || c.speed < 3) return;
+  const dx = p.pos.x - c.x, dz = p.pos.z - c.z;
+  if (p.pos.y > c.y + c.hh + .6) return;                     // he ollied over it
+  const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
+  const along = dx * fx + dz * fz, side = -dx * fz + dz * fx;
+  if (along < -1.2 || along > c.hl + 1.1 || Math.abs(side) > c.hw + .7) return;
+  const toCar = Math.atan2(-dx, -dz);
+  p.hitFwd = Math.cos(wrapAngle(toCar - p.faceH)) < 0;       // struck head-on -> over backwards
+  p.hitT = 1.6;
+  const k = clamp(c.speed / 9, .6, 1.7);
+  p.vel.x = fx * 9 * k; p.vel.z = fz * 9 * k; p.vel.y = 7 * k;
+  p.grounded = false; p.airT = 0; p.landT = 0;
+  if (p.board) { p.board = false; board.visible = false; document.getElementById('boardB').classList.remove('on'); }
+}
 function stepTraffic(dt) {
   carGridBuild();
   for (const c of cars) {
@@ -584,6 +625,7 @@ function stepTraffic(dt) {
     // world box for the player to bump into
     const ex = Math.abs(fx) * c.hl + Math.abs(fz) * c.hw, ez = Math.abs(fz) * c.hl + Math.abs(fx) * c.hw;
     c.box.minx = c.x - ex; c.box.maxx = c.x + ex; c.box.minz = c.z - ez; c.box.maxz = c.z + ez; c.box.miny = c.y - c.lift; c.box.maxy = c.y - c.lift + c.hh;
+    if (Math.abs(c.x - player.pos.x) < 12 && Math.abs(c.z - player.pos.z) < 12) carHit(c);
   }
 }
 
@@ -765,9 +807,13 @@ function buildColin(gltf) {
   });
   for (const m of mats) {
     m.transparent = false; m.alphaTest = 0; m.depthWrite = true;
-    if (m.emissive) m.emissive.setScalar(0); m.emissiveIntensity = 0; m.emissiveMap = null;
+    // The base map fed back as a low emission: his Blender look, and what stops him
+    // dropping to a silhouette on his shadow side. Added after the ramp and after the
+    // shadow, so it is illumination rather than shine.
+    if (m.emissive) m.emissive.setScalar(1);
+    m.emissiveMap = m.map || null; m.emissiveIntensity = m.map ? COLINM.emis : 0;
     if (m.specularColor) m.specularColor.setScalar(1); m.specularIntensity = 1;
-    m.roughness = .9; m.metalness = 0; m.needsUpdate = true;
+    m.roughness = COLINM.rough; m.metalness = COLINM.metal; m.needsUpdate = true;
   }
   colin.model = model; colin.root.add(model);
   colin.mixer = new THREE.AnimationMixer(model);
@@ -787,7 +833,8 @@ function colinScale(name, s) { const a = colin.actions[name]; if (a) a.setEffect
 // Clips that are an event rather than a cycle: they play once and hold their last frame,
 // and they are rewound whenever their weight comes up off the floor.
 const ONCE = ['jump_going_up', 'jump_coming_down', 'landing_roll', 'idle_jump_init', 'run_jump_init',
-  'skate_ollie_init_air', 'skate_ollie_air', 'skate_ollie_landing', 'back_flip', 'front_flip'];
+  'skate_ollie_init_air', 'skate_ollie_air', 'skate_ollie_landing', 'back_flip', 'front_flip',
+  'flying_backwards', 'flying_forwards'];
 const CW = {};
 function colinSet(t, dt) {
   for (const nm in colin.actions) {
@@ -801,6 +848,9 @@ function colinSet(t, dt) {
 function colinAnim(dt) {
   const p = player, sp = p.speed, t = {};
   const pushing = p.pushK > .08;
+  // HIT BY A CAR. Which clip is not about the car, it is about which way he was facing:
+  // struck from the front he goes over backwards, struck from behind he is thrown forwards.
+  if (p.hitT > 0) { t[p.hitFwd ? 'flying_forwards' : 'flying_backwards'] = 1; colinSet(t, dt); return; }
   if (p.board) {
     // crouch -> pop -> rise -> land. The crouch is a blend rather than a state, so a thumb
     // resting on the pad settles into it and a tap goes straight past it to the pop.
@@ -893,7 +943,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, initClip: '', safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, initClip: '', hitT: 0, hitFwd: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) player.pushT = .1; }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; }
@@ -1042,13 +1092,28 @@ function stepPlayer(dt) {
   player.crouch = clamp(player.crouch + (wantC ? dt * 9 : -dt * 11), 0, 1);
   player.landT = Math.max(0, player.landT - dt);
   player.airT = player.grounded ? 0 : player.airT + dt;
+  // while he is flying he is a ragdoll on a parabola: nothing steers, nothing stops it
+  if (player.hitT > 0) {
+    player.hitT -= dt;
+    player.vel.y -= MOVE.g * dt;
+    const px = player.pos.x, pz = player.pos.z;
+    player.pos.x += player.vel.x * dt; player.pos.z += player.vel.z * dt; player.pos.y += player.vel.y * dt;
+    const g = groundUnder(player.pos, MOVE.step, player.vel);
+    if (settle(player, g, MOVE.step, px, pz) === 'landed') { player.vel.x *= .22; player.vel.z *= .22; player.hitT = Math.min(player.hitT, .5); }
+    player.speed = Math.hypot(player.vel.x, player.vel.z);
+    if (colin.ready) colinAnim(dt);
+    poseColin(dt);
+    return;
+  }
   if (player.board) stepSkate(dt); else stepFoot(dt);
   if (colin.ready) colinAnim(dt);
   // fell in the water / off the world
   if (player.pos.y < -2.5) respawn();
   player.safeT += dt;
   if (player.grounded && player.safeT > 2 && hmAt(player.pos.x, player.pos.z) > -.5 && !player.wall) { player.safe.copy(player.pos); player.safeT = 0; }
-  // pose the character and the board
+  poseColin(dt);
+}
+function poseColin(dt) {
   colin.root.position.copy(player.pos); if (player.board) colin.root.position.y += .11;
   colin.root.rotation.set(0, player.faceH, 0);
   const lean = damp(player.lean, player.board ? -player.steer * SK8.lean : 0, .1, dt); player.lean = lean;
@@ -1154,7 +1219,7 @@ frame();
     document.getElementById('boot').classList.add('off');
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TOON, SK8, MOVE, CAM, POST, LIGHT, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TOON, COLINM, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
