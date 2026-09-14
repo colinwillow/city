@@ -91,7 +91,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c55</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c56</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -103,7 +103,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c55';
+const BUILD = 'c56';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -766,14 +766,14 @@ THREE.MeshStandardMaterial.prototype.customProgramCacheKey = function () { retur
 // rather than to the game -- measured over the band this camera can actually see, which is
 // the horizon to .284 rad and nothing else:
 //     HDRI_02_galaxy   mean .031 linear  ->  needed envB 6 to reach .19 and read as a sky
-//     hdr_toon_03      mean .359 linear  ->  TWELVE TIMES brighter
+//     hdr_toon_03      mean .380 linear  ->  TWELVE TIMES brighter
 // At the galaxy's 6 the painted sky renders at a mean of 2.15, which is over the bloom
 // threshold across the WHOLE sky: a white smear rather than a picture. 2.0 lands it at .72,
 // about where the old gradient's horizon sat, and leaves its brightest pixels just over the
 // threshold so those still flare.
 // RE-MEASURE ON EVERY NEW SKY -- `npm run sky images/<file>`. Both move live:
 // city.SKY.envK / city.SKY.envB.
-const SKY = { cloud: .52, wind: new THREE.Vector2(1, .28), speed: 1, envK: 1, envB: 2.0, t: 0 };
+const SKY = { cloud: .52, wind: new THREE.Vector2(1, .28), speed: 1, envK: 1, envB: 1.9, t: 0 };
 const skyUni = {
   uZen: { value: new THREE.Color(.16, .40, .86) }, uHor: { value: new THREE.Color(.60, .76, .92) },
   uGnd: { value: new THREE.Color(.30, .37, .44) }, uSun: { value: LIGHT.sunDir },
@@ -839,7 +839,12 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 24, 12), skyMat); sky.f
 // `city.SKY.envK = x` moves it live now rather than only at load.
 // hdr_toon_03 is his own painted sky. The other two are still here to flip back to:
 // HDRI_02_galaxy_2K (the Plutopia galaxy) and HDRI_01_2K (its daylight neighbour).
-const ENV = { url: 'images/hdr_toon_03.png', galaxy: 'images/HDRI_02_galaxy_2K.jpg', day: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
+// ?v=IMGV, for the same reason the sounds carry SFXV: he repaints a sky and drops it in under
+// the SAME NAME, and a phone that has the URL keeps what it has. Bump this by hand whenever an
+// image in here is replaced in place -- that is the only time the cache is wrong, and it is a
+// megabyte or two, so it has no business riding on the build number.
+const IMGV = 2;
+const ENV = { url: 'images/hdr_toon_03.png?v=' + IMGV, galaxy: 'images/HDRI_02_galaxy_2K.jpg', day: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
 (() => {
   if (!THREE.PMREMGenerator) return;
   new THREE.TextureLoader().load(ENV.url, t => {

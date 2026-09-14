@@ -108,7 +108,11 @@ playwright unless he asks for it by name.
   horizon to .284 rad, about 16°, and nothing else — and prints the exposure for a target.
   Two skies four stops apart both look fine in a viewer and only one looks like a sky in here:
       HDRI_02_galaxy   mean .031 linear  ->  envB 6 to reach .19 and read as a starfield
-      hdr_toon_03      mean .359 linear  ->  TWELVE TIMES brighter, envB 2.0 to reach .72
+      hdr_toon_03      mean .380 linear  ->  TWELVE TIMES brighter, envB 1.9 to reach .72
+  **`?v=IMGV` on the sky URL**, for the same reason the sounds carry `SFXV`: he repaints a sky
+  and drops it in under the SAME NAME, and a phone that already has that URL keeps what it has.
+  Bump `IMGV` by hand whenever an image is replaced in place — it is megabytes, so it must not
+  ride on the build number.
   At the galaxy's 6 the painted sky renders at a mean of 2.15, over `POST.bloomTh` across the
   WHOLE sky — a white smear, not a picture. **Re-measure on every new sky.**
   **`t.colorSpace` must be set BEFORE `PMREMGenerator.fromEquirectangular`, not after.**
