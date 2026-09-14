@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c32</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c33</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c32';
+const BUILD = 'c33';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -217,6 +217,17 @@ Q.dpr0 = Q.dpr;   // the world is drawn at this and upscaled to `present`; /5 tu
 const CAR_FWD = 1;        // +1: the car mesh's local +Y is its nose. Flip to -1 if they drive backwards.
 const COLIN_HEIGHT = 1.75;
 const HEAD_SHAPE = 'Colin_Head_MIX';   // the target that turns the base head into his
+// FRAMES ALREADY CUT IN HIS LOCAL FILE AND NOT YET RE-EXPORTED. Taken off here so the
+// timing is right today. DELETE AN ENTRY the moment an export arrives with the cut baked
+// in, or it will be taken twice and the clip will come up short.
+// 30 fps, and that is measured rather than assumed: every clip in this file has exactly
+// duration x 30 keyframes.
+const FPS = 30;
+const TRIM = {
+  get_up_from_back: { end: 22 },     // 0.733 s off the tail: 2.30 -> 1.57
+  get_up_from_face: { start: 9 },    // 0.300 s off the head: 2.70 -> 2.40 of usable clip
+};
+const TRIM_IN = {};                  // name -> the second the clip should START at
 const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 
 // ---------- renderer ----------
@@ -944,7 +955,11 @@ const HIT = {
   again: 1.2,        // what a second hit in the air multiplies by. Pinball.
   cool: .3,          // one car may not hit him sixty times on the way past
 };
-function clipLen(name, fb) { const a = colin.actions[name]; return a ? a.getClip().duration : fb; }
+// the USABLE length, which is the clip minus whatever TRIM took off either end
+function clipLen(name, fb) {
+  const a = colin.actions[name]; if (!a) return fb;
+  return Math.max(.05, a.getClip().duration - (TRIM_IN[name] || 0));
+}
 function carHit(c) {
   const p = player;
   if (c.speed < HIT.min || p.hitCool > 0) return;
@@ -1260,6 +1275,16 @@ function buildColin(gltf) {
     if (ONCE.indexOf(clip.name) >= 0) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
     colin.actions[clip.name] = a;
   }
+  // A tail is taken by shortening the clip's own duration, which is all the mixer reads to
+  // know when a LoopOnce action is done. A head is taken by starting the action late --
+  // the frames are still in the file, nothing ever reaches them.
+  for (const nm in TRIM) {
+    const a = colin.actions[nm];
+    if (!a) { console.warn('[trim] no clip named ' + nm); continue; }
+    const c = a.getClip(), t = TRIM[nm];
+    if (t.end) c.duration = Math.max(.05, c.duration - t.end / FPS);
+    if (t.start) TRIM_IN[nm] = Math.min(t.start / FPS, c.duration - .05);
+  }
   const a0 = colin.actions['idle_neutral']; if (a0) { a0.play(); a0.setEffectiveWeight(1); CW['idle_neutral'] = 1; }
   colin.ready = true;
 }
@@ -1289,7 +1314,7 @@ function colinSet(t, dt) {
   if (tot < .01) { console.warn('[colin] no live clip in', Object.keys(t).join(',') || '(empty)'); t = { idle_neutral: 1 }; }
   for (const nm in colin.actions) {
     const a = colin.actions[nm], want = t[nm] || 0, cur = CW[nm] || 0;
-    if (cur < .01 && want > .01) { a.reset(); a.play(); }
+    if (cur < .01 && want > .01) { a.reset(); a.play(); if (TRIM_IN[nm]) a.time = TRIM_IN[nm]; }
     // .085 was a quarter of a second to cross, which on anything sharp reads as mush.
     // .055 is about a sixth and still hides the seam between two clips.
     const w = CW[nm] = snap ? want : damp(cur, want, .055, dt);

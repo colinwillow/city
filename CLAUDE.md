@@ -74,6 +74,11 @@ playwright unless he asks for it by name.
   material without a `map` to the head's. **Find the head material by MESH name, never by
   material name**: the c9 re-export renamed every material to `Material.00N` and a
   name-keyed lookup failed silently, putting the white teeth straight back.
+- **`TRIM` trims clips in code** for frames the owner has already cut locally but not
+  re-exported. A tail shortens `clip.duration`; a head sets `TRIM_IN[name]`, the second the
+  action starts at. **Delete an entry the moment an export lands with the cut baked in**, or
+  it is taken twice. Clips are 30 fps — measured, not assumed: every one has exactly
+  `duration × 30` keyframes.
 - **Animation is weights, not crossfades.** `colinAnim` asks for a set of clip weights each
   frame and `colinSet` damps toward it. A `crossFadeFrom` state machine has to know what it
   is coming *from*, which breaks the first time two transitions overlap. Clips in `ONCE`
