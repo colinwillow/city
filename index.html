@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c13</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c14</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c13';
+const BUILD = 'c14';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -235,6 +235,23 @@ function toonSync() {
 }
 function toonPatch(sh) {
   for (const k in TOON_UNI) sh.uniforms[k] = TOON_UNI[k];
+  // A SKINNED NORMAL CAN COME OUT AS ZERO, AND THAT IS THE WHITE BALLS.
+  // At a joint, a vertex is weighted between two bones. When those bones rotate against
+  // each other the two rotated copies of its normal point opposite ways and the weighted
+  // sum cancels to nothing. three applies the skin matrix to the normal and does NOT
+  // renormalise before this line, so normalize() gets a zero vector and returns NaN --
+  // and a NaN at ONE vertex is interpolated across the WHOLE triangle. Every fragment of
+  // it shades to NaN, which reads as white, sails over the bloom threshold and comes back
+  // as a soft ball. It sits on a joint because that is the only place normals can cancel,
+  // it needs a lit material because an unlit one never touches the normal, and it needs
+  // the bloom to become a ball rather than a speck. That is every symptom.
+  sh.vertexShader = sh.vertexShader.replace('#include <normal_vertex>', `#ifndef FLAT_SHADED
+    vNormal = dot( transformedNormal, transformedNormal ) > 1e-10 ? normalize( transformedNormal ) : vec3( 0.0, 0.0, 1.0 );
+    #ifdef USE_TANGENT
+      vTangent = normalize( transformedTangent );
+      vBitangent = normalize( cross( vNormal, vTangent ) * tangent.w );
+    #endif
+  #endif`);
   sh.fragmentShader = 'uniform float uToonK, uToonN, uToonSoft, uToonFloor, uRim, uRimP, uSpec, uSpecG;\nuniform vec3 uRimCol;\n'
     + 'float toonRamp(float x){\n  float s = x * uToonN, b = floor(s), f = s - b;\n'
     + '  float q = (b + smoothstep(0.5 - uToonSoft, 0.5 + uToonSoft, f)) / uToonN;\n'
@@ -243,6 +260,8 @@ function toonPatch(sh) {
       .replace('#include <lights_physical_pars_fragment>', THREE.ShaderChunk.lights_physical_pars_fragment.replace(
         'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );',
         'float dotNL = toonRamp( saturate( dot( geometryNormal, directLight.direction ) ) );'))
+      // and the same guard after interpolation, since a NaN varying stays NaN
+      .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n  if ( !( dot( normal, normal ) > 0.5 ) ) normal = vec3( 0.0, 0.0, 1.0 );')
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
       {
         float _nv = saturate( dot( geometryNormal, geometryViewDir ) );
@@ -299,12 +318,15 @@ const VS = 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,
 // the difference between a glow and a slab.
 const brightMat = new THREE.ShaderMaterial({ uniforms: { tD: { value: null }, uTh: { value: POST.bloomTh }, uKnee: { value: POST.bloomKnee }, uSrc: { value: new THREE.Vector2(1 / 1280, 1 / 720) } }, vertexShader: VS, fragmentShader: `
   uniform sampler2D tD; uniform float uTh,uKnee; uniform vec2 uSrc; varying vec2 vUv;
+  // NaN fails every comparison, which is the only portable way to test for it here. One
+  // NaN pixel reaching the blur becomes a blob the size of the whole kernel.
+  vec3 san(vec3 c){ return mix(vec3(0.0), min(c, vec3(32.0)), vec3(bvec3(c.r >= 0.0, c.g >= 0.0, c.b >= 0.0))); }
   void main(){
-    vec3 c = texture2D(tD,vUv).rgb * 0.25
-      + texture2D(tD,vUv+vec2( uSrc.x, uSrc.y)).rgb * 0.1875
-      + texture2D(tD,vUv+vec2(-uSrc.x, uSrc.y)).rgb * 0.1875
-      + texture2D(tD,vUv+vec2( uSrc.x,-uSrc.y)).rgb * 0.1875
-      + texture2D(tD,vUv+vec2(-uSrc.x,-uSrc.y)).rgb * 0.1875;
+    vec3 c = san(texture2D(tD,vUv).rgb) * 0.25
+      + san(texture2D(tD,vUv+vec2( uSrc.x, uSrc.y)).rgb) * 0.1875
+      + san(texture2D(tD,vUv+vec2(-uSrc.x, uSrc.y)).rgb) * 0.1875
+      + san(texture2D(tD,vUv+vec2( uSrc.x,-uSrc.y)).rgb) * 0.1875
+      + san(texture2D(tD,vUv+vec2(-uSrc.x,-uSrc.y)).rgb) * 0.1875;
     float l=dot(c,vec3(0.2126,0.7152,0.0722));
     float soft = clamp(l - uTh + uKnee, 0.0, 2.0*uKnee); soft = soft*soft/(4.0*uKnee + 1e-4);
     gl_FragColor = vec4(c * (max(soft, l - uTh) / max(l, 1e-4)), 1.0); }` });
@@ -361,6 +383,7 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
     return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
   void main(){
     vec3 c = uAA > 0.5 ? aa(vUv) : texture2D(tD,vUv).rgb;
+    c = mix(vec3(0.0), min(c, vec3(32.0)), vec3(bvec3(c.r >= 0.0, c.g >= 0.0, c.b >= 0.0)));
     if (uRush > 0.002) { vec2 d = (vUv - 0.5); float e = smoothstep(0.06, 0.5, length(d)); vec3 sm = c;
       for (int i = 1; i <= 6; i++) sm += texture2D(tD, vUv - d * (float(i) * 0.016 * uRush)).rgb;
       c = mix(c, sm / 7.0, e * uRush); }
