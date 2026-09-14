@@ -91,7 +91,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c52</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c53</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -103,7 +103,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c52';
+const BUILD = 'c53';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -672,7 +672,78 @@ function toonPatch(sh) {
         totalEmissiveRadiance += uRimCol * mix( vec3( 1.0 ), diffuseColor.rgb, uRimTint ) * (pow(_rf, uRimP) * uRim * uToonK);
       }`);
 }
-THREE.MeshStandardMaterial.prototype.onBeforeCompile = function (sh) { toonPatch(sh); };
+
+// ---------- see-through ----------
+// Ported from Plutopia. The camera only avoids the ground; a building, a tree, a gantry or a
+// car between the lens and Colin just stands there and you play blind. This punches a
+// screen-door hole through any surface that is BOTH closer to the camera than he is AND
+// inside a circle around him on screen.
+// It lives in the shared material shader rather than per object, because the city is merged
+// into a few dozen big meshes on ONE material -- there is no object to fade.
+const HOLE = { on: 1, near: .30, far: .20, at: 6, to: 13, cut: .92 };
+const holeUni = { uHoleC: { value: new THREE.Vector2(-1e5, -1e5) }, uHoleR: { value: 0 }, uHoleZ: { value: 0 }, uHoleLo: { value: -1e5 } };
+const _holeP = new THREE.Vector3(), _holeF = new THREE.Vector3(), _holeV = new THREE.Vector3();
+// Pulled out of the prototype hook so a material with an onBeforeCompile of its OWN can still
+// take the hole: assigning one to an instance shadows the prototype's completely. In Plutopia
+// that is how the glowing plants became the only solid things on the island.
+function holePatch(sh) {
+  sh.uniforms.uHoleC = holeUni.uHoleC; sh.uniforms.uHoleR = holeUni.uHoleR;
+  sh.uniforms.uHoleZ = holeUni.uHoleZ; sh.uniforms.uHoleLo = holeUni.uHoleLo;
+  sh.fragmentShader = `
+    uniform vec2 uHoleC; uniform float uHoleR, uHoleZ, uHoleLo;
+    float holeHash(vec2 p){ return fract(sin(dot(floor(p), vec2(12.9898, 78.233))) * 43758.5453); }
+    // A 4x4 ordered matrix with a per-pixel random in place of its fixed half step. On its own
+    // the matrix has sixteen levels, so a soft edge steps four or five times and then stops --
+    // a ramp with five values in it reads as a shape with a border. Jittering the threshold
+    // turns those sixteen levels into a continuous one for nothing.
+    float holeDither(vec2 p){ vec2 q = floor(mod(p, 4.0)); return (mod(q.x * 3.0 + q.y * 5.0 + q.x * q.y * 7.0, 16.0) + holeHash(p)) / 16.0; }
+  ` + sh.fragmentShader.replace('#include <clipping_planes_fragment>', `
+    #include <clipping_planes_fragment>
+    if (uHoleR > 0.0) {
+      float hd = distance(gl_FragCoord.xy, uHoleC);
+      // SOFT ON EVERY EDGE IT HAS. All three tests are ramps, not pass/fail -- the other two
+      // are STRAIGHT LINES (the cut at his feet is horizontal in screen space, the depth cut
+      // is a plane), and against something broad like a wall the circle never gets a look in,
+      // so what you would see is two lines crossing, which is a box.
+      // NOT THE GROUND HE IS STANDING ON is why the floor cut exists at all: a kerb or a deck
+      // he is standing on the far edge of is closer to the lens than he is, so the floor under
+      // his feet would dither away and he would stand on a hole. Nothing BELOW his feet can be
+      // hiding him, so the hole only opens above uHoleLo.
+      float k = smoothstep(1.0, 0.45, hd / uHoleR);
+      k *= smoothstep(uHoleLo, uHoleLo + 0.06 * uHoleR, gl_FragCoord.y);
+      k *= smoothstep(uHoleZ - 0.6, uHoleZ - 2.8, vViewPosition.z);
+      if (k > 0.004 && holeDither(gl_FragCoord.xy) < k * 0.92) discard;
+    }`);
+}
+// Follows his chest on screen. Everything here is in rtScene pixels, because that is the
+// buffer the scene pass writes and gl_FragCoord is measured in.
+function stepHole() {
+  const p = player;
+  if (!HOLE.on || !colin.ready) { holeUni.uHoleR.value = 0; compMat.uniforms.uHoleRU.value = 0; return; }
+  camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+  _holeP.set(p.pos.x, p.pos.y + COLIN_HEIGHT * .55, p.pos.z);
+  const vz = _holeV.copy(_holeP).applyMatrix4(camera.matrixWorldInverse).z;   // negative in front
+  _holeP.project(camera);
+  if (vz > -1 || Math.abs(_holeP.x) > 1.1 || Math.abs(_holeP.y) > 1.1) { holeUni.uHoleR.value = 0; compMat.uniforms.uHoleRU.value = 0; return; }
+  holeUni.uHoleC.value.set((_holeP.x * .5 + .5) * rtScene.width, (_holeP.y * .5 + .5) * rtScene.height);
+  compMat.uniforms.uHoleUV.value.set(_holeP.x * .5 + .5, _holeP.y * .5 + .5);
+  // Wider when the camera is pinched in. A short boom means something big is close in front
+  // of it, and a porthole a fifth of the screen across is no use when the other four fifths
+  // are the inside of a wall.
+  const d = Math.hypot(cam.pos.x - p.pos.x, cam.pos.y - p.pos.y, cam.pos.z - p.pos.z);
+  holeUni.uHoleR.value = rtScene.height * lerp(HOLE.near, HOLE.far, clamp((d - HOLE.at) / (HOLE.to - HOLE.at), 0, 1));
+  compMat.uniforms.uHoleRU.value = holeUni.uHoleR.value / Math.max(1, rtScene.height);
+  holeUni.uHoleZ.value = -vz; compMat.uniforms.uHoleZC.value = -vz;
+  _holeF.set(p.pos.x, p.pos.y + .05, p.pos.z).project(camera);
+  holeUni.uHoleLo.value = (_holeF.y * .5 + .5) * rtScene.height - rtScene.height * .02;
+  compMat.uniforms.uHoleLoU.value = holeUni.uHoleLo.value / Math.max(1, rtScene.height);
+}
+THREE.MeshStandardMaterial.prototype.onBeforeCompile = function (sh) {
+  toonPatch(sh);
+  // userData.noHole opts a material out: the board under his feet, and the clouds, which are
+  // half a kilometre past him and would only ever be cut by the depth test being generous.
+  if (!this.userData.noHole) holePatch(sh);
+};
 THREE.MeshStandardMaterial.prototype.customProgramCacheKey = function () { return 'toon' + (this.userData.tag || ''); };
 
 // ---------- sky ----------
@@ -815,6 +886,7 @@ function buildClouds(gltfs) {
       o.material.transparent = true; o.material.depthWrite = true; o.material.opacity = 0;
       o.material.roughness = 1; o.material.metalness = 0; o.material.envMapIntensity = 0;
       o.material.fog = false;   // at 600 m the exponential fog would eat four fifths of it
+      o.material.userData.noHole = true;
       o.material.userData.tag = 'cloud';
       mats.push(o.material);
     });
@@ -902,8 +974,11 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
     uPx: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uAA: { value: 1 }, uRush: { value: 0 },
     uOut: { value: POST.outline }, uOutW: { value: POST.outlineW }, uNear: { value: .3 }, uFar: { value: 1600 },
     uOutC: { value: new THREE.Color(.09, .10, .14) }, uOutLo: { value: .0045 }, uOutHi: { value: .034 }, uMap: { value: 0 },
+    // the see-through hole, rebuilt here in UV space so the outline can be kept off it
+    uHoleUV: { value: new THREE.Vector2(-9, -9) }, uHoleRU: { value: 0 }, uHoleZC: { value: 0 }, uHoleLoU: { value: -9 },
   }, vertexShader: VS, fragmentShader: `
   uniform sampler2D tD,tB,tZ; uniform float uStr,uVig,uExp,uAA,uRush,uOut,uOutW,uNear,uFar,uOutLo,uOutHi,uMap;
+  uniform vec2 uHoleUV; uniform float uHoleRU,uHoleZC,uHoleLoU;
   uniform vec3 uOutC; uniform vec2 uPx; varying vec2 vUv;
   float lz(vec2 uv){ float d = texture2D(tZ,uv).x; return (2.0*uNear*uFar)/(uFar+uNear-(2.0*d-1.0)*(uFar-uNear)); }
   // TONE-MAPPED LUMINANCE, AND THIS IS THE WHOLE BUG. FXAA is a DISPLAY-SPACE algorithm.
@@ -969,6 +1044,21 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
       float zl = lz(vUv-vec2(o.x,0.0)), zr = lz(vUv+vec2(o.x,0.0)), zd = lz(vUv-vec2(0.0,o.y)), zu = lz(vUv+vec2(0.0,o.y));
       float g = abs(zl + zr - 2.0*z0) + abs(zd + zu - 2.0*z0);
       float e = smoothstep(uOutLo, uOutHi, g / max(z0, 1.0));
+      // NOT OVER THE HOLE. A discarded fragment writes no depth, so every pixel the hole
+      // throws away leaves the depth of whatever was behind it -- and a 4x4 dither of near
+      // and far is, to a second derivative, thousands of tiny silhouettes. Unmasked, the
+      // outline stops drawing the building and starts drawing the dither.
+      // The mask is the hole's own three tests rebuilt from its uniforms: inside the disc,
+      // above his feet, and something in the NEIGHBOURHOOD nearer to the lens than he is --
+      // the minimum of the five samples already taken, because at a discarded pixel the depth
+      // belongs to the far side and testing only the centre keeps half the checkerboard.
+      if (uHoleRU > 0.0) {
+        vec2 hv = (vUv - uHoleUV) * vec2(uPx.y / uPx.x, 1.0);
+        float hk = smoothstep(1.0, 0.45, length(hv) / uHoleRU);
+        hk *= smoothstep(uHoleLoU, uHoleLoU + 0.06 * uHoleRU, vUv.y);
+        hk *= smoothstep(uHoleZC - 0.6, uHoleZC - 2.8, min(min(z0, min(zl, zr)), min(zd, zu)));
+        e *= 1.0 - hk;
+      }
       c *= mix(vec3(1.0), uOutC, e * uOut);
     }
     c += texture2D(tB,vUv).rgb * uStr;
@@ -2078,6 +2168,9 @@ function buildColin(gltf) {
     // this material its own value, because three keeps a uniform set per material while
     // the compiled program is shared on identical source. So he can be matte while the
     // cars keep their highlights.
+    // HIS OWN HOOK, WHICH IS WHY HE IS NEVER CUT. An instance onBeforeCompile shadows the
+    // prototype's completely, so Colin misses holePatch -- and he is the one thing the hole
+    // exists to reveal, so that is exactly right. Do not "fix" it by chaining holePatch here.
     m.onBeforeCompile = sh => { toonPatch(sh); sh.uniforms.uSpec = { value: COLINM.spec }; };
     m.needsUpdate = true;
   }
@@ -2193,8 +2286,9 @@ function colinAnim(dt) {
 // ---------- skateboard (procedural stand-in) ----------
 const board = new THREE.Group(); scene.add(board);
 {
-  const deckM = new THREE.MeshStandardMaterial({ color: 0x3b2a1e, roughness: .8 }); const gripM = new THREE.MeshStandardMaterial({ color: 0x1b1b1f, roughness: 1 });
-  const wheelM = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: .6 }); const truckM = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, roughness: .5, metalness: .3 });
+  const nh = { noHole: true };    // it is under his feet; cutting it out reveals nothing
+  const deckM = new THREE.MeshStandardMaterial({ color: 0x3b2a1e, roughness: .8, userData: nh }); const gripM = new THREE.MeshStandardMaterial({ color: 0x1b1b1f, roughness: 1, userData: nh });
+  const wheelM = new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: .6, userData: nh }); const truckM = new THREE.MeshStandardMaterial({ color: 0xb8bcc4, roughness: .5, metalness: .3, userData: nh });
   const deck = new THREE.Mesh(new THREE.BoxGeometry(.21, .025, .80), deckM); deck.position.y = .095; board.add(deck);
   const grip = new THREE.Mesh(new THREE.BoxGeometry(.205, .006, .78), gripM); grip.position.y = .11; board.add(grip);
   for (const s of [-1, 1]) { const kick = new THREE.Mesh(new THREE.BoxGeometry(.21, .025, .14), deckM); kick.position.set(0, .12, s * .45); kick.rotation.x = -s * .45; board.add(kick); }
@@ -2769,6 +2863,7 @@ function frame() {
   stepClouds(dt);
   WHEELS.set(player.speed, player.board && player.grounded && !player.hit, !!player.rail && SFX.on);
   stepCam(dt);
+  stepHole();
   if (colin.mixer) colin.mixer.update(dt);
   renderPost();
   fpsN++; fpsT += dt; if (fpsT > .5) { fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; perfEl.textContent = fps + ' fps · ' + renderer.info.render.calls + ' dc' + dbgInfo + missing(); }
@@ -2801,7 +2896,7 @@ frame();
     document.getElementById('boot').classList.add('off');
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

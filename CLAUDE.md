@@ -396,6 +396,32 @@ playwright unless he asks for it by name.
   not the locomotion. Suspect the camera before re-tuning movement.
 - **`Colin_Head_MIX` rides at weight 1.** It is the blend shape that turns the generic
   base head into his; the other 41 targets are visemes and stay at zero.
+- **THE SEE-THROUGH HOLE (`holePatch`, `stepHole`), ported from Plutopia.** A dithered
+  `discard` through anything that is BOTH closer to the lens than Colin AND inside a circle
+  around him on screen. It lives in the shared material shader, not per object, because the
+  city is merged into a few dozen big meshes on ONE material — there is no object to fade.
+  Four things about it are load-bearing:
+  1. **An instance `onBeforeCompile` shadows the prototype's completely.** That is why Colin
+     is never cut: his materials set their own hook for `uSpec` and so miss `holePatch`
+     entirely, which is exactly right since he is the thing the hole exists to reveal. Do not
+     "fix" it by chaining. Anything else that must stay solid sets `userData.noHole` — the
+     board (it is under his feet) and the clouds.
+  2. **All three tests are ramps, never pass/fail.** The circle is one; the other two are
+     STRAIGHT LINES — the cut at his feet is horizontal in screen space and the depth cut is a
+     plane — so against something broad like a wall the circle never gets a look in and what
+     you would see is two lines crossing, which is a box.
+  3. **The floor cut exists because a kerb he is standing on the far edge of is closer to the
+     lens than he is.** Without it the ground under his feet dithers away and he stands on a
+     hole. Nothing BELOW his feet can be hiding him.
+  4. **THE OUTLINE MUST BE MASKED OFF IT.** A discarded fragment writes no depth, so every
+     pixel the hole throws away leaves the depth of whatever was behind it — and a 4×4 dither
+     of near and far is, to a second derivative, thousands of tiny silhouettes. Unmasked, the
+     depth outline stops drawing the building and starts drawing the dither. The composite
+     rebuilds the hole's three tests in UV space (`uHoleUV/RU/ZC/LoU`) and uses the MINIMUM of
+     its five depth samples, because at a discarded pixel the centre belongs to the far side
+     and testing only that keeps half the checkerboard.
+  `city.HOLE.on = 0` turns it off — worth trying first if the frame rate drops, since a
+  `discard` can cost early-Z on a mobile GPU.
 - **Downsampling needs more than one tap.** The bloom bright pass writes a buffer a third
   the width of its source; one bilinear tap at that ratio is nearly a point sample. It
   boxes five taps now, and the blur runs twice.
