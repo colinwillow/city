@@ -91,7 +91,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c51</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c52</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -103,7 +103,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c51';
+const BUILD = 'c52';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -206,6 +206,12 @@ const SK8 = {
   // the new direction -- which is what dragging a foot to a stop and then shoving off the
   // other way actually is, done with one input.
   fakieAt: 2.2,
+  // HE DOES NOT PUSH BACKWARDS. A fakie push looks like nonsense with no fakie clip to play,
+  // so asking the board to lead with its tail spins him round on it instead: a half cab, on
+  // `turn_left`/`turn_right`, and then he is riding forward again. The heading turns; the
+  // VELOCITY does not, so he keeps his line through it and comes out rolling the way he was.
+  // Delete this the day switch clips land -- riding fakie is a real thing to be able to do.
+  turnDur: .7,
   // THE SCUFF OF BRUSHING SOMETHING. resolveBoxes already removes only the component going
   // INTO a surface, so a slide along a car keeps its speed on its own. This is the scrape
   // on top of that, and it used to be `vel *= .7` EVERY FRAME -- an exponential with a
@@ -1318,14 +1324,41 @@ function solidAdd(mesh, b) {
   for (let i = 0; i + 2 < cnt; i += 3) {
     const ia = idx ? idx.getX(i) : i, ib = idx ? idx.getX(i + 1) : i + 1, ic = idx ? idx.getX(i + 2) : i + 2;
     _a.fromBufferAttribute(pa, ia).applyMatrix4(m); _b.fromBufferAttribute(pa, ib).applyMatrix4(m); _c.fromBufferAttribute(pa, ic).applyMatrix4(m);
-    // the triangle's own box, which is conservative -- and conservative is the right way for
-    // a collider to be wrong
+    // A TRIANGLE'S BOUNDING BOX IS NOT ITS SHAPE, and on a gantry that difference IS the bug.
+    // A beam quad is two big triangles, and one running from the base of the post to the far
+    // end of the arm has a box covering the whole span -- so every cell under the arm was told
+    // the metal reaches the ground. Measured: streetsigns_026 emitted twenty boxes and
+    // thirteen of them spanned 0.00..6.19, which is the wall you kept walking into.
+    // The box still picks the CELLS (conservative in plan is the right way for a collider to
+    // be wrong), but the height over each one comes from the triangle's PLANE rather than
+    // from its extremes. A vertical face has no useful plane in y and keeps its full span,
+    // which is correct -- a wall really does reach from its bottom to its top.
     const y0 = Math.min(_a.y, _b.y, _c.y), y1 = Math.max(_a.y, _b.y, _c.y);
     let i0 = ((Math.min(_a.x, _b.x, _c.x) - b.minx) / cell) | 0, i1 = ((Math.max(_a.x, _b.x, _c.x) - b.minx) / cell) | 0;
     let k0 = ((Math.min(_a.z, _b.z, _c.z) - b.minz) / cell) | 0, k1 = ((Math.max(_a.z, _b.z, _c.z) - b.minz) / cell) | 0;
     if (i0 < 0) i0 = 0; if (i1 > w - 1) i1 = w - 1; if (k0 < 0) k0 = 0; if (k1 > d - 1) k1 = d - 1;
-    for (let k = k0; k <= k1; k++) { const row = k * w;
-      for (let j = i0; j <= i1; j++) { const o = row + j; if (y0 < _lo[o]) _lo[o] = y0; if (y1 > _hi[o]) _hi[o] = y1; } }
+    const ux = _b.x - _a.x, uy = _b.y - _a.y, uz = _b.z - _a.z;
+    const vx = _c.x - _a.x, vy = _c.y - _a.y, vz = _c.z - _a.z;
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const flat = Math.abs(ny) > 1e-4 ? -nx / ny : 0, flatz = Math.abs(ny) > 1e-4 ? -nz / ny : 0;
+    const plane = Math.abs(ny) > 1e-4;
+    for (let k = k0; k <= k1; k++) { const row = k * w, cz0 = b.minz + k * cell, cz1 = cz0 + cell;
+      for (let j = i0; j <= i1; j++) {
+        const o = row + j; let a0 = y0, a1 = y1;
+        if (plane) {
+          const cx0 = b.minx + j * cell, cx1 = cx0 + cell;
+          // the plane over the cell's four corners, then clamped back inside the triangle's
+          // own range so a plane extrapolated past the triangle cannot invent height
+          const h00 = _a.y + flat * (cx0 - _a.x) + flatz * (cz0 - _a.z);
+          const h10 = _a.y + flat * (cx1 - _a.x) + flatz * (cz0 - _a.z);
+          const h01 = _a.y + flat * (cx0 - _a.x) + flatz * (cz1 - _a.z);
+          const h11 = _a.y + flat * (cx1 - _a.x) + flatz * (cz1 - _a.z);
+          a0 = Math.max(y0, Math.min(h00, h10, h01, h11));
+          a1 = Math.min(y1, Math.max(h00, h10, h01, h11));
+          if (a1 < a0) { a0 = y0; a1 = y1; }
+        }
+        if (a0 < _lo[o]) _lo[o] = a0; if (a1 > _hi[o]) _hi[o] = a1;
+      } }
   }
   let cov = 0, prism = 0;
   for (let o = 0; o < n; o++) if (_hi[o] > -Infinity) { cov++; if (_hi[o] - _lo[o] >= COLS.flat * sy) prism++; }
@@ -1337,9 +1370,15 @@ function solidAdd(mesh, b) {
       let lo = _lo[row + j], hi = _hi[row + j], e = j;
       while (e + 1 < w) {
         const o2 = row + e + 1; if (_hi[o2] === -Infinity) break;
-        const nlo = Math.min(lo, _lo[o2]), nhi = Math.max(hi, _hi[o2]);
-        if (nhi - nlo > hi - lo + COLS.tol) break;          // this cell disagrees: close the run
-        lo = nlo; hi = nhi; e++;
+        // THE CELL MUST AGREE WITH THE RUN, not merely fail to enlarge it -- and that
+        // distinction is the whole reason you still could not walk under a gantry. The old
+        // test asked whether adding a cell GREW the run's span, and swallowing a short arm
+        // cell (3.5..6.2) into a full-height post run (0..6.2) grows it by nothing at all. So
+        // the first arm cell beside the post joined the post, the next joined that, and the
+        // entire arm came out as one box reaching the ground. Measured: streetsigns_026 gave
+        // thirteen boxes spanning 0.00..6.19 across the whole reach of it.
+        if (Math.abs(_lo[o2] - lo) > COLS.tol || Math.abs(_hi[o2] - hi) > COLS.tol) break;
+        lo = Math.min(lo, _lo[o2]); hi = Math.max(hi, _hi[o2]); e++;
       }
       const t = { minx: b.minx + j * cell, maxx: b.minx + (e + 1) * cell, minz: b.minz + k * cell, maxz: b.minz + (k + 1) * cell, miny: lo, maxy: hi };
       solids.push(t); gridAdd(t); COLS.built++;
@@ -1522,7 +1561,7 @@ function carHit(c) {
 }
 function dropBoard() {
   if (!player.board) return;
-  player.rail = null;
+  player.turnT = 0; player.turnRem = 0; player.rail = null;
   player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0;
   player.board = false; board.visible = false; document.getElementById('boardB').classList.remove('on');
 }
@@ -1682,18 +1721,38 @@ function normGeo(g, m, flat) {
   out.setIndex(idx);
   if (g.attributes.normal) out.setAttribute('normal', _f32(g.attributes.normal, 3)); else out.computeVertexNormals();
   out.applyMatrix4(m);
+  // AND THAT IS WHY IT IS BLACK. The winding was reversed above to keep a mirrored face
+  // pointing outward, but applyMatrix4 carries the NORMALS through the mirror as well -- so
+  // the two end up disagreeing on every triangle (measured: 296/296, 548/548, 772/772 on the
+  // road tiles) and the shading normal points into the ground, away from the sun. DoubleSide
+  // does not save it: three only flips a normal for a BACK face, and after the winding fix
+  // these are front faces with backwards normals.
+  if (m.determinant() < 0) { const na = out.attributes.normal, arr = na.array; for (let i = 0; i < arr.length; i++) arr[i] = -arr[i]; na.needsUpdate = true; }
   return out;
 }
 const isCar = n => /^(car|jeep|truck|tractor)_/.test(n);
-const isWalk = n => /^(land|green_|sand_|road_|parking_area|bridge|basketballcourt|park_[a-z]|farmstractures_11)/.test(n);
+// `land` must not swallow `landscape`. The scenery shells are excluded from the solids on
+// purpose and one of them (landscape_005) is inside out in the file -- 3 up-facing triangles
+// against 436 down -- so letting it into the ground raster fed the heightmap garbage.
+const isWalk = n => /^(land(?!scape)|green_|sand_|road_|parking_area|bridge|basketballcourt|park_[a-z]|farmstractures_11)/.test(n);
 const isWater = n => /^water_/.test(n);
 const isTree = n => /^tree/.test(n);
 const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 function rasterMesh(mesh, cap, water, precise) {
   const g = mesh.geometry, p = g.attributes.position, m = mesh.matrixWorld, idx = g.index;
   const cnt = idx ? idx.count : p.count;
+  // A MIRRORED PLACEMENT WINDS ITS DECK DOWNWARD, AND triAdd THROWS A DOWNWARD FACE AWAY AS
+  // "NOT A FLOOR". 174 walkable meshes in this city are placed with a negative determinant --
+  // parking lots, roads, and the ramp up onto the bridge -- and every one of them was handing
+  // the collider its UNDERSIDE and keeping the deck out of it. Measured, not guessed:
+  // road_c_02_003 comes back 233 accepted / 367 down-facing while its unmirrored siblings
+  // _002 and _004 come back 367 / 233, the same numbers swapped. That is the hole in the ramp
+  // that cars and Colin fall through, and it is the same mirroring that shades it black.
+  const flip = m.determinant() < 0;
   for (let i = 0; i + 2 < cnt; i += 3) {
-    const ia = idx ? idx.getX(i) : i, ib = idx ? idx.getX(i + 1) : i + 1, ic = idx ? idx.getX(i + 2) : i + 2;
+    const ia = idx ? idx.getX(i) : i;
+    const ib = idx ? idx.getX(i + (flip ? 2 : 1)) : i + (flip ? 2 : 1);
+    const ic = idx ? idx.getX(i + (flip ? 1 : 2)) : i + (flip ? 1 : 2);
     _a.fromBufferAttribute(p, ia).applyMatrix4(m); _b.fromBufferAttribute(p, ib).applyMatrix4(m); _c.fromBufferAttribute(p, ic).applyMatrix4(m);
     hmRaster(_a.x, _a.y, _a.z, _b.x, _b.y, _b.z, _c.x, _c.y, _c.z, cap, water);
     if (precise) triAdd(_a.x, _a.y, _a.z, _b.x, _b.y, _b.z, _c.x, _c.y, _c.z);
@@ -2104,6 +2163,7 @@ function colinAnim(dt) {
     // decaying impulse and back out again, which cut the shove off partway through and is
     // the twitch you saw. Held forward it simply loops -- and its clock is the very phase
     // the shove is fired from, so the foot and the push cannot drift apart.
+    else if (p.turnT > 0) t[p.turnSide > 0 ? 'turn_right' : 'turn_left'] = 1;
     else if (p.pushing) {
       // one clip per cycle whatever the cycle is: the clip is stretched to the period so
       // the plant stays on the shove. clipLen, not a constant, so either push clip works.
@@ -2255,10 +2315,10 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, rail: null, railS: 0, railV: 0, railDir: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
-function toggleBoard() { player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
-function respawn() { player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
+function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
+function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
   // left stick -> world direction, relative to the camera azimuth
@@ -2466,7 +2526,15 @@ function stepSkate(dt) {
       // the stick fights the way he is actually rolling, and he is rolling fast enough for
       // that to be a foot down rather than a push the other way
       const braking = along * dir < -.01 && speed > SK8.fakieAt;
-      if (!braking && Math.abs(fwdC) > .35 && speed < SK8.pushMax) {
+      // asked to lead with the tail: turn round on the board rather than push backwards
+      if (!braking && !p.turnT && dir < 0 && Math.abs(fwdC) > .35) {
+        p.turnT = SK8.turnDur; p.turnRem = Math.PI; p.turnSide = rel >= 0 ? 1 : -1;
+        p.pushing = false; p.pushT = 0;
+        const nm = p.turnSide > 0 ? 'turn_right' : 'turn_left';
+        colinScale(nm, clipLen(nm, SK8.turnDur) / SK8.turnDur);
+        snd.jump();
+      }
+      if (!p.turnT && !braking && Math.abs(fwdC) > .35 && speed < SK8.pushMax) {
         // A PLAIN REPEATING TIMER, and the clip simply loops beside it. I had been
         // writing the action's time from my own phase counter every frame, which is one
         // more thing to get stuck -- and it did. The clip and the timer are both one
@@ -2483,7 +2551,7 @@ function stepSkate(dt) {
         else { p.pushT += dt; if (p.pushT >= p.pushPeriod) { p.pushT -= p.pushPeriod; shove(); } }
       } else {
         p.pushing = false; p.pushT = 0;
-        if (braking) { const b = SK8.brake * dt * Math.abs(fwdC); along = along > 0 ? Math.max(0, along - b) : Math.min(0, along + b); }
+        if (braking && !p.turnT) { const b = SK8.brake * dt * Math.abs(fwdC); along = along > 0 ? Math.max(0, along - b) : Math.min(0, along + b); }
       }
     } else { p.pushing = false; p.pushT = 0; }
   } else { p.pushing = false; p.pushT = 0; }
@@ -2498,7 +2566,7 @@ function stepSkate(dt) {
   // most of the old speed range. It would now be a rail for everything above half throttle.
   const rate = speed < .4 ? SK8.pivot : lerp(SK8.turnLo, SK8.turnHi, clamp(speed / 20, 0, 1));
   const airX = clamp(stick.L.x + ((keys.d || keys.arrowright) ? 1 : 0) - ((keys.a || keys.arrowleft) ? 1 : 0), -1, 1);
-  const turn = p.grounded ? steer * rate * dt
+  const turn = p.turnT ? 0 : p.grounded ? steer * rate * dt
     // NEGATED. Heading grows from +Z toward +X, which reads as anticlockwise from behind
     // him -- so a thumb pushed right was spinning him left. Checked on the device, not
     // derived: the handedness argument is the kind that comes out backwards half the time.
@@ -2531,7 +2599,17 @@ function stepSkate(dt) {
     p.bRoll -= dr; p.bRollA += dr;
     const dy = Math.sign(p.bYaw) * Math.min(Math.abs(p.bYaw), TRICK.shove * dt);
     p.bYaw -= dy; p.bYawA += dy;
+    p.turnT = 0; p.turnRem = 0;                     // a jump cancels a half cab
   } else {
+    // THE HALF CAB, and it goes here for the same reason the air spin does: above the
+    // rebuild it would drag his line round with him and he would come out of it travelling
+    // the way he is now facing, which is the opposite of the point.
+    if (p.turnT > 0) {
+      p.turnT = Math.max(0, p.turnT - dt);
+      const step = Math.min(p.turnRem, Math.PI * dt / SK8.turnDur);
+      p.heading += step * p.turnSide; p.turnRem -= step;
+      if (p.turnT <= 0 || p.turnRem <= 1e-4) { p.turnT = 0; p.turnRem = 0; }
+    }
     // back under his feet. Not snapped: a landing that was half a turn out should be seen
     // to settle rather than teleport.
     p.bRollA = damp(p.bRollA, 0, TRICK.rest, dt); p.bYawA = damp(p.bYawA, 0, TRICK.rest, dt);

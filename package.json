@@ -12,7 +12,8 @@
     "cols": "node tools/cols.mjs",
     "icons": "node tools/icons.mjs",
     "spots": "node tools/spots.mjs",
-    "rails": "node tools/rails.mjs"
+    "rails": "node tools/rails.mjs",
+    "normals": "node tools/normals.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

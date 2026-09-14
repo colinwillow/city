@@ -147,6 +147,23 @@ playwright unless he asks for it by name.
   `travel agency` as `travel_agency`. Every category test in `buildCity` is a prefix regex.
 - **Cars**: local −Z is up, local Y is the length; `CAR_FWD` says which end is the nose.
   Mirrored placements (scale −1) get their heading from `matrixWorld`, not the quaternion.
+- **MIRRORING IS NOT A CAR PROBLEM, IT IS A WHOLE-CITY PROBLEM. 174 WALKABLE MESHES ARE
+  PLACED WITH A NEGATIVE DETERMINANT** — parking lots, roads, and the ramp up onto the bridge.
+  A mirrored placement reverses the winding, so the DECK faces down, and `triAdd` throws a
+  downward face away as "not a floor": the collider was handed the underside and the deck was
+  never in it. `rasterMesh` swaps two indices when `matrixWorld.determinant() < 0`.
+  It is also why those surfaces render BLACK. `normGeo` already reversed the index winding to
+  keep a mirrored face pointing outward, but `applyMatrix4` carries the NORMALS through the
+  mirror too, so the two disagree on every triangle and the shading normal points into the
+  ground. `DoubleSide` does not save it — three only flips a normal for a BACK face, and after
+  the winding fix these are front faces with backwards normals. The normals are negated too.
+  **Black ground and ground you fall through are the same bug.** Found by counting, not
+  looking: `npm run normals` reports up-facing vs down-facing vs normals-disagreeing per mesh,
+  and `road_c_02_003` came back 233 up / 367 down while its unmirrored siblings `_002` and
+  `_004` came back 367 / 233 — the same numbers, swapped.
+- **`land` MUST NOT SWALLOW `landscape`.** `isWalk` used `/^(land|...)/`, so the scenery shells
+  went into the ground raster; `landscape_005` is inside out in the file (3 up-facing triangles
+  against 436 down). It is `land(?!scape)` now.
 - **FOLLOWING AND CROSSING ARE TWO DIFFERENT PROBLEMS AND ONLY ONE WAS SOLVED.** Following is
   longitudinal — a car in my lane going my way, match its speed at a gap. Crossing is not: at
   a junction the other car is at ninety degrees and its heading says nothing about whether we
@@ -184,8 +201,22 @@ playwright unless he asks for it by name.
     building is) and **collapses back to one**, which is most of them and costs nothing;
   - anything else is emitted as runs of columns merged along X, so the post stays solid to the
     ground, the arm is solid only where the arm is, and the air under it is air.
-  Measured with `npm run cols`: 844 meshes → 14.6k boxes, ~350 ms of rasterise, 658 of them
-  with their bottom above 2.2 m. The cell size GROWS to fit `COLS.max` rather than the mesh
+  **Two things had to be right before this actually worked, and both were wrong until c52:**
+  1. **A triangle's bounding box is not its shape.** A beam quad is two big triangles, and one
+     running from the base of a post to the far end of an arm has a box covering the whole
+     span — so every cell under the arm was told the metal reaches the ground. The box still
+     picks the CELLS; the height over each comes from the triangle's PLANE, clamped back
+     inside the triangle's own range. A vertical face has no useful plane in y and keeps its
+     full span, which is correct.
+  2. **A cell must AGREE with the run it joins, not merely fail to enlarge it.** The merge
+     asked whether adding a cell grew the run's span — and swallowing a short arm cell
+     (3.5..6.2) into a full-height post run (0..6.2) grows it by nothing, so the first arm
+     cell beside the post joined the post, the next joined that, and the whole arm came out as
+     one box reaching the ground. That is why c44 split the gantries and you still walked into
+     them. The test is `|cell.lo − run.lo| < tol && |cell.hi − run.hi| < tol`.
+  Measured with `npm run cols` (and `node tools/cols.mjs <regex>` for one mesh in detail):
+  844 meshes → 30k boxes, ~650 ms of rasterise, **1255 of them with their bottom above 2.2 m,
+  across 172 meshes** — against 658 across 107 before the two fixes. The cell size GROWS to fit `COLS.max` rather than the mesh
   being skipped, so a stadium gets coarse columns and a bollard fine ones.
   **The tree hack stays and must stay**: a canopy rasterised honestly is a solid ceiling at
   head height, and a trunk box is the right abstraction for a tree. The equivalent street-sign
@@ -324,8 +355,13 @@ playwright unless he asks for it by name.
   **The `along < -.5` steering reversal had to GO with it.** It existed only to undo measuring
   against the nose while travelling backwards; `rel` is already measured off the leading end,
   so keeping both would have flipped it twice. Verified as a table before shipping, not argued.
-  No fakie clips exist yet — he rides and pushes on the forward ones, which reads correctly
-  for the stance and wrong for the push foot. `skate_push_fakie` is the clip to add.
+  **HE DOES NOT PUSH BACKWARDS, THOUGH.** A fakie push with no fakie clip is a man shoving at
+  the road behind him, which reads as nonsense. Asking the board to lead with its tail starts
+  a HALF CAB instead (`SK8.turnDur`, on `turn_left`/`turn_right`): the heading comes round 180°
+  and he rides away forwards. **The heading turns and the VELOCITY does not** — same rule as
+  the air spin, applied below the rebuild — so he keeps his line through it.
+  Delete that branch the day switch clips land; riding fakie is a real thing to be able to do,
+  and `skate_push_fakie` is the clip that makes it honest.
 - **A RAIL IS THE TOP EDGE OF THE METAL, FOUND NOT AUTHORED.** `railsFrom` takes every vertex
   within `GRIND.lip` of the top of a `metal` primitive, clusters them by XZ proximity (a rail
   broken up by its own uprights is still one rail), and fits each run with a line by PCA on

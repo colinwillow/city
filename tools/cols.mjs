@@ -4,16 +4,19 @@ import draco3d from 'draco3dgltf';
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
   'draco3d.decoder': await draco3d.createDecoderModule(), 'draco3d.encoder': await draco3d.createEncoderModule() });
 const doc = await io.read('models/city.glb');
+const ONLY = process.argv[2] ? new RegExp(process.argv[2], 'i') : null;
 const COLS = { cell: .7, max: 16384, tris: 40000, flat: .80, most: .90, tol: .45 };
 const _lo = new Float32Array(COLS.max), _hi = new Float32Array(COLS.max);
 const isCar = n => /^(car|jeep|truck|tractor)_/.test(n);
 const isWalk = n => /^(land|green_|sand_|road_|parking_area|bridge|basketballcourt|park_[a-z]|farmstractures_11)/.test(n);
 const mul = (M, v) => [M[0]*v[0]+M[4]*v[1]+M[8]*v[2]+M[12], M[1]*v[0]+M[5]*v[1]+M[9]*v[2]+M[13], M[2]*v[0]+M[6]*v[1]+M[10]*v[2]+M[14]];
-let over = 0; const overNm = new Set(); let boxes = 0, split = 0, kept = 0, worst = [], t0 = Date.now(), tris = 0;
+let detail = []; let over = 0; const overNm = new Set(); let boxes = 0, split = 0, kept = 0, worst = [], t0 = Date.now(), tris = 0;
 for (const node of doc.getRoot().listNodes()) {
   const mesh = node.getMesh(); if (!mesh) continue;
   const nm = (node.getName() || mesh.getName() || '').replace(/[^A-Za-z0-9_]/g, '_');
   if (isCar(nm) || isWalk(nm) || /^water_/.test(nm) || /^tree/.test(nm) || /^(airballoon|landscape)/.test(nm)) continue;
+  if (ONLY && !ONLY.test(nm)) continue;
+  if (ONLY) { /* report this one in detail below */ }
   const M = node.getWorldMatrix();
   // world verts + bbox
   const P = []; let mnx=1e9,mny=1e9,mnz=1e9,mxx=-1e9,mxy=-1e9,mxz=-1e9, cnt=0;
@@ -28,7 +31,7 @@ for (const node of doc.getRoot().listNodes()) {
   }
   tris += cnt/3;
   const sx = mxx-mnx, sz = mxz-mnz, sy = mxy-mny;
-  if (cnt > COLS.tris*3 || sy < .8 || !(sx>0) || !(sz>0)) { boxes++; kept++; continue; }
+  if (cnt > COLS.tris*3 || sy < .8 || !(sx>0) || !(sz>0)) { boxes++; kept++; if (ONLY) console.log('  ' + nm + '  KEPT ITS BOX (too many tris or too flat)  h ' + sy.toFixed(1)); continue; }
   let cell = COLS.cell, w = Math.ceil(sx/cell), d = Math.ceil(sz/cell);
   while (w*d > COLS.max) { cell *= 1.4; w = Math.ceil(sx/cell); d = Math.ceil(sz/cell); }
   w=Math.max(1,w); d=Math.max(1,d); const N=w*d;
@@ -39,20 +42,36 @@ for (const node of doc.getRoot().listNodes()) {
     let i0=((Math.min(wv[a],wv[b2],wv[c2])-mnx)/cell)|0, i1=((Math.max(wv[a],wv[b2],wv[c2])-mnx)/cell)|0;
     let k0=((Math.min(wv[a+2],wv[b2+2],wv[c2+2])-mnz)/cell)|0, k1=((Math.max(wv[a+2],wv[b2+2],wv[c2+2])-mnz)/cell)|0;
     if(i0<0)i0=0; if(i1>w-1)i1=w-1; if(k0<0)k0=0; if(k1>d-1)k1=d-1;
-    for(let k=k0;k<=k1;k++){const row=k*w; for(let j=i0;j<=i1;j++){const o=row+j; if(y0<_lo[o])_lo[o]=y0; if(y1>_hi[o])_hi[o]=y1;}}
+    // the plane, not the extremes -- same as solidAdd in the game
+    const ux=wv[b2]-wv[a], uy=wv[b2+1]-wv[a+1], uz=wv[b2+2]-wv[a+2];
+    const vx=wv[c2]-wv[a], vy=wv[c2+1]-wv[a+1], vz=wv[c2+2]-wv[a+2];
+    const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+    const plane=Math.abs(ny)>1e-4, fx=plane?-nx/ny:0, fz=plane?-nz/ny:0;
+    for(let k=k0;k<=k1;k++){const row=k*w, cz0=mnz+k*cell, cz1=cz0+cell;
+      for(let j=i0;j<=i1;j++){const o=row+j; let a0=y0,a1=y1;
+        if(plane){ const cx0=mnx+j*cell, cx1=cx0+cell;
+          const h00=wv[a+1]+fx*(cx0-wv[a])+fz*(cz0-wv[a+2]);
+          const h10=wv[a+1]+fx*(cx1-wv[a])+fz*(cz0-wv[a+2]);
+          const h01=wv[a+1]+fx*(cx0-wv[a])+fz*(cz1-wv[a+2]);
+          const h11=wv[a+1]+fx*(cx1-wv[a])+fz*(cz1-wv[a+2]);
+          a0=Math.max(y0,Math.min(h00,h10,h01,h11)); a1=Math.min(y1,Math.max(h00,h10,h01,h11));
+          if(a1<a0){a0=y0;a1=y1;} }
+        if(a0<_lo[o])_lo[o]=a0; if(a1>_hi[o])_hi[o]=a1;}}
   }
   let cov=0, prism=0;
   for(let o=0;o<N;o++) if(_hi[o]>-Infinity){cov++; if(_hi[o]-_lo[o]>=COLS.flat*sy)prism++;}
-  if(!cov || prism>=cov*COLS.most){ boxes++; kept++; continue; }
-  let made=0;
+  if(!cov || prism>=cov*COLS.most){ boxes++; kept++; if (ONLY) console.log('  ' + nm + '  KEPT ITS BOX (prismatic: ' + prism + '/' + cov + ' columns span the full height)  h ' + sy.toFixed(1)); continue; }
+  let made=0; detail = [];
   for(let k=0;k<d;k++){ const row=k*w; let j=0;
     while(j<w){ if(_hi[row+j]===-Infinity){j++;continue;}
       let lo=_lo[row+j],hi=_hi[row+j],e=j;
       while(e+1<w){ const o2=row+e+1; if(_hi[o2]===-Infinity)break;
-        const nlo=Math.min(lo,_lo[o2]),nhi=Math.max(hi,_hi[o2]);
-        if(nhi-nlo>hi-lo+COLS.tol)break; lo=nlo;hi=nhi;e++; }
+        if(Math.abs(_lo[o2]-lo)>COLS.tol||Math.abs(_hi[o2]-hi)>COLS.tol)break;
+        lo=Math.min(lo,_lo[o2]);hi=Math.max(hi,_hi[o2]);e++; }
       if (lo > 2.2) over++; if (lo > 2.2) overNm.add(nm);
+      if (ONLY) detail.push(lo.toFixed(2)+'..'+hi.toFixed(2));
       made++; j=e+1; } }
+  if (ONLY) console.log('  ' + nm + '  cell ' + cell.toFixed(2) + 'm  boxes ' + made + '  spans ' + detail.slice(0,14).join(' '));
   boxes+=made; split++;
   worst.push([nm, made, cell.toFixed(2)]);
 }
