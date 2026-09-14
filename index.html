@@ -9,9 +9,9 @@
      one it has for ever, and a home-screen shortcut keeps it harder still -- replacing the
      file in place changes nothing anybody can see. Raise the number when the art changes.
      Even then iOS only re-reads it when the shortcut is removed and re-added. -->
-<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=2">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=2">
-<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=2">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=3">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=3">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=3">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="City">
@@ -87,7 +87,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c48</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c50</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -99,7 +99,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c48';
+const BUILD = 'c50';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -446,12 +446,13 @@ const WHEELS = {
     s.connect(f); f.connect(g); g.connect(SFX.master); s.start();
     this.src = s; this.f = f; this.g = g;
   },
-  set(speed, on) {
+  set(speed, on, grind) {
     if (!SFX.ctx) return;
     this.start(); if (!this.g) return;
     const k = clamp(speed / 20, 0, 1), t = SFX.ctx.currentTime;
-    this.g.gain.setTargetAtTime(on && SFX.on ? .035 + .20 * k * k : 0, t, .09);
-    this.f.frequency.setTargetAtTime(200 + 1000 * k, t, .09);
+    // the same loop, taken up an octave and a half: metal under the trucks rather than road
+    this.g.gain.setTargetAtTime(grind ? .16 : (on && SFX.on ? .035 + .20 * k * k : 0) * (SFX.on ? 1 : 0), t, .06);
+    this.f.frequency.setTargetAtTime(grind ? 2200 : 200 + 1000 * k, t, .06);
   },
 };
 const MUSIC = {
@@ -524,6 +525,7 @@ const snd = {
       ? SFX.play('clang', .58, rnd(.95, 1.12), x, z) || SFX.blip(260, .10, 'square', .10, 120, x, z)
       : (SFX.play('clang', .85, rnd(.72, .86), x, z) || SFX.noise(.12, .30, 800, x, z),
          SFX.blip(120, .16, 'square', .16, 58, x, z)),
+  grind: () => SFX.play('clang', .34, rnd(.45, .60)) || SFX.noise(.20, .18, 1400),
   step: hard => { SFX.noise(hard ? .085 : .065, hard ? .10 : .055, hard ? 620 : 460); SFX.blip(hard ? 92 : 78, .05, 'sine', hard ? .06 : .035, hard ? 55 : 48); },
 };
 SFX.fetchAll();
@@ -1011,7 +1013,7 @@ function census() {
   let vis = 0; for (const c of clouds) if (c.g.visible) vis++;
   dbgInfo = ' · pts' + pts + ' spr' + spr + ' line' + ln + ' onBone' + bone + ' skin' + skin + ' mesh' + mesh
     + ' cloud' + clouds.length + '/vis' + vis + ' env' + (ENV.tex ? 1 : 0)
-    + ' box' + solids.length + '/' + COLS.split;
+    + ' box' + solids.length + '/' + COLS.split + ' ramp' + PARK.built + ' rail' + RAILS.length;
 }
 // ALBEDO ONLY: his textures with no lighting of any kind. If his hair and face read
 // correctly here, the grey is coming from the lights and not from the maps or the
@@ -1516,6 +1518,7 @@ function carHit(c) {
 }
 function dropBoard() {
   if (!player.board) return;
+  player.rail = null;
   player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0;
   player.board = false; board.visible = false; document.getElementById('boardB').classList.remove('on');
 }
@@ -1694,7 +1697,7 @@ function rasterMesh(mesh, cap, water, precise) {
 }
 let cityMat = null;
 const cityGroup = new THREE.Group(); scene.add(cityGroup);
-function buildCity(gltf) {
+function buildCity(gltf, ramps) {
   const root = gltf.scene; root.updateMatrixWorld(true);
   const meshes = []; root.traverse(o => { if (o.isMesh) meshes.push(o); });
   const chunks = new Map(); const CH = 64;
@@ -1743,6 +1746,9 @@ function buildCity(gltf) {
     }
   }
   for (const w of waters) rasterMesh(w, 1e9, true);
+  // BEFORE triBuild, because the ramps go into the SAME triangle collider the roads do --
+  // that is the whole reason a ramp is a surface he rolls up rather than a box he stops at.
+  buildRamps(ramps);
   triBuild();
   for (let i = 0; i < HM.a.length; i++) if (HM.a[i] < -1e8) HM.a[i] = 0;   // anything never touched is ground level
   // road graph: tiles that touch in plan and sit at the same level (a ramp joins any level)
@@ -1786,6 +1792,161 @@ function buildCity(gltf) {
   console.log('city: statics', statics, 'chunks', drawn, 'tiles', tiles.length, 'cars moving', cars.length,
     'solids', solids.length, '(' + COLS.split + ' meshes split into columns, the rest kept their box)');
 }
+// ---------- the skate park ----------
+// One file with four ramps laid out side by side. They are split by node name, re-centred on
+// their own footprints and dropped where `npm run spots` says there is room -- which is the
+// point of that tool: guessing coordinates off a screenshot is how you end up with a half
+// pipe inside a bank. Their triangles go into the SAME triangle collider the roads use, so
+// a ramp is a surface he rolls up rather than a box he stops against, and the slope term in
+// stepSkate already does the rest.
+// Their materials come with them. `MeshStandardMaterial.prototype.onBeforeCompile` is the
+// toon patch, so anything loaded anywhere is toon shaded without being told.
+const PARK = {
+  url: 'models/ramps/skate_ramps_fun_boxes.glb',
+  spots: [
+    // the park: the largest clear level square within reach -- 46 m, 214 m from the spawn
+    { n: 'ramp_fun_box_01', x: -48, z: 190, rot: 0, y: .02 },
+    { n: 'ramp_fun_box_02', x: -18, z: 190, rot: 0, y: .02 },
+    { n: 'ramp_fun_box_03', x: -48, z: 216, rot: Math.PI, y: .02 },
+    { n: 'ramp_fun_box_04', x: -18, z: 216, rot: Math.PI, y: .02 },
+    // and two on the way out, 86 m from the spawn, so the first one is found rather than sought
+    { n: 'ramp_fun_box_02', x: -36, z: 40, rot: Math.PI / 2, y: .05 },
+    { n: 'ramp_fun_box_03', x: -22, z: 56, rot: -Math.PI / 2, y: .05 },
+  ],
+  built: 0,
+};
+// A RAIL IS THE TOP EDGE OF THE METAL. `metal` is only ever on rails and coping in this file,
+// so the metal triangles are the candidates; the vertices within `lip` of the top of their
+// own piece are the edge you would actually grind. Those are clustered into runs -- a rail
+// broken into segments by its uprights is still one rail -- and each run is fitted with a
+// straight line by PCA on its XZ, which is exact for a straight rail and sane for a curve.
+const GRIND = {
+  lip: .22, link: 1.5, minLen: 2.0,
+  reach: 1.8,        // how far off the line he can be and still catch it
+  drop: 1.5,         // and how far above it -- he has to come down ONTO it
+  rise: .06,         // where his feet sit relative to the rail's top
+  hold: 1.6,         // below this he simply falls off the end of it
+  drag: .55,         // speed lost per second on the metal
+  pop: 7.6,          // the ollie out
+};
+const RAILS = [], railGrid = new Map();
+const RAILCELL = 8;
+function railAdd(ax, ay, az, bx, by, bz) {
+  const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
+  if (len < GRIND.minLen) return;
+  const r = { ax, ay, az, bx, by, bz, len, dx: dx / len, dz: dz / len, dy: (by - ay) / len };
+  RAILS.push(r);
+  const i0 = Math.floor(Math.min(ax, bx) / RAILCELL), i1 = Math.floor(Math.max(ax, bx) / RAILCELL);
+  const k0 = Math.floor(Math.min(az, bz) / RAILCELL), k1 = Math.floor(Math.max(az, bz) / RAILCELL);
+  for (let i = i0 - 1; i <= i1 + 1; i++) for (let k = k0 - 1; k <= k1 + 1; k++) {
+    const key = gkey(i, k); let l = railGrid.get(key); if (!l) railGrid.set(key, l = []); l.push(r);
+  }
+}
+// the nearest rail he could be dropping onto, and where along it he would land
+function railAt(x, y, z) {
+  const l = railGrid.get(gkey(Math.floor(x / RAILCELL), Math.floor(z / RAILCELL)));
+  if (!l) return null;
+  let best = null, bestD = GRIND.reach;
+  for (const r of l) {
+    let s = ((x - r.ax) * r.dx + (z - r.az) * r.dz);
+    if (s < 0 || s > r.len) continue;                       // past an end is not on it
+    const px = r.ax + r.dx * s, pz = r.az + r.dz * s, py = r.ay + r.dy * s;
+    const d = Math.hypot(x - px, z - pz);
+    if (d > bestD) continue;
+    const up = y - py;
+    if (up < -.35 || up > GRIND.drop) continue;             // he has to come down onto it
+    bestD = d; best = { r, s, y: py };
+  }
+  return best;
+}
+function railsFrom(mesh) {
+  const g = mesh.geometry, pa = g.attributes.position, m = mesh.matrixWorld;
+  const n = pa.count; if (!n) return;
+  const pts = []; const v = new THREE.Vector3();
+  let top = -Infinity;
+  for (let i = 0; i < n; i++) { v.fromBufferAttribute(pa, i).applyMatrix4(m); pts.push(v.x, v.y, v.z); if (v.y > top) top = v.y; }
+  const keep = [];
+  for (let i = 0; i < n; i++) if (pts[i * 3 + 1] > top - GRIND.lip) keep.push(i);
+  if (keep.length < 4) return;
+  // cluster the kept vertices: anything within `link` of anything already in the run
+  const used = new Uint8Array(keep.length);
+  for (let a = 0; a < keep.length; a++) {
+    if (used[a]) continue;
+    const run = [keep[a]]; used[a] = 1;
+    for (let grew = 1; grew;) {
+      grew = 0;
+      for (let b = 0; b < keep.length; b++) {
+        if (used[b]) continue;
+        const i = keep[b] * 3;
+        for (const j0 of run) {
+          const j = j0 * 3;
+          if (Math.hypot(pts[i] - pts[j], pts[i + 2] - pts[j + 2]) <= GRIND.link) { run.push(keep[b]); used[b] = 1; grew = 1; break; }
+        }
+      }
+    }
+    if (run.length < 4) continue;
+    // PCA on XZ: the dominant eigenvector of a 2x2 covariance, which for a straight rail is
+    // its own direction and for a curved lip is the chord. Then project and take the ends.
+    let mx = 0, mz = 0, my = 0;
+    for (const i of run) { mx += pts[i * 3]; my += pts[i * 3 + 1]; mz += pts[i * 3 + 2]; }
+    mx /= run.length; my /= run.length; mz /= run.length;
+    let sxx = 0, sxz = 0, szz = 0;
+    for (const i of run) { const dx = pts[i * 3] - mx, dz = pts[i * 3 + 2] - mz; sxx += dx * dx; sxz += dx * dz; szz += dz * dz; }
+    const tr = sxx + szz, det = sxx * szz - sxz * sxz;
+    const ev = tr / 2 + Math.sqrt(Math.max(0, tr * tr / 4 - det));
+    let ux = sxz, uz = ev - sxx;
+    if (Math.hypot(ux, uz) < 1e-6) { ux = ev - szz; uz = sxz; }
+    const ul = Math.hypot(ux, uz) || 1; ux /= ul; uz /= ul;
+    let lo = Infinity, hi = -Infinity, loY = 0, hiY = 0;
+    for (const i of run) {
+      const t = (pts[i * 3] - mx) * ux + (pts[i * 3 + 2] - mz) * uz;
+      if (t < lo) { lo = t; loY = pts[i * 3 + 1]; }
+      if (t > hi) { hi = t; hiY = pts[i * 3 + 1]; }
+    }
+    railAdd(mx + ux * lo, loY, mz + uz * lo, mx + ux * hi, hiY, mz + uz * hi);
+  }
+}
+function buildRamps(gltf) {
+  if (!gltf) return;
+  const root = gltf.scene; root.updateMatrixWorld(true);
+  const bb = new THREE.Box3(), hold = [];
+  for (const sp of PARK.spots) {
+    const src = root.getObjectByName(sp.n);
+    if (!src) { console.warn('[park] no node named ' + sp.n); continue; }
+    const inst = src.clone(true);
+    // The four are laid out beside each other in the file, so each carries an offset that is
+    // meaningless once it is placed on its own. Bake the SOURCE world matrix into the clone
+    // (a clone keeps only its own local transform, and would lose any parent's), then move
+    // the pivot so the footprint centre sits at the origin and the base sits at zero.
+    inst.matrixAutoUpdate = false; inst.matrix.copy(src.matrixWorld);
+    bb.setFromObject(src);
+    const pivot = new THREE.Group();
+    pivot.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
+    pivot.add(inst);
+    const holder = new THREE.Group();
+    holder.position.set(sp.x, sp.y, sp.z); holder.rotation.y = sp.rot;
+    holder.add(pivot); cityGroup.add(holder); hold.push(holder); PARK.built++;
+  }
+  cityGroup.updateMatrixWorld(true);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  for (const holder of hold) holder.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = true; o.receiveShadow = true;
+    const mat = o.material, nm = (mat && mat.name) || '';
+    if (mat) { mat.side = THREE.DoubleSide; mat.envMapIntensity = /metal/i.test(nm) ? .6 : .15; }
+    const g = o.geometry, pa = g.attributes.position, idx = g.index, m = o.matrixWorld;
+    const cnt = idx ? idx.count : pa.count;
+    for (let i = 0; i + 2 < cnt; i += 3) {
+      a.fromBufferAttribute(pa, idx ? idx.getX(i) : i).applyMatrix4(m);
+      b.fromBufferAttribute(pa, idx ? idx.getX(i + 1) : i + 1).applyMatrix4(m);
+      c.fromBufferAttribute(pa, idx ? idx.getX(i + 2) : i + 2).applyMatrix4(m);
+      triAdd(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);   // walls are rejected in there
+    }
+    if (/metal/i.test(nm)) railsFrom(o);
+  });
+  console.log('park: ' + PARK.built + ' ramps placed, ' + RAILS.length + ' grind rails found');
+}
+
 const pendingCars = [];
 
 // ---------- Colin ----------
@@ -1928,7 +2089,10 @@ function colinAnim(dt) {
   if (p.board) {
     // crouch -> pop -> rise -> land. The crouch is a blend rather than a state, so a thumb
     // resting on the pad settles into it and a tap goes straight past it to the pop.
-    if (!p.grounded) t[p.trick ? (p.trick === 'front' ? 'front_flip' : 'back_flip')
+    // no grind clip yet, so the crouch stands in: it is the only board pose with his knees
+    // bent and it reads far better on a rail than the ollie hang does.
+    if (p.rail) { colinScale('skate_idol_crouch', 1); t['skate_idol_crouch'] = 1; }
+    else if (!p.grounded) t[p.trick ? (p.trick === 'front' ? 'front_flip' : 'back_flip')
                        : p.airT < .28 ? 'skate_ollie_init_air' : 'skate_ollie_air'] = 1;
     else if (p.popT > 0) { colinScale('skate_idol_crouch', 2.8); t['skate_idol_crouch'] = 1; }   // the compression
     else if (p.landT > 0) t['skate_ollie_landing'] = 1;
@@ -2087,10 +2251,10 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, rail: null, railS: 0, railV: 0, railDir: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
-function toggleBoard() { player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
-function respawn() { player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
+function toggleBoard() { player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
+function respawn() { player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
   // left stick -> world direction, relative to the camera azimuth
@@ -2230,8 +2394,44 @@ function stepFoot(dt) {
   }
   p.speed = Math.hypot(p.vel.x, p.vel.z); p.moving = damp(p.moving, sp > .3 ? 1 : 0, .1, dt);
 }
+// ON THE METAL. No balance meter and no timing window yet -- he is locked to the line, he
+// loses speed to it, and he leaves when he runs out of rail, runs out of speed, or taps off.
+// A tap OFF is an ollie out, which is the one thing that has to feel deliberate.
+function stepGrind(dt) {
+  const p = player, r = p.rail;
+  p.railV = Math.max(0, p.railV - GRIND.drag * dt);
+  p.railS += p.railV * p.railDir * dt;
+  const off = p.jump; p.jump = 0;
+  const done = off || p.railS < 0 || p.railS > r.len || p.railV < GRIND.hold;
+  const t = clamp(p.railS, 0, r.len);
+  p.pos.set(r.ax + r.dx * t, r.ay + r.dy * t + GRIND.rise, r.az + r.dz * t);
+  p.heading = Math.atan2(r.dx * p.railDir, r.dz * p.railDir); p.faceH = p.heading;
+  p.vel.x = r.dx * p.railV * p.railDir; p.vel.z = r.dz * p.railV * p.railDir; p.vel.y = 0;
+  p.speed = p.railV; p.grounded = false; p.airT = 0; p.coyote = 0;
+  p.bRollA = damp(p.bRollA, 0, TRICK.rest, dt); p.bYawA = damp(p.bYawA, 0, TRICK.rest, dt);
+  if (done) {
+    p.rail = null; p.vel.y = off ? GRIND.pop : 1.0;
+    if (off) snd.ollie();
+  }
+}
 function stepSkate(dt) {
   const s = stickWorld(); const p = player;
+  if (p.rail) { stepGrind(dt); return; }
+  // CATCH ONE: a tap on the right pad while he is in the air and over a rail. Deliberate,
+  // not automatic -- riding past a rail must not snag him, and the tap is the same one that
+  // ollies on the ground, so there is no new control to learn.
+  if (p.jump && !p.grounded && RAILS.length) {
+    const hit = railAt(p.pos.x, p.pos.y, p.pos.z);
+    if (hit) {
+      p.jump = 0; p.rail = hit.r; p.railS = hit.s;
+      const along0 = p.vel.x * hit.r.dx + p.vel.z * hit.r.dz;
+      p.railDir = along0 >= 0 ? 1 : -1;
+      p.railV = Math.max(Math.abs(along0), 5);      // a stall on a rail is not a grind
+      p.trick = ''; p.trickT = 0; p.bRoll = 0; p.bYaw = 0;
+      snd.grind();
+      stepGrind(dt); return;
+    }
+  }
   const fx = Math.sin(p.heading), fz = Math.cos(p.heading), rx = -fz, rz = fx;
   let along = p.vel.x * fx + p.vel.z * fz, lat = p.vel.x * rx + p.vel.z * rz;
   const speed = Math.abs(along);
@@ -2485,7 +2685,7 @@ function frame() {
   stepPlayer(dt);
   stepTraffic(dt);
   stepClouds(dt);
-  WHEELS.set(player.speed, player.board && player.grounded && !player.hit);
+  WHEELS.set(player.speed, player.board && player.grounded && !player.hit, !!player.rail && SFX.on);
   stepCam(dt);
   if (colin.mixer) colin.mixer.update(dt);
   renderPost();
@@ -2502,7 +2702,10 @@ frame();
     catch (e) { console.warn('no baked city, loading the source', e); city = await loadGLB('LowPoly_City_01.glb', 'loading the source city'); }
     setBoot('building the streets', 1);
     await new Promise(r => setTimeout(r, 30));
-    buildCity(city);
+    let ramps = null;
+    try { ramps = await loadGLB(PARK.url, 'building the park'); }
+    catch (e) { console.warn('no ramps', e); }
+    buildCity(city, ramps);
     {
       const got = [];
       for (const u of CLOUDS.urls) { try { got.push(await loadGLB(u, 'loading the sky')); } catch (e) { /* that one is not here */ } }
@@ -2516,7 +2719,7 @@ frame();
     document.getElementById('boot').classList.add('off');
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

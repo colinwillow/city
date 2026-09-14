@@ -29,13 +29,25 @@ let l = 0; while (l < W - 1 && blank(l, my)) l++;
 let r = W - 1; while (r > 0 && blank(r, my)) r--;
 let t = 0; while (t < H - 1 && blank(mx, t)) t++;
 let b = H - 1; while (b > 0 && blank(mx, b)) b--;
+const m0 = [l, W - 1 - r, t, H - 1 - b];      // the margins as found, before the inset below
+// AND THEN INSET PAST THE ROUNDING. Cropping to the content box still leaves the artwork's
+// own rounded corners, and the white outside them: this image rounds at 23.1% of its side
+// while iOS masks at about 22.5%, so the art is ROUNDER than the mask and a white sliver
+// survives in every corner. Measured, not assumed -- the radius is where the art starts
+// along the top row of the box. Pulling in by r*(1 - 1/sqrt2) puts the square's corners
+// exactly on that arc; a little more puts them safely inside it.
+let rad = l; while (rad < r && blank(rad, Math.min(H - 1, t + 2))) rad++;
+rad -= l;
+const inset = Math.round(rad * (1 - Math.SQRT1_2) * 1.10);
+l += inset; r -= inset; t += inset; b -= inset;
 // square it about the centre of what was found, and keep it inside the image
 const cx = (l + r) / 2, cy = (t + b) / 2;
 let side = Math.min(r - l + 1, b - t + 1);
 side = Math.min(side, W, H);
 let x0 = Math.round(cx - side / 2), y0 = Math.round(cy - side / 2);
 x0 = Math.max(0, Math.min(W - side, x0)); y0 = Math.max(0, Math.min(H - side, y0));
-console.log('source ' + W + 'x' + H + ' ' + meta.format + '  margin l' + l + ' r' + (W - 1 - r) + ' t' + t + ' b' + (H - 1 - b));
+console.log('source ' + W + 'x' + H + ' ' + meta.format + '  margin l' + m0[0] + ' r' + m0[1] + ' t' + m0[2] + ' b' + m0[3]);
+console.log('corner radius ' + rad + 'px, inset ' + inset + 'px past it');
 console.log('crop   ' + side + 'x' + side + ' at ' + x0 + ',' + y0);
 
 // the corner colour, so the rounded corners flatten onto something from the picture itself

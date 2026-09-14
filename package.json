@@ -10,7 +10,9 @@
     "skin": "node tools/skin.mjs",
     "probe": "node tools/probe.mjs",
     "cols": "node tools/cols.mjs",
-    "icons": "node tools/icons.mjs"
+    "icons": "node tools/icons.mjs",
+    "spots": "node tools/spots.mjs",
+    "rails": "node tools/rails.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

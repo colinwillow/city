@@ -41,6 +41,11 @@ playwright unless he asks for it by name.
   how many solid boxes come out, how long the rasterise takes, and how many of them float
   above head height. That last number is the one that says whether you can walk under a
   gantry; it went 0 → 658 across 107 meshes when the splitter landed.
+  `spots.mjs` (`npm run spots [m]`) — rebuilds the ground offline and lists the flat, open,
+  unbuilt squares of that size, nearest the spawn first. **Placing anything by eye off a
+  screenshot is how you get a half pipe inside a bank.** `rails.mjs` (`npm run rails`) — runs
+  the game's own rail clustering over a ramp file and prints what falls out, so "how many
+  grind rails are there and how long" is answered before a mechanic is built on it.
 - `images/HDRI_02_galaxy_2K.jpg`, `models/fluffy_cloud*.glb` — from Plutopia. **The galaxy
   is the one he wants, not `HDRI_01` (the daylight sky beside it), and it has to be SEEN.**
   The panorama does two jobs: prefiltered by `PMREMGenerator` it is `scene.environment` (the
@@ -66,6 +71,15 @@ playwright unless he asks for it by name.
   what it has for ever and a home-screen shortcut keeps it harder still, so replacing the file
   in place changes nothing anyone can see. Raise the number with the art — and even then iOS
   only re-reads it when the shortcut is removed and re-added.
+- `models/ramps/skate_ramps_fun_boxes.glb` — four ramps in one file, two materials:
+  `ramp_color` and `metal`. **`metal` is only ever a grind rail or coping**, which is what the
+  rail extractor keys on. Split by node name, re-centred on their own footprints, and placed
+  by `PARK.spots` at coordinates `npm run spots` found. Their triangles go into the SAME
+  triangle collider as the roads, so a ramp is a surface he rolls up rather than a box he
+  stops against, and `stepSkate`'s slope term does the rest with no new code.
+  Their materials come with them and are toon shaded for free —
+  `MeshStandardMaterial.prototype.onBeforeCompile` is the patch, so anything loaded anywhere
+  gets it without being told.
 - `version.json` — written by `bump.mjs`; the running game polls it to detect its successor.
 - `.github/workflows/pages.yml` — deploys the repo root. Harmless if Pages is set to
   "deploy from a branch" instead; both paths deploy the same commit.
@@ -305,6 +319,20 @@ playwright unless he asks for it by name.
   so keeping both would have flipped it twice. Verified as a table before shipping, not argued.
   No fakie clips exist yet — he rides and pushes on the forward ones, which reads correctly
   for the stance and wrong for the push foot. `skate_push_fakie` is the clip to add.
+- **A RAIL IS THE TOP EDGE OF THE METAL, FOUND NOT AUTHORED.** `railsFrom` takes every vertex
+  within `GRIND.lip` of the top of a `metal` primitive, clusters them by XZ proximity (a rail
+  broken up by its own uprights is still one rail), and fits each run with a line by PCA on
+  the 2×2 XZ covariance — exact for a straight rail, the chord for a curve. Verified with
+  `npm run rails` before any of the mechanic was written: **1 rail per ramp, 4–6 m, at
+  2.4–2.8 m** — no junk and no over-segmentation. If a future ramp file gives twenty rails per
+  ramp, `lip` and `link` are the two numbers to move.
+- **GRINDING IS DELIBERATE, NOT AUTOMATIC.** A tap on the right pad *in the air* over a rail
+  catches it; the same tap on the ground still ollies, so there is no new control. Riding past
+  a rail must never snag him. On it he is locked to the line, loses `GRIND.drag` per second,
+  and leaves when he runs out of rail, runs out of speed, or taps off — and a tap off is an
+  ollie out, which is the one part that has to feel deliberate. No balance meter yet, and no
+  grind clip: `skate_idol_crouch` stands in because it is the only board pose with his knees
+  bent and it reads far better on a rail than the ollie hang.
 - **Locomotion is Plutopia's model. Read `plutopia/index.html` (`const MOVE`, and the
   integration in `stepPlayer`) before touching it — do not rebuild it, and do not look at
   Peggy, which is the least developed of these games.** Robits is the other good one.
