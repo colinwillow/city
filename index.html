@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c28</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c29</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c28';
+const BUILD = 'c29';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -423,7 +423,7 @@ const ENV = { url: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
 // world-wide one. Sixteen kept within a couple of hundred metres of him and recycled to
 // the upwind side when they drift out of reach, because a deck spread over a kilometre
 // would need hundreds to read as anything and all but a dozen would be past the far plane.
-const CLOUDS = { url: 'models/fluffy_cloud.glb', n: 16, lo: 78, hi: 150, span: [40, 96], near: 260, drift: 2.2, fade: 5, opacity: .82 };
+const CLOUDS = { url: 'models/fluffy_cloud_01.glb', fallback: 'models/fluffy_cloud.glb', n: 16, lo: 78, hi: 150, span: [40, 96], near: 260, drift: 2.2, fade: 5, opacity: .82 };
 const clouds = [];
 function buildClouds(gltf) {
   const root = gltf.scene;
@@ -904,6 +904,10 @@ const _tg = { x: 0, z: 0, len: 1 }, _cn = [];
 // than on a number I picked, which is why the air clip used to keep playing while he lay
 // there.
 const HIT = {
+  // NOTHING HERE MAY TRAP HIM. Every stage has an end that does not depend on input: the
+  // prone stage gets up on its own after this long even if the stick is never touched,
+  // because a state you cannot leave is worse than one that ends early.
+  maxProne: 6,
   min: 3,            // a car slower than this shoulders him aside rather than launching him
   ref: 9,            // the car speed the two numbers below are quoted at
   out: 11.5, up: 9,  // how hard he goes, along the car's heading and upward
@@ -951,15 +955,15 @@ function stepHit(dt) {
       // THE AIR CLIP ENDS THE INSTANT HE TOUCHES. Thrown forwards he lands on his face,
       // thrown backwards he lands on his back -- the same flag decides both.
       p.hitFace = p.hitFwd;
-      p.hit = 'down'; p.hitSnap = true;
+      p.hit = 'down'; p.hitSnap = true; p.proneT = 0;
       p.hitT = clipLen(p.hitFace ? 'fall_to_face_down' : 'fall_to_back', 1.2);
       p.vel.x *= .18; p.vel.z *= .18;
     }
   } else if (p.hit === 'down') {
     hitMove(dt, 1, .09);
-    p.hitT -= dt;
-    // and then he lies there. The stick is what picks him up, not a clock.
-    if (p.hitT <= 0 && (stickWorld().mag > .25 || p.jump)) {
+    p.hitT -= dt; p.proneT += dt;
+    // and then he lies there. The stick is what picks him up -- or, failing that, patience.
+    if (p.hitT <= 0 && (stickWorld().mag > .25 || p.jump || p.proneT > HIT.maxProne)) {
       p.jump = 0; p.hit = 'up'; p.hitSnap = true;
       p.hitT = clipLen(p.hitFace ? 'get_up_from_face' : 'get_up_from_back', 1.4);
     }
@@ -971,6 +975,9 @@ function stepHit(dt) {
     if (p.hitT <= 0) { p.hit = ''; p.hitSnap = true; p.goT = 0; p.pushing = false; p.pushT = 0; p.popT = 0; p.crouch = 0; p.landT = 0; p.rollT = 0; }
   }
   p.speed = Math.hypot(p.vel.x, p.vel.z);
+  // the same floor everything else has: a hit cannot drop him out of the world
+  if (p.pos.y < -2.5) { respawn(); return; }
+  if (p.hit === 'fly' && p.airT > 6) { p.hitFace = p.hitFwd; p.hit = 'down'; p.hitSnap = true; p.proneT = 0; p.hitT = clipLen(p.hitFace ? 'fall_to_face_down' : 'fall_to_back', 1.2); }
   if (colin.ready) colinAnim(dt);
   poseColin(dt);
 }
@@ -1354,7 +1361,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -1666,7 +1673,11 @@ frame();
     setBoot('building the streets', 1);
     await new Promise(r => setTimeout(r, 30));
     buildCity(city);
-    try { buildClouds(await loadGLB('models/fluffy_cloud.glb', 'loading the sky')); } catch (e) { console.warn('no clouds', e); }
+    try { buildClouds(await loadGLB(CLOUDS.url, 'loading the sky')); }
+    catch (e) {
+      try { buildClouds(await loadGLB(CLOUDS.fallback, 'loading the sky')); }
+      catch (e2) { console.warn('no clouds', e2); }
+    }
     setBoot('waking colin', 1);
     try { const c = await loadGLB('models/colin.glb', 'loading colin'); buildColin(c); } catch (e) { console.warn('colin failed', e); }
     const sg = groundAt(player.pos.x, player.pos.z, 60, 0);
