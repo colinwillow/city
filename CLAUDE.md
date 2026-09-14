@@ -165,8 +165,26 @@ playwright unless he asks for it by name.
   its node transform, but `setFromObject` applies it anyway — his armature is scaled 0.01
   and turned a quarter turn, so the box came back a hundredth of his size and on its side.
   That was the feet-through-the-floor bug.
-- **Right stick is yaw only** and `CAM.el` is a constant. Up/down on that pad is reserved
-  for verbs, and nothing may be bound to it without asking.
+- **Right stick is yaw only** and `CAM.el` is a constant. Up/down on that pad was reserved
+  for verbs; **the verbs are now air tricks** (asked for and granted). The rule that keeps
+  them apart is flick vs drag, which `bindStick` already understood and nothing was using:
+  past `FLICK.at` (.72 of travel) inside 280 ms is a gesture, anything slower is the camera.
+  Ollie, then flick — up front flip, down back flip, left/right a procedural 180, or a 360
+  past `TRICK.fullAt`. A spin can ride on a flip. **In the air on the board that pad does
+  not drive the camera at all**, or a spin flick whips the lens round with it; on the ground
+  nothing changed. Three things here are load-bearing:
+  1. **The spin is applied AFTER the velocity is rebuilt on the heading.** Everything else
+     in `stepSkate` turns the heading and puts the velocity back on it, which is right on
+     the ground where the wheels are what steers. Do a 180 that way in the air and his
+     TRAJECTORY reverses with him. A shuv turns the board under a line that keeps going.
+  2. **The trick fills the jump; the clip is stretched to fit the air he has left.** An
+     ollie is 1.26 s of air, `back_flip` is 1.77 s of clip and `front_flip` is 0.80 — at 1x
+     the backflip could never once have been landed and the frontflip would finish a third
+     of the way up. `trickDur` comes from the ballistics and the clip is scaled to it.
+  3. The landing scrubs speed if the flip is under `TRICK.land` of the way round, and the
+     board is carried round the same pivot his body turns about rather than spun in place.
+- **`SK8.bailAng` already forgives a 180**: it folds the angle with `min(off, PI - off)`, so
+  landing switch costs nothing. Do not "fix" that.
 - **Locomotion is Plutopia's model. Read `plutopia/index.html` (`const MOVE`, and the
   integration in `stepPlayer`) before touching it — do not rebuild it, and do not look at
   Peggy, which is the least developed of these games.** Robits is the other good one.
