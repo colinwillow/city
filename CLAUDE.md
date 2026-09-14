@@ -93,22 +93,32 @@ playwright unless he asks for it by name.
 - **Downsampling needs more than one tap.** The bloom bright pass writes a buffer a third
   the width of its source; one bilinear tap at that ratio is nearly a point sample. It
   boxes five taps now, and the blur runs twice.
-- **THE WHITE BALLS WERE THE GRAZING FRESNEL. This one cost eleven builds — read it.**
-  Schlick's Fresnel takes every dielectric to a mirror at grazing incidence: specular
-  reflectance goes to 1.0 as a surface turns away from the lens, *regardless of
-  roughness*. So a 0.95-rough jacket still returns the full sun intensity along its own
-  silhouette. On a dense mesh that is a line of sub-pixel mirrors far above the bloom
-  threshold, and the bloom returns each as a soft white ball. Hence: they traced his
-  outline, they were white, and nothing done to roughness, metalness, emissive or the maps
-  ever moved them. `toonPatch` now scales `reflectedLight.direct/indirectSpecular` by
-  `mix(TOON.specG, 1, dot(N,V))` — held down at the edge, untouched head-on.
-  **The bloom was only the amplifier, and the outline was never a suspect** (it is a
-  multiply toward a dark colour; it can only darken).
-- **Diagnose by elimination, and make each toggle move ONE variable.** Two rounds of badge
-  toggles were wasted because "no post" also forced the rim and outline off and changed
-  the render resolution, so a clean frame there proved nothing. The frame that actually
-  named it was *flat Colin with the bloom still on*: clean, therefore the seed was in his
-  material, not in a pass.
+- **THE WHITE BALLS: THE TOON RAMP MUST NEVER FEED THE SPECULAR. Fourteen builds. Read it.**
+  three's `V_GGX_SmithCorrelated` ends `0.5 / max( gv + gl, EPSILON )`, and both terms
+  carry a factor of `dotNV`/`dotNL`. On a silhouette both go to zero, the denominator
+  collapses onto `EPSILON` (1e-6) and V returns ~500000. Stock three is fine because the
+  same `dotNL` multiplies the irradiance in front of it and cancels it exactly.
+  `toonPatch` substituted the ramp into the ONE `dotNL` that feeds **both** lobes, and the
+  ramp has `floor: .34` — so where the true dotNL was 0 the irradiance was still a third
+  of full sun while V had already exploded. That product is the red one-pixel contour on
+  his outline; the bloom turns each into a ball. The patch now adds `irradianceToon`
+  alongside `irradiance` and uses it for the **diffuse line only**. There is also a hard
+  `min(..., 4.0)` ceiling on both specular accumulators.
+  It hits Colin and not the city because a dense curved mesh is nearly all silhouette at
+  its edges; flat-shaded low-poly blocks have almost no grazing pixels. Plutopia never saw
+  it for the same reason.
+  **Wrong answers given first, so nobody repeats them:** the bloom (it only amplifies),
+  the FXAA, the rim, the depth outline (a multiply toward dark — it can only darken), the
+  white teeth, and a NaN from a cancelled skinned normal. All were argued from theory.
+- **MEASURE THE BUFFER, DO NOT REASON ABOUT IT.** `/nan map` (badge mode 9) false-colours
+  `rtScene` before any post: magenta = non-finite, red = luminance > 8, orange = > 2,
+  grey = the real value. One screenshot of it ended fourteen builds of argument — the
+  contour came back **red**, which said finite-and-enormous and killed every NaN theory at
+  once. Reach for it first. `/no shadow` (8) and the census in the chip (points, sprites,
+  lines, bone children, skinned meshes) answer the other two standing questions on device.
+- **Make each toggle move ONE variable.** Two rounds were wasted because "no post" also
+  forced the rim and outline off and changed the render resolution, so a clean frame there
+  proved nothing.
 - **FXAA is a display-space algorithm and `rtScene` is linear HDR.** Not the cause of the
   balls, but a real fault found on the way: the thresholds assume [0,1], so against a sky
   at 4.0 every edge read as infinite contrast. Taps are squashed through `x/(1+x)` before

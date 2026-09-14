@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c15</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c16</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c15';
+const BUILD = 'c16';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -257,9 +257,29 @@ function toonPatch(sh) {
     + '  float q = (b + smoothstep(0.5 - uToonSoft, 0.5 + uToonSoft, f)) / uToonN;\n'
     + '  q = uToonFloor + (1.0 - uToonFloor) * q;\n  return mix(x, q, uToonK);\n}\n'
     + sh.fragmentShader
-      .replace('#include <lights_physical_pars_fragment>', THREE.ShaderChunk.lights_physical_pars_fragment.replace(
-        'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );',
-        'float dotNL = toonRamp( saturate( dot( geometryNormal, directLight.direction ) ) );'))
+      // THE RED CONTOUR, AND IT IS THE TOON RAMP FEEDING THE SPECULAR.
+      //
+      // three's Smith visibility term ends with  0.5 / max( gv + gl, EPSILON )  where both
+      // gv and gl carry a factor of dotNV or dotNL. On a silhouette BOTH go to zero, the
+      // denominator collapses onto EPSILON, and V comes back around half a million. That is
+      // fine in stock three, because the same dotNL multiplies the irradiance in front of
+      // it and cancels the blow-up exactly.
+      //
+      // The ramp broke that cancellation. It was substituted into the ONE dotNL that feeds
+      // BOTH lobes, and it has a floor of .34 -- so where the true dotNL was zero the
+      // irradiance was still a third of full sun while the visibility term had already
+      // exploded. A third of 3.4 times half a million is the red one-pixel contour tracing
+      // his outline, which the bloom then hands back as a ball.
+      //
+      // So the ramp now shapes the DIFFUSE only, which is all it was ever meant to shape.
+      // The specular keeps the true geometric dotNL and cancels itself as designed.
+      // It is Colin and not the city because a dense curved mesh is nearly all silhouette
+      // at the edges, where a flat-shaded low-poly block has almost no grazing pixels.
+      .replace('#include <lights_physical_pars_fragment>', THREE.ShaderChunk.lights_physical_pars_fragment
+        .replace('float dotNL = saturate( dot( geometryNormal, directLight.direction ) );\n\tvec3 irradiance = dotNL * directLight.color;',
+          'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );\n\tvec3 irradiance = dotNL * directLight.color;\n\tvec3 irradianceToon = toonRamp( dotNL ) * directLight.color;')
+        .replace('reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );',
+          'reflectedLight.directDiffuse += irradianceToon * BRDF_Lambert( material.diffuseColor );'))
       // and the same guard after interpolation, since a NaN varying stays NaN
       .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n  if ( !( dot( normal, normal ) > 0.5 ) ) normal = vec3( 0.0, 0.0, 1.0 );')
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
@@ -277,6 +297,10 @@ function toonPatch(sh) {
         float _sk = uSpec * mix( uSpecG, 1.0, _nv );
         reflectedLight.directSpecular *= _sk;
         reflectedLight.indirectSpecular *= _sk;
+        // and a hard ceiling, because no highlight in this game is worth eight times the
+        // sun and a grazing-angle singularity should never reach the frame again
+        reflectedLight.directSpecular = min( reflectedLight.directSpecular, vec3( 4.0 ) );
+        reflectedLight.indirectSpecular = min( reflectedLight.indirectSpecular, vec3( 4.0 ) );
         float _rf = 1.0 - _nv;
         totalEmissiveRadiance += uRimCol * (pow(_rf, uRimP) * uRim * uToonK);
       }`);
