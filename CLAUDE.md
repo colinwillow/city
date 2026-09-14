@@ -45,6 +45,12 @@ playwright unless he asks for it by name.
   Colin is opted out with `envMapIntensity = 0`. The cloud deck (`CLOUDS`, `stepClouds`) is
   Plutopia's: a LOCAL field kept near the player and recycled upwind, not a world-wide one.
   `SKY.wind` drives both the models and the dome's noise layer, so they always agree.
+- `audio/` — sixteen effects and two songs, all borrowed from Plutopia/Robits: six swooshes
+  (jumps, body flips, board tricks), four metal clangs (the three car tiers, told apart by
+  weight and pitch rather than by three files), two bamboo (the deck landing), two box breaks
+  (a bail), `plutopia_song_03/04` (the two trade rather than loop). **The cars, the horns and
+  the rolling wheels are HIS to record.** The roll is a synth stand-in — brown noise through a
+  bandpass whose gain and centre follow his speed (`WHEELS`) — and it is marked as one.
 - `version.json` — written by `bump.mjs`; the running game polls it to detect its successor.
 - `.github/workflows/pages.yml` — deploys the repo root. Harmless if Pages is set to
   "deploy from a branch" instead; both paths deploy the same commit.
@@ -86,6 +92,21 @@ playwright unless he asks for it by name.
   JPG` also appear in the fps chip unasked**, because a `console.warn` is invisible on a
   phone and "you never put it in" and "it is in and it did not load" are the same picture
   from where he is standing.
+- **SOUND IS `SFX`, PORTED FROM PLUTOPIA, AND TWO OF ITS IDEAS ARE LOAD-BEARING.**
+  1. **Two-stage load.** A browser will not build an `AudioContext` outside a gesture but it
+     will happily fetch, so the bytes come down at page load and decode on the first touch.
+     The first ollie then HAS a sound instead of being the thing that starts the download.
+     The music is fetched in `init()` instead — 4.5 MB has no business on the boot path.
+  2. **Edge trimming (`SFX.edge`).** An exported effect is usually a short noise sitting
+     inside a long file: silence, the event, a tail of nothing. Played from zero that is a
+     sound with a delay bolted to the front, and nothing on the trigger side can fix it.
+  Plus: `?v=SFXV` / `?v=MUSICV` on every URL, **not the build number** — stamping every push
+  on eighteen files re-downloads all of them against the same connection the GLBs are on.
+  Bump them by hand when a file is replaced in place. `play()` returns TRUE when it refuses a
+  sound (voice cap or per-key gap), because a caller reading false plays the synth fallback
+  and would put the pile-up back as beeps.
+  `navigator.audioSession.type = 'playback'` is what makes a phone with the ring switch on
+  audible at all — which is also why there is a mute key in the HUD.
 - **Names are sanitised by GLTFLoader**: `road_a_02.001` arrives as `road_a_02001`,
   `travel agency` as `travel_agency`. Every category test in `buildCity` is a prefix regex.
 - **Cars**: local −Z is up, local Y is the length; `CAR_FWD` says which end is the nose.

@@ -49,6 +49,7 @@
   .key.on{border-color:rgba(157,247,255,.95);box-shadow:0 0 22px rgba(120,238,255,.5),inset 0 0 22px rgba(120,238,255,.2);color:#fff}
   #boardB{right:calc(166px + env(safe-area-inset-right));bottom:calc(61px + env(safe-area-inset-bottom))}
   #resetB{top:calc(14px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));width:40px;height:40px;font-size:16px}
+  #soundB{top:calc(14px + env(safe-area-inset-top));right:calc(62px + env(safe-area-inset-right));width:40px;height:40px;font-size:15px}
   /* ---- chips ---- */
   .chip{position:fixed;z-index:4;font:600 11px/1 var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--ink);opacity:.7;
     padding:7px 10px;border-radius:999px;border:1px solid rgba(157,247,255,.22);background:rgba(10,14,40,.45);backdrop-filter:blur(6px)}
@@ -80,7 +81,8 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c42</b><i id="perf">···</i></div>
+<div class="key on" id="soundB">&#9834;</div>
+<div class="chip" id="build"><b id="buildN">c43</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +94,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c42';
+const BUILD = 'c43';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -211,6 +213,9 @@ const SK8 = {
 // does not need a clip and there isn't one. WHILE HE IS IN THE AIR ON THE BOARD THE RIGHT
 // PAD IS TRICKS AND NOT THE CAMERA, or a spin flick whips the lens round with it. On the
 // ground nothing about that pad has changed.
+// How far he goes between footfalls. A taste number; the only thing that makes it wrong is a
+// foot landing visibly out of time with the sound, which is what a stride is for.
+const STRIDE = { walk: 1.5, run: 2.3 };
 const TRICK = {
   // BOARD TRICKS ARE PURE GEOMETRY. The deck runs along its local Z, so a kickflip is a
   // roll about Z and a shove-it is a yaw about Y, and a varial is both at once. None of
@@ -269,6 +274,244 @@ const TRIM = {
 };
 const TRIM_IN = {};                  // name -> the second the clip should START at
 const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
+
+// ---------- sound ----------
+// Ported from Plutopia, trimmed to what this game makes noise about. Its two load-bearing
+// ideas both survive, and neither is obvious:
+//  1. TWO-STAGE LOAD. A browser will not build an AudioContext outside a gesture, but it will
+//     happily fetch. So the bytes come down at page load and are decoded on the first touch.
+//     The first ollie then HAS a sound instead of being the thing that starts the download.
+//  2. EDGE TRIMMING. An exported effect is very often a short noise sitting inside a long
+//     file: leading silence, then the event, then a tail of nothing. Played from zero that is
+//     a sound with a delay bolted to the front of it, and nothing on the trigger side can fix
+//     a file whose first half second is empty. Every buffer is scanned once when it decodes.
+// The files are Plutopia's and Robits' -- swooshes, clangs, bamboo, box breaks and two of the
+// songs. The cars, the horns and the rolling wheels are his to record; the roll is a synth
+// stand-in until then, and it is marked as one.
+const SFXV = 1, MUSICV = 1;
+const SND_FILES = {
+  swoosh: ['swoosh_01', 'swoosh_02', 'swoosh_03', 'swoosh_04', 'swoosh_05', 'swoosh_06'],
+  clang: ['metal_clang_01', 'metal_clang_02', 'metal_clang_03', 'metal_clang_04'],
+  wood: ['bamboo_01', 'bamboo_02'],
+  crack: ['box_break_01', 'box_break_02'],
+};
+const rnd = (a, b) => a + Math.random() * (b - a);
+const SFX = {
+  ctx: null, master: null, on: true, vol: .85,
+  near: 10, far: 85, floor: .10,          // how a sound a long way off is attenuated
+  raw: {}, buf: {}, miss: [], ready: 0,
+  live: 0, cap: 8, beat: 38, _at: {},     // voices at once, and the shortest gap between two of a kind
+  fetchAll() {
+    for (const k in SND_FILES) {
+      this.raw[k] = [];
+      SND_FILES[k].forEach((f, i) => {
+        // ?v=SFXV, its own key and NOT the build number: stamping every push on sixteen files
+        // makes every build re-download all of them against the same connection the GLBs are
+        // coming down. Bump it by hand when a sound is replaced in place -- that is the only
+        // time a phone's cache is actually wrong.
+        fetch('audio/' + f + '.mp3?v=' + SFXV).then(r => r.ok ? r.arrayBuffer() : null)
+          .then(b => { if (b) { this.raw[k][i] = b; if (this.ctx) this.decode(); } else this.miss.push(f); })
+          .catch(() => this.miss.push(f));
+      });
+    }
+  },
+  edge(buf) {
+    if (buf._lead !== undefined) return buf;
+    const n = buf.length, sr = buf.sampleRate, TH = .005, B = 128;
+    let a = -1, b = -1; const ch = [];
+    for (let c = 0; c < buf.numberOfChannels; c++) ch.push(buf.getChannelData(c));
+    for (let i = 0; i < n; i += B) {
+      const e = Math.min(n, i + B); let peak = 0;
+      for (const d of ch) for (let k = i; k < e; k++) { const v = d[k] < 0 ? -d[k] : d[k]; if (v > peak) peak = v; }
+      if (peak > TH) { if (a < 0) a = i; b = e; }
+    }
+    if (a < 0) { buf._lead = 0; buf._end = buf.duration; return buf; }
+    buf._lead = Math.max(0, a / sr - .02);        // keep the attack: it is what carries a transient
+    buf._end = Math.min(buf.duration, b / sr + .04);
+    return buf;
+  },
+  decode() {
+    if (!this.ctx) return;
+    for (const k in this.raw) {
+      if (!this.buf[k]) this.buf[k] = [];
+      this.raw[k].forEach((b, i) => {
+        if (!b || this.buf[k][i] === 0) return;
+        this.buf[k][i] = 0;                       // claimed, so a second wake does not decode it twice
+        this.ctx.decodeAudioData(b.slice(0), out => { this.buf[k][i] = this.edge(out); this.ready++; },
+          () => { this.buf[k][i] = null; this.miss.push(SND_FILES[k][i] + '?'); });
+      });
+    }
+  },
+  gainAt(x, z) {
+    if (x === undefined) return 1;
+    const d = Math.hypot(x - player.pos.x, z - player.pos.z);
+    if (d <= this.near) return 1;
+    return Math.max(this.floor, 1 - (d - this.near) / (this.far - this.near));
+  },
+  // One of the pool, at a pitch. Returns false when nothing has loaded, so a caller can fall
+  // back to the synth rather than going silent.
+  play(k, v, rate, x, z) {
+    if (!this.on || !this.ctx) return false;
+    const pool = this.buf[k]; if (!pool) return false;
+    const ok = []; for (const b of pool) if (b) ok.push(b);
+    if (!ok.length) return false;
+    // TWO CEILINGS, BECAUSE A GAME MAKES SOUNDS IN CLUSTERS. A car hit is an impact and a
+    // board drop and a landing on one frame. Neither ceiling decides which sound is right;
+    // they stop one event arriving as a handful. Returning TRUE when refused matters -- a
+    // caller reading false plays the oscillator fallback, which puts the pile-up back as beeps.
+    const now = performance.now();
+    if (this._at[k] > now) return true;
+    this._at[k] = now + this.beat;
+    if (this.live >= this.cap) return true;
+    if (this.ctx.state !== 'running') this.wake();
+    const src = this.ctx.createBufferSource();
+    this.live++; src.onended = () => { this.live = Math.max(0, this.live - 1); };
+    src.buffer = ok[(Math.random() * ok.length) | 0];
+    src.playbackRate.value = rate || 1;
+    const g = this.ctx.createGain();
+    g.gain.value = (v === undefined ? .7 : v) * this.gainAt(x, z);
+    src.connect(g); g.connect(this.master);
+    const bf = src.buffer, t0 = this.ctx.currentTime;
+    src.start(t0, bf._lead || 0, Math.max(.02, (bf._end === undefined ? bf.duration : bf._end) - (bf._lead || 0)));
+    return true;
+  },
+  // the two synth primitives, for the sounds no file in either repo covers
+  noise(dur, vol, hz, x, z) {
+    if (!this.on || !this.ctx) return;
+    const ctx = this.ctx, n = Math.max(1, (ctx.sampleRate * dur) | 0);
+    const b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const s = ctx.createBufferSource(); s.buffer = b;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = hz;
+    const g = ctx.createGain(); g.gain.value = vol * this.gainAt(x, z);
+    s.connect(f); f.connect(g); g.connect(this.master); s.start();
+  },
+  blip(f0, dur, type, vol, f1, x, z) {
+    if (!this.on || !this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = type || 'sine';
+    o.frequency.setValueAtTime(f0, t);
+    if (f1) o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(vol * this.gainAt(x, z), t);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + .02);
+  },
+  init() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) { this.on = false; return; }
+    this.ctx = new AC();
+    // iOS 16.4+: without a declared playback session a phone with the ring switch on gets no
+    // sound at all, which is the "dead on his phone, fine on mine" bug.
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    this.master = this.ctx.createGain(); this.master.gain.value = this.vol;
+    this.master.connect(this.ctx.destination);
+    this.decode();
+    try { MUSIC.fetchAll(); MUSIC.decode(); MUSIC.go('theme'); } catch (e) {}
+  },
+  wake() { if (!this.ctx) this.init(); else if (this.ctx.state !== 'running') try { this.ctx.resume(); } catch (e) {} },
+};
+// THE WHEELS ARE A SYNTH AND THAT IS TEMPORARY. Neither repo has a rolling sound and it is
+// the one noise this game cannot do without, so it is a loop of brown noise through a bandpass
+// whose gain and centre follow his speed. Drop a real one in audio/ and bind it here.
+const WHEELS = {
+  src: null, g: null, f: null,
+  start() {
+    if (this.src || !SFX.ctx) return;
+    const ctx = SFX.ctx, n = (ctx.sampleRate * 2) | 0;
+    const b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
+    // white run through a one-pole, which gives it a body rather than a hiss
+    let v = 0; for (let i = 0; i < n; i++) { v = (v + (Math.random() * 2 - 1) * .06) * .985; d[i] = clamp(v * 3.2, -1, 1); }
+    const s = ctx.createBufferSource(); s.buffer = b; s.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 300; f.Q.value = .75;
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(f); f.connect(g); g.connect(SFX.master); s.start();
+    this.src = s; this.f = f; this.g = g;
+  },
+  set(speed, on) {
+    if (!SFX.ctx) return;
+    this.start(); if (!this.g) return;
+    const k = clamp(speed / 13, 0, 1), t = SFX.ctx.currentTime;
+    this.g.gain.setTargetAtTime(on && SFX.on ? .035 + .20 * k * k : 0, t, .09);
+    this.f.frequency.setTargetAtTime(200 + 1000 * k, t, .09);
+  },
+};
+const MUSIC = {
+  gain: null, cur: null, curBuf: null, want: null, vol: .34, on: true, fade: 2.0,
+  raw: {}, track: {},
+  // A value can be one stem or a LIST. With a list the pieces are not looped: one plays
+  // through and another of the set that is NOT the one just heard takes over, so it reads as
+  // a soundtrack rather than as a loop going round.
+  files: { theme: ['plutopia_song_03', 'plutopia_song_04'] },
+  bus() {
+    if (!SFX.ctx) return null;
+    if (!this.gain) { this.gain = SFX.ctx.createGain(); this.gain.gain.value = this.vol; this.gain.connect(SFX.master); }
+    return this.gain;
+  },
+  fetchAll() {
+    for (const k in this.files) {
+      const set = [].concat(this.files[k]); this.raw[k] = this.raw[k] || [];
+      // its own key: these are two megabytes each, and a build stamp would re-fetch both on
+      // every push. Bump MUSICV when a track is replaced in place.
+      set.forEach((f, i) => fetch('audio/' + f + '.mp3?v=' + MUSICV).then(r => r.ok ? r.arrayBuffer() : null)
+        .then(b => { if (b) { this.raw[k][i] = b; this.decode(); } }).catch(() => {}));
+    }
+  },
+  decode() {
+    if (!SFX.ctx) return;
+    for (const k in this.raw) (this.raw[k] || []).forEach((b, i) => {
+      if (!b) return; this.raw[k][i] = null;
+      SFX.ctx.decodeAudioData(b.slice(0), out => {
+        (this.track[k] = this.track[k] || [])[i] = SFX.edge(out);
+        if (this.want === k && !this.cur) this.go(k);
+      }, () => {});
+    });
+  },
+  go(k, again) {
+    const ctx = SFX.ctx, bus = this.bus();
+    if (!ctx || !bus || !this.on) return;
+    const list = (this.track[k] || []).filter(Boolean);
+    if (!list.length) { this.want = k; return; }
+    if (this.cur && !again) return;
+    const other = list.filter(b => b !== this.curBuf);
+    const pick = other.length ? other : list;
+    const buf = pick[(Math.random() * pick.length) | 0];
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(1, ctx.currentTime + this.fade);
+    src.connect(g); g.connect(bus);
+    src.onended = () => { if (this.cur === src) { this.cur = null; this.go(k, true); } };
+    src.start(ctx.currentTime, buf._lead || 0);
+    this.cur = src; this.curBuf = buf; this.want = k;
+  },
+};
+// WHAT MAKES WHICH NOISE. Every one falls back to the synth if its file has not arrived, so a
+// missing mp3 is quieter rather than silent.
+const snd = {
+  ollie: () => SFX.play('swoosh', .30, rnd(1.18, 1.38)) || SFX.noise(.10, .10, 2400),
+  jump: () => SFX.play('swoosh', .28, rnd(1.02, 1.22)) || SFX.noise(.11, .10, 2100),
+  // a body flip is longer and lower than the pop that started it
+  flip: () => SFX.play('swoosh', .44, rnd(.70, .84)) || SFX.noise(.22, .14, 1200),
+  // and a board trick is the opposite: short, high, with a tick of deck in it
+  trick: () => { SFX.play('swoosh', .30, rnd(1.35, 1.60)); SFX.blip(760, .05, 'square', .05, 300); },
+  // k is how hard he came down, 0..1
+  land: (k, board) => board
+    ? (SFX.play('wood', .30 + .50 * k, rnd(.80, 1.05)) || SFX.noise(.09, .16, 900))
+    : (SFX.noise(.10, .08 + .16 * k, 520), SFX.blip(96, .07, 'sine', .05 + .10 * k, 54)),
+  bail: () => SFX.play('crack', .55, rnd(.80, 1.00)) || SFX.noise(.22, .22, 700),
+  // the three car tiers, told apart by weight and pitch rather than by three different files
+  hit: (tier, x, z) => tier === 0
+    ? SFX.play('clang', .30, rnd(1.20, 1.45), x, z) || SFX.blip(420, .07, 'square', .06, 200, x, z)
+    : tier === 1
+      ? SFX.play('clang', .58, rnd(.95, 1.12), x, z) || SFX.blip(260, .10, 'square', .10, 120, x, z)
+      : (SFX.play('clang', .85, rnd(.72, .86), x, z) || SFX.noise(.12, .30, 800, x, z),
+         SFX.blip(120, .16, 'square', .16, 58, x, z)),
+  step: hard => { SFX.noise(hard ? .085 : .065, hard ? .10 : .055, hard ? 620 : 460); SFX.blip(hard ? 92 : 78, .05, 'sine', hard ? .06 : .035, hard ? 55 : 48); },
+};
+SFX.fetchAll();
+// The gesture that builds the context. Capture phase, because both pads stopPropagation.
+addEventListener('pointerdown', () => SFX.wake(), { capture: true, passive: true });
+addEventListener('keydown', () => SFX.wake(), { capture: true, passive: true });
 
 // ---------- renderer ----------
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
@@ -734,6 +977,7 @@ function missing() {
   let m = '';
   if (!clouds.length) m += ' · NO CLOUD GLB';
   if (!ENV.tex) m += ' · NO SKY JPG';
+  if (SFX.miss.length) m += ' · NO SND ' + SFX.miss.length;
   return m;
 }
 function census() {
@@ -1110,6 +1354,7 @@ function carHit(c) {
     // u' - w = -e (u - w): a ball off a moving cushion. Only the normal component is
     // touched, so whatever he had ALONG the car's flank he keeps, and he comes off it
     // carrying his line instead of losing it.
+    snd.hit(score < HIT.graze ? 0 : 1, c.x, c.z);
     const e = score < HIT.graze ? HIT.bounce : HIT.bounceHard;
     const un = p.vel.x * nx + p.vel.z * nz;
     const d = Math.min(w * (1 + e) - e * u, HIT.push) - un;
@@ -1125,6 +1370,7 @@ function carHit(c) {
   // way he is going over flips, so the second hit reverses him instead of nudging him.
   if (again) p.hitFwd = !p.hitFwd;
   else { const toCar = Math.atan2(-dx, -dz); p.hitFwd = Math.cos(wrapAngle(toCar - p.faceH)) < 0; }
+  snd.hit(2, c.x, c.z);
   p.hit = 'fly'; p.hitSnap = true; p.hitCool = HIT.cool;
   p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.pushing = false; p.pushT = 0; p.grounded = false;
   const k = clamp(score / HIT.ref, .7, 1.2) * (again ? HIT.again : 1);
@@ -1613,6 +1859,7 @@ bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
   p.trick = dy < 0 ? 'front' : 'back'; p.trickT = 0;
   p.trickDur = clamp(air * .88, .42, 1.7);
   colinScale(nm, clipLen(nm, p.trickDur) / p.trickDur);
+  snd.flip();
 }, false);
 // A TAP AND A HELD CROUCH ARE THE SAME GESTURE, released. The pad still orbits: push it
 // sideways past .42 and it is a look, so neither the crouch nor the jump ever fires. That
@@ -1631,9 +1878,18 @@ function boardFlick(dx, dy) {
   } else {
     p.bYaw += (dx > 0 ? TAU : -TAU);                  // pop shove-it, either way round
   }
+  snd.trick();
 }
 document.getElementById('boardB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleBoard(); });
 document.getElementById('resetB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); respawn(); });
+// One switch for all of it. The master gain is where it lands, so the music and the wheel
+// loop -- which are not `play` calls and would otherwise carry on underneath -- go with it.
+document.getElementById('soundB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleSound(); });
+function toggleSound() {
+  SFX.wake(); SFX.on = !SFX.on;
+  if (SFX.master) SFX.master.gain.value = SFX.on ? SFX.vol : 0;
+  document.getElementById('soundB').classList.toggle('on', SFX.on);
+}
 // mouse look on desktop
 {
   let drag = null; const el = renderer.domElement;
@@ -1648,7 +1904,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -1761,6 +2017,7 @@ function stepFoot(dt) {
   if (p.jump && p.coyote > 0) {
     p.vel.y = MOVE.jump; p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0;
     p.initClip = sp0 > 3 ? 'run_jump_init' : 'idle_jump_init';
+    snd.jump();
   }
   p.jump = 0;
   p.vel.y -= MOVE.g * dt;
@@ -1768,7 +2025,16 @@ function stepFoot(dt) {
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
   const g = groundUnder(p.pos, MOVE.step, p.vel, py); p.wall = g.wall;
   const vy0 = p.vel.y;
-  if (settle(p, g, MOVE.step, px, pz) === 'landed' && vy0 < ROLL.at) {
+  const howF = settle(p, g, MOVE.step, px, pz);
+  if (howF === 'landed') snd.land(clamp(-vy0 / 16, 0, 1), false);
+  // A STRIDE, NOT A TIMER. Distance covered rather than seconds elapsed, so the sound stays
+  // with the foot at every speed instead of drifting the moment the gait blend moves.
+  if (p.grounded) {
+    p.strideD += Math.hypot(p.vel.x, p.vel.z) * dt;
+    const need = sp > GAIT.walkAt ? STRIDE.run : STRIDE.walk;
+    if (p.strideD > need && sp > .6) { p.strideD = 0; snd.step(sp > GAIT.walkAt); }
+  } else p.strideD = 0;
+  if (howF === 'landed' && vy0 < ROLL.at) {
     const a = colin.actions['landing_roll'];
     p.rollDur = a ? a.getClip().duration : 1.6;        // the clip decides how long it lasts
     p.rollT = p.rollDur;
@@ -1857,7 +2123,7 @@ function stepSkate(dt) {
   p.coyote = p.grounded ? MOVE.coyote : p.coyote - dt;
   if (p.popT > 0) {
     p.popT -= dt;
-    if (p.popT <= 0) { p.vel.y = SK8.ollie; p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0; }
+    if (p.popT <= 0) { p.vel.y = SK8.ollie; p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0; snd.ollie(); }
   } else if (p.jump && p.coyote > 0) { p.popT = SK8.pop; p.pushing = false; }
   p.jump = 0;
   p.vel.y -= SK8.g * dt;
@@ -1865,13 +2131,15 @@ function stepSkate(dt) {
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
   const g = groundUnder(p.pos, SK8.step, p.vel, py); p.wall = g.wall;
   if (g.wall) { const f = Math.exp(-SK8.scuff * dt); p.vel.x *= f; p.vel.z *= f; }
+  const vyIn = p.vel.y;
   const how = settle(p, g, SK8.step, px, pz);
   if (how === 'landed') {
+    snd.land(clamp(-vyIn / 16, 0, 1), true);
     // A trick he has not come most of the way round on is not a landing, it is a scrape --
     // and that goes for the board's two axes as much as for his body.
     const short = (p.trick && p.trickT / Math.max(.05, p.trickDur) < TRICK.land)
       || Math.abs(p.bRoll) > .9 || Math.abs(p.bYaw) > .9;
-    if (short) { p.vel.x *= TRICK.bail; p.vel.z *= TRICK.bail; }
+    if (short) { p.vel.x *= TRICK.bail; p.vel.z *= TRICK.bail; snd.bail(); }
     p.trick = ''; p.trickT = 0; p.bRoll = 0; p.bYaw = 0;
     // WRAPPED, or a landed 360 settles back through a whole turn on the road. A completed
     // trick wraps to about zero and nothing is seen to move; a half-done one takes the
@@ -2003,6 +2271,7 @@ function frame() {
   stepPlayer(dt);
   stepTraffic(dt);
   stepClouds(dt);
+  WHEELS.set(player.speed, player.board && player.grounded && !player.hit);
   stepCam(dt);
   if (colin.mixer) colin.mixer.update(dt);
   renderPost();
@@ -2033,7 +2302,7 @@ frame();
     document.getElementById('boot').classList.add('off');
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
