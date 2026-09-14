@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c14</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c15</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c14';
+const BUILD = 'c15';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -341,9 +341,9 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
     tD: { value: null }, tB: { value: null }, tZ: { value: null }, uStr: { value: POST.bloom }, uVig: { value: POST.vig }, uExp: { value: POST.exposure },
     uPx: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uAA: { value: 1 }, uRush: { value: 0 },
     uOut: { value: POST.outline }, uOutW: { value: POST.outlineW }, uNear: { value: .3 }, uFar: { value: 1600 },
-    uOutC: { value: new THREE.Color(.09, .10, .14) }, uOutLo: { value: .0045 }, uOutHi: { value: .034 },
+    uOutC: { value: new THREE.Color(.09, .10, .14) }, uOutLo: { value: .0045 }, uOutHi: { value: .034 }, uMap: { value: 0 },
   }, vertexShader: VS, fragmentShader: `
-  uniform sampler2D tD,tB,tZ; uniform float uStr,uVig,uExp,uAA,uRush,uOut,uOutW,uNear,uFar,uOutLo,uOutHi;
+  uniform sampler2D tD,tB,tZ; uniform float uStr,uVig,uExp,uAA,uRush,uOut,uOutW,uNear,uFar,uOutLo,uOutHi,uMap;
   uniform vec3 uOutC; uniform vec2 uPx; varying vec2 vUv;
   float lz(vec2 uv){ float d = texture2D(tZ,uv).x; return (2.0*uNear*uFar)/(uFar+uNear-(2.0*d-1.0)*(uFar-uNear)); }
   // TONE-MAPPED LUMINANCE, AND THIS IS THE WHOLE BUG. FXAA is a DISPLAY-SPACE algorithm.
@@ -382,6 +382,23 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
   vec3 aces(vec3 x){ // Narkowicz fit
     return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
   void main(){
+    // THE MEASUREMENT. Stop arguing about what a pixel is and show what it is.
+    //   magenta = not a number or infinite      red = luminance over 8
+    //   orange  = over 2 (past the bloom knee)  grey = the actual luminance, scaled
+    // If the balls come back magenta they are NaN. If red or orange they are a real,
+    // finite, very bright shading result and the question is which term produced it.
+    // If they are grey like everything else, they are not in this buffer at all and the
+    // post chain is inventing them.
+    if (uMap > 0.5) {
+      vec3 raw = texture2D(tD,vUv).rgb;
+      bool bad = !(raw.r >= 0.0) || !(raw.g >= 0.0) || !(raw.b >= 0.0);
+      float l = dot(raw, vec3(0.2126,0.7152,0.0722));
+      vec3 o = vec3(clamp(l,0.0,2.0) * 0.35);
+      if (l > 2.0) o = vec3(1.0,0.55,0.0);
+      if (l > 8.0) o = vec3(1.0,0.0,0.0);
+      if (bad)     o = vec3(1.0,0.0,1.0);
+      gl_FragColor = vec4(o,1.0); return;
+    }
     vec3 c = uAA > 0.5 ? aa(vUv) : texture2D(tD,vUv).rgb;
     c = mix(vec3(0.0), min(c, vec3(32.0)), vec3(bvec3(c.r >= 0.0, c.g >= 0.0, c.b >= 0.0)));
     if (uRush > 0.002) { vec2 d = (vUv - 0.5); float e = smoothstep(0.06, 0.5, length(d)); vec3 sm = c;
@@ -417,13 +434,27 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
 // world is drawn at eight tenths of the canvas and upscaled, and an upscale is its own
 // possible source of pale specks on a silhouette.
 let DBG = 0;
-const DBGN = ['', 'rim off', 'outline off', 'fxaa off', 'bloom off', 'full res', 'no post', 'flat colin'];
+const DBGN = ['', 'rim off', 'outline off', 'fxaa off', 'bloom off', 'full res', 'no post', 'flat colin',
+  'no shadow', 'nan map'];
+// What is actually IN the scene graph, counted rather than assumed. Answers the question
+// directly on the phone, where there is no console to traverse from.
+let dbgInfo = '';
+function census() {
+  let pts = 0, spr = 0, ln = 0, mesh = 0, bone = 0, skin = 0;
+  scene.traverse(o => {
+    if (o.isPoints) pts++; else if (o.isSprite) spr++; else if (o.isLine) ln++;
+    else if (o.isSkinnedMesh) { skin++; mesh++; } else if (o.isMesh) mesh++;
+    if (o.parent && o.parent.isBone) bone++;
+  });
+  dbgInfo = ' · pts' + pts + ' spr' + spr + ' line' + ln + ' onBone' + bone + ' skin' + skin + ' mesh' + mesh;
+}
 const dbgMat = new THREE.MeshBasicMaterial({ color: 0x9fb0c4 });
 function applyDbg() {
   buildNEl.textContent = BUILD + (DBG ? ' /' + DBGN[DBG] : '');
   TOON.rim = DBG === 1 ? 0 : TOON.rim0;
   POST.outline = DBG === 2 ? 0 : POST.outline0;
   compMat.uniforms.uAA.value = DBG === 3 ? 0 : 1;
+  compMat.uniforms.uMap.value = DBG === 9 ? 1 : 0;
   POST.bloom = DBG === 4 ? 0 : POST.bloom0;
   const dpr = DBG === 5 ? Q.present : Q.dpr0;
   if (dpr !== Q.dpr) { Q.dpr = dpr; resize(); }
@@ -431,9 +462,11 @@ function applyDbg() {
   renderer.toneMapping = DBG === 6 ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
   if (colin.model) colin.model.traverse(o => {
     if (!o.isMesh) return;
+    o.receiveShadow = DBG !== 8;
     if (DBG === 7) { o.userData.m0 = o.userData.m0 || o.material; o.material = dbgMat; }
     else if (o.userData.m0) { o.material = o.userData.m0; o.userData.m0 = null; }
   });
+  if (DBG) census(); else dbgInfo = '';
 }
 // The composite still wants a bloom texture bound even at zero strength; give it the
 // scene and multiply it out rather than branching the shader.
@@ -1181,7 +1214,7 @@ const buildEl = document.getElementById('build'), buildNEl = document.getElement
 let fpsT = 0, fpsN = 0, fps = 0;
 buildNEl.textContent = BUILD; buildEl.classList.add('fresh');
 buildEl.style.cursor = 'pointer';
-buildEl.addEventListener('click', () => { DBG = (DBG + 1) % 8; applyDbg(); });
+buildEl.addEventListener('click', () => { DBG = (DBG + 1) % 10; applyDbg(); });
 
 // WHICH BUILD IS ON THE GLASS, and whether it is the newest one.
 // Pages puts a ten-minute cache on index.html and an iOS home-screen app holds it
@@ -1221,7 +1254,7 @@ function frame() {
   stepCam(dt);
   if (colin.mixer) colin.mixer.update(dt);
   renderPost();
-  fpsN++; fpsT += dt; if (fpsT > .5) { fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; perfEl.textContent = fps + ' fps · ' + renderer.info.render.calls + ' dc'; }
+  fpsN++; fpsT += dt; if (fpsT > .5) { fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; perfEl.textContent = fps + ' fps · ' + renderer.info.render.calls + ' dc' + dbgInfo; }
   speedEl.textContent = Math.round(player.speed * 3.6);
 }
 frame();
