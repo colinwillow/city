@@ -95,7 +95,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c59</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c60</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -107,7 +107,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c59';
+const BUILD = 'c60';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -178,7 +178,12 @@ const MOVE = {
 // he is past this much of it the stick takes over and he runs out of it, instead of
 // standing about finishing a last half second nobody is watching.
 const ROLL = { at: -7, min: 4, max: 10, free: .42 };
-const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7 };
+// `windUp` is the on-foot crouch, and it is EMPTY until there is a clip for it. Name one here
+// and colinAnim blends it in on the GROUND, by how loaded `p.charge` is, while he is holding
+// the right pad. That is where the two `*_jump_init` clips were always trying to be: they are
+// crouches, and they were being played in the AIR for the first .19 s of the flight, which is
+// two poses that do not follow one another. They are gone; this replaces them properly.
+const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7, windUp: '' };
 const SK8 = {
   pushV: 5.4,        // m/s added by one shove
   // THE PUSH CLIP IS THE CLOCK. It is not a pose to blend in and out of -- it is a whole
@@ -2381,13 +2386,24 @@ function colinAnim(dt) {
     else if (p.crouch > .04) { colinScale('skate_idol_crouch', 1); t['skate_idol_crouch'] = p.crouch; t['skate_idol_standing'] = 1 - p.crouch; }
     else t['skate_idol_standing'] = 1;
   } else if (!p.grounded) {
-    // the wind-up he took off from, then the rising clip for the WHOLE flight. Swapping
-    // to jump_coming_down at the apex was a hard cut in the middle of the one moment the
-    // eye is tracking, and no blend length hides a change of pose there. One clip, held.
-    if (p.airT < .19 && p.initClip) t[p.initClip] = 1;
-    else t['jump_going_up'] = 1;
+    // ONE CLIP FOR THE WHOLE FLIGHT, and no wind-up in front of it.
+    // `run_jump_init` / `idle_jump_init` used to play for the first .19 s. They are crouches,
+    // and a crouch belongs BEFORE he leaves the ground, not after -- played in the air it is
+    // two poses that do not follow one another, landed on top of a run that was already at
+    // full stride. Straight from the gait into the rise reads better than either half did.
+    // THE CROUCH COMES BACK WHEN THERE IS A CLIP FOR IT, on the GROUND: that is what the
+    // wind-up (`p.charge`, hold the right pad) is already there to drive, and `GAIT.windUp`
+    // below is the hook -- name a clip and it plays while he is loading, which is where the
+    // two init clips were always trying to be.
+    t['jump_going_up'] = 1;
   } else if (p.rollT > 0) {
     t['landing_roll'] = 1;
+  } else if (GAIT.windUp && p.charge > .06 && colin.actions[GAIT.windUp]) {
+    // the wind-up pose, once there is one. Blended by how loaded he is rather than switched.
+    const k = clamp(p.charge / MOVE.chargeMax, 0, 1);
+    const w = clamp(sp / GAIT.walkAt, 0, 1), r = clamp((sp - GAIT.walkAt) / (GAIT.runAt - GAIT.walkAt), 0, 1);
+    t[GAIT.windUp] = k;
+    t['idle_neutral'] = (1 - w) * (1 - k); t['walk_fwd_neutral'] = w * (1 - r) * (1 - k); t['run_fwd'] = w * r * (1 - k);
   } else {
     const w = clamp(sp / GAIT.walkAt, 0, 1);
     const r = clamp((sp - GAIT.walkAt) / (GAIT.runAt - GAIT.walkAt), 0, 1);
@@ -2524,7 +2540,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -2645,7 +2661,6 @@ function stepFoot(dt) {
     if (k > .05 && sp0 > .5) { const inv = 1 / sp0; p.vel.x += p.vel.x * inv * MOVE.chargeOut * k; p.vel.z += p.vel.z * inv * MOVE.chargeOut * k; }
     p.charge = 0;
     p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0;
-    p.initClip = sp0 > 3 ? 'run_jump_init' : 'idle_jump_init';
     snd.jump();
   }
   p.jump = 0;

@@ -435,6 +435,13 @@ playwright unless he asks for it by name.
   ollie out, which is the one part that has to feel deliberate. No balance meter yet, and no
   grind clip: `skate_idol_crouch` stands in because it is the only board pose with his knees
   bent and it reads far better on a rail than the ollie hang.
+- **THERE IS NO JUMP WIND-UP CLIP IN THE AIR, AND THERE MUST NOT BE.** `run_jump_init` and
+  `idle_jump_init` used to play for the first .19 s of a jump. They are CROUCHES, and a crouch
+  belongs before he leaves the ground, not after — played in the air it is two poses that do
+  not follow one another, landed on top of a run already at full stride. Straight from the gait
+  into `jump_going_up` reads better than either half did. `GAIT.windUp` is the hook for when
+  there IS a crouch clip: name one and `colinAnim` blends it in on the GROUND, weighted by how
+  loaded `p.charge` is, which is where those two clips were always trying to be.
 - **HOLD THE RIGHT PAD ON FOOT AND HE WINDS UP.** The same thumb that taps to jump: held it is
   a sprint AND a charge, and letting go is a jump scaled by how long it was held. One input
   doing two things that belong together — you run at something and leap it. The forward part of
