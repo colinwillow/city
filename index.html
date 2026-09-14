@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c22</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c23</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c22';
+const BUILD = 'c23';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -177,7 +177,9 @@ const SK8 = {
 // and the street he is on both in frame, and the pad's whole travel means yaw.
 const CAM = { dist: 6.4, distV: .11, el: .17, look: 1.3, yawRate: 2.4, follow: 1.8, idle: .55, half: .07, fov: 52, fovRush: 9 };
 const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rim0: .26, rimP: 3.4, rimCol: new THREE.Color('#dcefff'),
-  spec: 1, specG: .06 };   // how much specular survives overall, and at the GRAZING end
+  spec: 1, specG: .06,     // how much specular survives overall, and at the GRAZING end
+  // 1 = the rim takes the colour of the surface it is on, 0 = flat white on everything.
+  rimTint: 1 };
 // His materials: matte, and lifted out of the dark by feeding the base map back in as a
 // low emission, which is how he is authored in Blender. Emission lands after the toon
 // ramp and after shadows, so it is illumination without shine.
@@ -246,11 +248,11 @@ const hemi = new THREE.HemisphereLight(0x9bc5ee, 0x4b5a48, LIGHT.hemi); scene.ad
 const fill = new THREE.DirectionalLight(0x9fd4e8, LIGHT.fill); fill.position.set(-1, .4, -.6); scene.add(fill);
 
 // ---------- the toon ramp (Plutopia's, on r180 chunk names) ----------
-const TOON_UNI = { uToonK: { value: 1 }, uToonN: { value: 2 }, uToonSoft: { value: .055 }, uToonFloor: { value: .34 }, uRim: { value: .26 }, uRimP: { value: 3.4 }, uRimCol: { value: TOON.rimCol }, uSpec: { value: 1 }, uSpecG: { value: .06 } };
+const TOON_UNI = { uToonK: { value: 1 }, uToonN: { value: 2 }, uToonSoft: { value: .055 }, uToonFloor: { value: .34 }, uRim: { value: .26 }, uRimP: { value: 3.4 }, uRimCol: { value: TOON.rimCol }, uSpec: { value: 1 }, uSpecG: { value: .06 }, uRimTint: { value: 1 } };
 function toonSync() {
   TOON_UNI.uToonK.value = TOON.k; TOON_UNI.uToonN.value = Math.max(1, TOON.bands); TOON_UNI.uToonSoft.value = Math.max(.001, TOON.soft);
   TOON_UNI.uToonFloor.value = TOON.floor; TOON_UNI.uRim.value = TOON.rim; TOON_UNI.uRimP.value = TOON.rimP;
-  TOON_UNI.uSpec.value = TOON.spec; TOON_UNI.uSpecG.value = TOON.specG;
+  TOON_UNI.uSpec.value = TOON.spec; TOON_UNI.uSpecG.value = TOON.specG; TOON_UNI.uRimTint.value = TOON.rimTint;
 }
 function toonPatch(sh) {
   for (const k in TOON_UNI) sh.uniforms[k] = TOON_UNI[k];
@@ -271,7 +273,7 @@ function toonPatch(sh) {
       vBitangent = normalize( cross( vNormal, vTangent ) * tangent.w );
     #endif
   #endif`);
-  sh.fragmentShader = 'uniform float uToonK, uToonN, uToonSoft, uToonFloor, uRim, uRimP, uSpec, uSpecG;\nuniform vec3 uRimCol;\n'
+  sh.fragmentShader = 'uniform float uToonK, uToonN, uToonSoft, uToonFloor, uRim, uRimP, uSpec, uSpecG, uRimTint;\nuniform vec3 uRimCol;\n'
     + 'float toonRamp(float x){\n  float s = x * uToonN, b = floor(s), f = s - b;\n'
     + '  float q = (b + smoothstep(0.5 - uToonSoft, 0.5 + uToonSoft, f)) / uToonN;\n'
     + '  q = uToonFloor + (1.0 - uToonFloor) * q;\n  return mix(x, q, uToonK);\n}\n'
@@ -320,8 +322,16 @@ function toonPatch(sh) {
         // sun and a grazing-angle singularity should never reach the frame again
         reflectedLight.directSpecular = min( reflectedLight.directSpecular, vec3( 4.0 ) );
         reflectedLight.indirectSpecular = min( reflectedLight.indirectSpecular, vec3( 4.0 ) );
+        // THE GREY ON HIS HAIR. The rim was added straight into the emissive, so it was
+        // the ONE lighting term not multiplied by the surface colour. Every other term on
+        // near-black hair comes out near black -- a fifth of a sun times an albedo of .05
+        // is nothing -- while the rim added a flat quarter of white regardless. On dark
+        // hair it was therefore almost the entire visible result, which is why it read as
+        // the texture being washed out, and why it barely showed on his lighter face.
+        // A rim IS light coming off the surface, so it takes the surface's colour: dark
+        // things get a dark rim. uRimTint 0 restores the flat white if it is ever wanted.
         float _rf = 1.0 - _nv;
-        totalEmissiveRadiance += uRimCol * (pow(_rf, uRimP) * uRim * uToonK);
+        totalEmissiveRadiance += uRimCol * mix( vec3( 1.0 ), diffuseColor.rgb, uRimTint ) * (pow(_rf, uRimP) * uRim * uToonK);
       }`);
 }
 THREE.MeshStandardMaterial.prototype.onBeforeCompile = function (sh) { toonPatch(sh); };
