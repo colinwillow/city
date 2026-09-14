@@ -91,7 +91,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c54</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c55</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -103,7 +103,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c54';
+const BUILD = 'c55';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -184,6 +184,7 @@ const SK8 = {
   pushDur: 1.55,     // the cruising cycle, matching skate_push_standing
   pushFast: .60,     // the cycle at a dead stop -- the clip runs 2.6x through it
   pushEase: 16,      // the speed by which it has stretched back to pushDur
+  shoveDur: .40,     // how long one shove is spread over -- see `shove` in stepSkate
   pushPlant: .42,    // where in the cycle the foot shoves
   // PUSHING KEEPS PAYING, JUST LESS. Each shove gives less the faster he is already going
   // while drag takes more, so speed BUILDS over a long stretch and settles near 20 m/s
@@ -212,12 +213,19 @@ const SK8 = {
   // VELOCITY does not, so he keeps his line through it and comes out rolling the way he was.
   // Delete this the day switch clips land -- riding fakie is a real thing to be able to do.
   turnDur: .7,
+  turnLag: 1.15,     // radians the deck trails him by at the middle of a half cab
   // THE SCUFF OF BRUSHING SOMETHING. resolveBoxes already removes only the component going
   // INTO a surface, so a slide along a car keeps its speed on its own. This is the scrape
   // on top of that, and it used to be `vel *= .7` EVERY FRAME -- an exponential with a
   // tenth-of-a-second half life, so the lightest touch of a wing was a dead stop, and it
   // got worse the higher the frame rate. Per second now, and gentle.
-  scuff: 2.2,
+  scuff: 1.2,
+  // PINBALL OFF A WALL. resolveBoxes only ever removed the component going INTO a surface,
+  // which is right for a slide and completely wrong for meeting a building square: all of his
+  // speed was normal to it, all of it was deleted, and he stopped. Restitution sends that
+  // component back out instead. The tangential part is untouched either way, so a shallow
+  // graze along a shopfront costs nothing and a square hit comes off it at half speed.
+  bounce: .52,
   turnLo: 3.2, turnHi: 1.25,   // yaw rate at a crawl / at speed (rad/s)
   ollie: 12.6, g: 20,   // a big ollie: about 4 m
   // THE POP. He was launching on the frame your thumb came up, so there was nothing to
@@ -536,6 +544,8 @@ const snd = {
       : (SFX.play('clang', .85, rnd(.72, .86), x, z) || SFX.noise(.12, .30, 800, x, z),
          SFX.blip(120, .16, 'square', .16, 58, x, z)),
   grind: () => SFX.play('clang', .34, rnd(.45, .60)) || SFX.noise(.20, .18, 1400),
+  // k is how hard he met it, 0..1 -- the same wood the deck lands on, lower and duller
+  bump: k => SFX.play('wood', .18 + .42 * k, rnd(.55, .70)) || SFX.noise(.10, .10 + .2 * k, 700),
   step: hard => { SFX.noise(hard ? .085 : .065, hard ? .10 : .055, hard ? 620 : 460); SFX.blip(hard ? 92 : 78, .05, 'sine', hard ? .06 : .035, hard ? 55 : 48); },
 };
 SFX.fetchAll();
@@ -1344,7 +1354,12 @@ function gridQuery(x, z, r, out) {
 // Push a vertical capsule (radius r, feet at feetY, height h) out of the boxes. Boxes whose top
 // is within `step` of the feet are floors instead (that is how a curb, and a roof, get stood on).
 // Returns the highest such floor, or -Infinity.
-function resolveBoxes(p, r, h, step, boxes, vel) {
+// `bounce` is restitution on the wall: 0 removes the component going INTO it (a slide, which
+// is what this always did) and anything above that sends it back out. A car already works
+// this way through carHit; a BUILDING did not, so meeting one head-on deleted the whole of
+// his speed and he stopped dead against it. The tangential component is never touched either
+// way, so a glancing hit costs nothing and a square one comes off it.
+function resolveBoxes(p, r, h, step, boxes, vel, bounce) {
   let floor = -Infinity, hitWall = false;
   for (const b of boxes) {
     // ORIENTED WHEN IT CARRIES A YAW, which is what cars do. The axis-aligned bounds of a car
@@ -1382,7 +1397,11 @@ function resolveBoxes(p, r, h, step, boxes, vel) {
       push = m + r;
     }
     p.x += ux * push; p.z += uz * push; hitWall = true;
-    if (vel) { const vn = vel.x * ux + vel.z * uz; if (vn < 0) { vel.x -= vn * ux; vel.z -= vn * uz; } }
+    if (vel) {
+      const vn = vel.x * ux + vel.z * uz;
+      // u' = -e*u off something that is not going anywhere. At e = 0 this is the old line.
+      if (vn < 0) { const k = 1 + (bounce || 0); vel.x -= vn * ux * k; vel.z -= vn * uz * k; if (bounce && -vn > 4) snd.bump(Math.min(1, -vn / 14)); }
+    }
   }
   return { floor, hitWall };
 }
@@ -2423,7 +2442,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -2454,7 +2473,7 @@ function settle(p, g, step, px, pz) {
 // between two frames, and a query at his NEW position then finds that road above him,
 // reports no floor at all, and lets him carry on down. Sweeping from the higher of the two
 // is what stops it -- and it is why this only ever bit at speed.
-function groundUnder(p, step, vel, fromY) {
+function groundUnder(p, step, vel, fromY, bounce) {
   // HIS VELOCITY BEFORE THE RESOLVER GETS AT IT. resolveBoxes removes the component going
   // into a surface on the very frame the contact happens, so by the time carHit runs, the
   // approach speed it wants to bounce has already been deleted and every ricochet came out
@@ -2463,7 +2482,7 @@ function groundUnder(p, step, vel, fromY) {
   // heightmap + roofs + cars; walls push the position out
   gridQuery(p.x, p.z, 1.2, _boxes);
   for (const c of carsNear(p.x, p.z, 8, _cars)) _boxes.push(c.box);
-  const r = resolveBoxes(p, .38, 1.7, step, _boxes, vel);
+  const r = resolveBoxes(p, .38, 1.7, step, _boxes, vel, bounce);
   // The real triangle where there is one, and only then the heightmap. They are not
   // combined: taking the max of an exact surface and a smeared one just puts the smear
   // back. Where the collider has no triangle (park furniture) the old five-sample trick
@@ -2654,7 +2673,17 @@ function stepSkate(dt) {
         // before. It compounds, which is exactly what you described. A push is a push
         // now: the angle decides WHETHER he pushes and which way he steers, never how
         // hard he pushes. Only his current speed tapers it.
-        const shove = () => { along += dir * SK8.pushV * (1 - SK8.taper * speed / SK8.pushMax); p.pushK = 1; };
+        // A STROKE, NOT A STEP. Each push used to land its whole delta-v on ONE FRAME, so
+        // the speedometer went 9, 9, 9, 13, 13, 13 -- a staircase, which is what a foot
+        // hitting the road is not. The same total is spread over `shoveDur` on a half sine,
+        // strongest mid-stroke and easing off at both ends, so the number climbs. The
+        // integral of (pi/2)sin(pi*u) over one cycle is exactly 1, so the top speed, the
+        // taper and everything else that was tuned around the impulse are unchanged.
+        const shove = () => {
+          p.shoveV = SK8.pushV * (1 - SK8.taper * speed / SK8.pushMax);
+          p.shoveDur = Math.min(SK8.shoveDur, p.pushPeriod * .75);
+          p.shoveT = p.shoveDur; p.shoveDir = dir; p.pushK = 1;
+        };
         if (!p.pushing) { p.pushing = true; p.pushT = 0; shove(); }   // the first one lands at once
         else { p.pushT += dt; if (p.pushT >= p.pushPeriod) { p.pushT -= p.pushPeriod; shove(); } }
       } else {
@@ -2663,6 +2692,12 @@ function stepSkate(dt) {
       }
     } else { p.pushing = false; p.pushT = 0; }
   } else { p.pushing = false; p.pushT = 0; }
+  // the stroke in progress, delivered whether or not the stick is still asking for another
+  if (p.shoveT > 0 && p.grounded) {
+    const u = 1 - p.shoveT / p.shoveDur;                       // 0 at the plant, 1 at the end
+    along += p.shoveDir * p.shoveV * (Math.PI / 2) * Math.sin(Math.PI * clamp(u, 0, 1)) * (dt / p.shoveDur);
+    p.shoveT -= dt;
+  } else p.shoveT = 0;
   // IN THE AIR THE STICK IS A RATE, NOT A TARGET -- and that is the whole bug. `steer` is
   // the angle between the thumb and his nose, which is exactly right on the ground: he comes
   // round until he is pointing where you asked and then stops, because the wheels have
@@ -2733,7 +2768,7 @@ function stepSkate(dt) {
   p.vel.y -= SK8.g * dt;
   const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
-  const g = groundUnder(p.pos, SK8.step, p.vel, py); p.wall = g.wall;
+  const g = groundUnder(p.pos, SK8.step, p.vel, py, SK8.bounce); p.wall = g.wall;
   if (g.wall) { const f = Math.exp(-SK8.scuff * dt); p.vel.x *= f; p.vel.z *= f; }
   const vyIn = p.vel.y;
   const how = settle(p, g, SK8.step, px, pz);
@@ -2783,7 +2818,11 @@ function poseColin(dt) {
   if (player.board) {
     // YXZ: Z is applied in the board's own frame, and the deck runs along its local Z, so
     // rotation.z IS the kickflip axis. Y is world yaw, which is the shove-it. They stack.
-    board.position.copy(player.pos); board.rotation.set(0, player.heading + player.bYawA, 0, 'YXZ');
+    // ON A HALF CAB THE BOARD LAGS HIM. He asked for his feet to shuffle round on top of a
+    // board that stays put, which cannot be literally true if he is going to ride away the
+    // other way -- but most of the read is in the order. He turns, the deck follows.
+    const lag = player.turnT > 0 ? -player.turnSide * Math.sin(Math.PI * clamp(1 - player.turnT / SK8.turnDur, 0, 1)) * SK8.turnLag : 0;
+    board.position.copy(player.pos); board.rotation.set(0, player.heading + player.bYawA + lag, 0, 'YXZ');
     if (player.grounded) { groundNormal(player.pos.x, player.pos.z, player.pos.y, gN); const fx = Math.sin(player.heading), fz = Math.cos(player.heading); const pitch = Math.atan2(gN.x * fx + gN.z * fz, gN.y); board.rotation.x = pitch; }
     else if (player.trick) {
       // His feet stay on it, so it turns about the same point his body does rather than

@@ -267,6 +267,20 @@ playwright unless he asks for it by name.
   The old box test ran from 1.2 m behind the car's CENTRE to 1.1 m past its nose, on the
   mistaken reading that `along` was measured from the tail. `hl`/`hw` are half extents about
   the centre: the back half of every car was intangible.
+- **A PUSH IS A STROKE, NOT A STEP.** Each shove used to land its whole delta-v on ONE FRAME,
+  so the speedometer read 9, 9, 9, 13, 13, 13 — a staircase, which is not what a foot hitting
+  the road does. The same total is spread over `SK8.shoveDur` on a half sine, strongest
+  mid-stroke: the integral of `(π/2)·sin(πu)` over one cycle is exactly 1, so the top speed,
+  the taper and everything else tuned around the impulse are untouched. Measured: biggest
+  one-frame jump **5.39 m/s → 0.35 m/s**, top speed 23.6 → 24.1. The sawtooth between pushes
+  is meant to be there — pushes ARE discrete events. It was the instant jump that read wrong.
+- **PINBALL OFF A WALL (`SK8.bounce`).** `resolveBoxes` only ever removed the component going
+  INTO a surface, which is right for a slide and completely wrong for meeting a building
+  square: all of his speed was normal to it, all of it was deleted, and he stopped dead. It
+  takes a restitution now and sends that component back out — the same cushion a car already
+  got through `carHit`, finally applied to static geometry. **The tangential component is
+  never touched either way**, so a shallow graze along a shopfront costs nothing and a square
+  hit comes off it at half speed. `SK8.scuff` came down to 1.2 to stop the two fighting.
 - **The skate push cycle is a function of speed and the CLIP IS TIME-SCALED TO MATCH.** A
   skater leaving a dead stop takes three or four quick hard pushes; one fixed 1.55 s cycle
   put the second shove a second and a half after the first, so the first 10 m/s took five
@@ -380,6 +394,9 @@ playwright unless he asks for it by name.
   the air spin, applied below the rebuild — so he keeps his line through it.
   Delete that branch the day switch clips land; riding fakie is a real thing to be able to do,
   and `skate_push_fakie` is the clip that makes it honest.
+  **The deck LAGS him through it** (`SK8.turnLag`), because what he pictured was the feet
+  shuffling round on top of a board that stays put. That cannot be literally true if he is to
+  ride away the other way, but most of the read is in the order: he turns, the deck follows.
 - **A RAIL IS THE TOP EDGE OF THE METAL, FOUND NOT AUTHORED.** `railsFrom` takes every vertex
   within `GRIND.lip` of the top of a `metal` primitive, clusters them by XZ proximity (a rail
   broken up by its own uprights is still one rail), and fits each run with a line by PCA on
