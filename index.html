@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c33</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c34</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c33';
+const BUILD = 'c34';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -224,8 +224,10 @@ const HEAD_SHAPE = 'Colin_Head_MIX';   // the target that turns the base head in
 // duration x 30 keyframes.
 const FPS = 30;
 const TRIM = {
-  get_up_from_back: { end: 22 },     // 0.733 s off the tail: 2.30 -> 1.57
-  get_up_from_face: { start: 9 },    // 0.300 s off the head: 2.70 -> 2.40 of usable clip
+  get_up_from_back:  { end: 22 },              // 0.733 s off the tail: 2.30 -> 1.57
+  get_up_from_face:  { start: 9, end: 24 },    // 0.300 off the head, 0.800 off the tail: 2.70 -> 1.60 usable
+  fall_to_back:      { end: 10 },              // 0.333 s off the tail: 1.133 -> 0.800
+  fall_to_face_down: { end: 14 },              // 0.467 s off the tail: 1.100 -> 0.633
 };
 const TRIM_IN = {};                  // name -> the second the clip should START at
 const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
