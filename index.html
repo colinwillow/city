@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c29</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c30</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c29';
+const BUILD = 'c30';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -354,7 +354,7 @@ THREE.MeshStandardMaterial.prototype.customProgramCacheKey = function () { retur
 // models use, over the same gradient and sun disc. Its HDRI rides underneath at a low
 // weight -- enough to give the sky some structure and the horizon some warmth without a
 // photograph competing with a low-poly city.
-const SKY = { cloud: .52, wind: new THREE.Vector2(1, .28), speed: 1, envK: .16, t: 0 };
+const SKY = { cloud: .52, wind: new THREE.Vector2(1, .28), speed: 1, envK: 0, t: 0 };
 const skyUni = {
   uZen: { value: new THREE.Color(.16, .40, .86) }, uHor: { value: new THREE.Color(.60, .76, .92) },
   uGnd: { value: new THREE.Color(.30, .37, .44) }, uSun: { value: LIGHT.sunDir },
@@ -400,7 +400,16 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 24, 12), skyMat); sky.f
 // what puts a sky reflection on the cars; flat, it is the backdrop the dome blends in.
 // Colin is opted OUT of it -- he is meant to be matte and a reflective man is the whole
 // thing we just spent a day removing.
-const ENV = { url: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
+// The galaxy panorama -- the one Plutopia actually uses. I had taken HDRI_01 instead,
+// which is the daylight sky sitting beside it in that folder, on the reasoning that a
+// daytime city wants a daytime sky. That was a judgement call I made silently and should
+// have put to you, so: this is now the one you pushed.
+//
+// It is the ENVIRONMENT, not the backdrop. A starfield behind a blue midday sky reads as a
+// bug, so SKY.envK is 0 and the dome keeps its gradient and its clouds. What the panorama
+// does is light the reflections -- the cars, the glass -- and it is sitting ready for the
+// moment there is a night cycle to fade it up with. city.SKY.envK = .5 to see it now.
+const ENV = { url: 'images/HDRI_02_galaxy_2K.jpg', day: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
 (() => {
   if (!THREE.PMREMGenerator) return;
   new THREE.TextureLoader().load(ENV.url, t => {
@@ -423,14 +432,26 @@ const ENV = { url: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
 // world-wide one. Sixteen kept within a couple of hundred metres of him and recycled to
 // the upwind side when they drift out of reach, because a deck spread over a kilometre
 // would need hundreds to read as anything and all but a dozen would be past the far plane.
-const CLOUDS = { url: 'models/fluffy_cloud_01.glb', fallback: 'models/fluffy_cloud.glb', n: 16, lo: 78, hi: 150, span: [40, 96], near: 260, drift: 2.2, fade: 5, opacity: .82 };
+// WHY YOU HAVE NOT SEEN THESE. They were at 78-150 m within 260 m of him, which puts them
+// between 17 and 30 degrees above the horizon -- and the camera's pitch is a constant 10
+// degrees BELOW it, so the top of the frame is about 16 degrees up. They were almost
+// entirely above the picture. They are further out and a touch higher now, which drops the
+// angle and puts them in the upper third of the frame where a cloud belongs. They also
+// ignore the fog: at 600 m the exponential haze was eating four fifths of them.
+const CLOUDS = {
+  urls: ['models/fluffy_cloud_01.glb', 'models/fluffy_cloud.glb'],
+  n: 26, lo: 90, hi: 175, span: [70, 165], near: 620, drift: 2.2, fade: 5, opacity: .82,
+};
 const clouds = [];
-function buildClouds(gltf) {
-  const root = gltf.scene;
-  const box = new THREE.Box3().setFromObject(root);
-  const sz = box.getSize(new THREE.Vector3());
-  const big = Math.max(sz.x, sz.y, sz.z) || 1;
+function buildClouds(gltfs) {
+  const kinds = gltfs.map(g => {
+    const root = g.scene, box = new THREE.Box3().setFromObject(root);
+    const sz = box.getSize(new THREE.Vector3());
+    return { root, box, big: Math.max(sz.x, sz.y, sz.z) || 1 };
+  });
+  if (!kinds.length) return;
   for (let i = 0; i < CLOUDS.n; i++) {
+    const { root, box, big } = kinds[i % kinds.length];      // every shape gets used evenly
     const inst = root.clone(true);
     const span = CLOUDS.span[0] + Math.random() * (CLOUDS.span[1] - CLOUDS.span[0]);
     const k = span / big;
@@ -445,6 +466,7 @@ function buildClouds(gltf) {
       o.material = o.material.clone();
       o.material.transparent = true; o.material.depthWrite = true; o.material.opacity = 0;
       o.material.roughness = 1; o.material.metalness = 0; o.material.envMapIntensity = 0;
+      o.material.fog = false;   // at 600 m the exponential fog would eat four fifths of it
       o.material.userData.tag = 'cloud';
       mats.push(o.material);
     });
@@ -1673,10 +1695,10 @@ frame();
     setBoot('building the streets', 1);
     await new Promise(r => setTimeout(r, 30));
     buildCity(city);
-    try { buildClouds(await loadGLB(CLOUDS.url, 'loading the sky')); }
-    catch (e) {
-      try { buildClouds(await loadGLB(CLOUDS.fallback, 'loading the sky')); }
-      catch (e2) { console.warn('no clouds', e2); }
+    {
+      const got = [];
+      for (const u of CLOUDS.urls) { try { got.push(await loadGLB(u, 'loading the sky')); } catch (e) { /* that one is not here */ } }
+      if (got.length) buildClouds(got); else console.warn('no cloud models found');
     }
     setBoot('waking colin', 1);
     try { const c = await loadGLB('models/colin.glb', 'loading colin'); buildColin(c); } catch (e) { console.warn('colin failed', e); }
