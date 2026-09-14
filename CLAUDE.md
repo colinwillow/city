@@ -29,7 +29,8 @@ playwright unless he asks for it by name.
   (`idle_neutral`, `walk_fwd_neutral`, `run_fwd`), air (`jump_going_up`,
   `jump_coming_down`, `landing_roll`, `*_jump_init`, flips), board (`skate_idol_standing`,
   `skate_idol_crouch`, `skate_push_standing/crouch`, `skate_ollie_init_air`,
-  `skate_ollie_air`, `skate_ollie_landing`), dances, waving. 42 face morphs on `head`.
+  `skate_ollie_air`, `skate_ollie_landing`), car hits (`flying_backwards`,
+  `flying_forwards`), dances, waving. 42 face morphs on `head`.
 - `vendor/` — three r180 (module + core), GLTFLoader, DRACOLoader + wasm, BufferGeometryUtils,
   SkeletonUtils. All from the glorp/robits repos.
 - `tools/` — `syntax.mjs` (the gate), `bake.mjs`, `bump.mjs`, `skin.mjs` (every vertex's
@@ -92,22 +93,32 @@ playwright unless he asks for it by name.
 - **Downsampling needs more than one tap.** The bloom bright pass writes a buffer a third
   the width of its source; one bilinear tap at that ratio is nearly a point sample. It
   boxes five taps now, and the blur runs twice.
-- **FXAA IS A DISPLAY-SPACE ALGORITHM AND `rtScene` IS LINEAR HDR.** This caused the pale
-  specks along Colin's silhouette that survived eight builds. Its thresholds assume [0,1];
-  against a sky at 4.0 every edge read as infinite contrast, and the blend reached eight
-  texels and handed back the road's brightness as a pixel of him. Each tap is now squashed
-  through `x/(1+x)` before the comparison, the reach is four texels, and the result is
-  clamped per channel to the neighbourhood it sampled. Plutopia gets away with the raw
-  version and says so in its own comment: *"this art is flat-shaded with almost no texture
-  detail, so the one thing FXAA is usually criticised for costs nothing here."* Colin is
-  exactly the case that sentence excludes. **Any detailed asset dropped into this scene
-  will hit the same wall.**
-- **Diagnose the post chain by elimination, not by theory.** The badge toggle did in one
-  round what four builds of guessing did not: no post was clean, rim off and outline off
-  both still showed it, so it had to be a neighbourhood operation and the bloom was
-  already at zero. That left exactly one pass.
-- **Tap the build badge to cycle the render**: 0 game, 1 no post chain at all, 2 also
-  strips Colin to a flat unlit material. Use it before theorising about what draws what.
+- **THE WHITE BALLS WERE THE GRAZING FRESNEL. This one cost eleven builds — read it.**
+  Schlick's Fresnel takes every dielectric to a mirror at grazing incidence: specular
+  reflectance goes to 1.0 as a surface turns away from the lens, *regardless of
+  roughness*. So a 0.95-rough jacket still returns the full sun intensity along its own
+  silhouette. On a dense mesh that is a line of sub-pixel mirrors far above the bloom
+  threshold, and the bloom returns each as a soft white ball. Hence: they traced his
+  outline, they were white, and nothing done to roughness, metalness, emissive or the maps
+  ever moved them. `toonPatch` now scales `reflectedLight.direct/indirectSpecular` by
+  `mix(TOON.specG, 1, dot(N,V))` — held down at the edge, untouched head-on.
+  **The bloom was only the amplifier, and the outline was never a suspect** (it is a
+  multiply toward a dark colour; it can only darken).
+- **Diagnose by elimination, and make each toggle move ONE variable.** Two rounds of badge
+  toggles were wasted because "no post" also forced the rim and outline off and changed
+  the render resolution, so a clean frame there proved nothing. The frame that actually
+  named it was *flat Colin with the bloom still on*: clean, therefore the seed was in his
+  material, not in a pass.
+- **FXAA is a display-space algorithm and `rtScene` is linear HDR.** Not the cause of the
+  balls, but a real fault found on the way: the thresholds assume [0,1], so against a sky
+  at 4.0 every edge read as infinite contrast. Taps are squashed through `x/(1+x)` before
+  the comparison, the reach is four texels not eight, and the result is clamped per channel
+  to the neighbourhood sampled.
+- **`COLINM`** holds his material intent: roughness .95, metalness 0, and the base map fed
+  back as a .30 emission (his Blender look). Emission lands after the toon ramp and after
+  shadows, so it lifts his dark side without making him shiny.
+- **Tap the build badge to cycle the render**, one variable each: 1 rim off, 2 outline off,
+  3 fxaa off, 4 bloom off, 5 full res (no upscale), 6 no post, 7 flat Colin.
 - **`tools/probe.mjs` rebuilds the heightmap offline** and prints profiles and pinholes.
   The bridge deck is continuous at ~6.3 over its whole span — it has been checked, so a
   fall-through there is not the heightmap. The deck is only ~21 m wide with water either
