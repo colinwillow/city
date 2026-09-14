@@ -428,6 +428,26 @@ playwright unless he asks for it by name.
   a HALF CAB instead (`SK8.turnDur`, on `turn_left`/`turn_right`): the heading comes round 180°
   and he rides away forwards. **The heading turns and the VELOCITY does not** — same rule as
   the air spin, applied below the rebuild — so he keeps his line through it.
+  **THE TURN IS THE SHORTEST WAY ROUND AND IT IS MEASURED, NOT A FIXED HALF TURN.** It used
+  to be a flat `Math.PI` in the direction of `rel`, which broke twice: he swept a full 180
+  however far off he actually was, and he ended that 180 still `rel` out, so the thumb only
+  half-decided where he finished. Worse, it was a CLIFF at 90 degrees, which is what he felt
+  as "one way it takes the short path and the other way the long one" -- tabled before and
+  after, held stick, both signs:
+      landed  89 deg out ->  89 swept      landed 100 deg out -> 259 swept, 180 worst
+  A hair either side of the boundary, three times the rotation. `ang` is already the signed
+  shortest rotation from his nose to the thumb, so it is the whole answer: its SIZE is
+  `turnRem`, its SIGN is `turnSide`, and `turnT`/`turnFull` scale with it at the same
+  `PI/turnDur` rate. Now swept == the landing angle at every offset and the offset never
+  once grows. **`p.turnFull`, not `SK8.turnDur`, drives the deck lag's phase** -- the
+  constant would finish the sine before a short turn had finished.
+  **STEERING IS `ang`, NEVER `rel`.** `rel` decides `braking` and the push cycle; it must not
+  decide the turn. Steering by it brought his TAIL round to the thumb -- the far side of the
+  circle -- so a stick held behind him while he scrubbed speed rotated him AWAY from where it
+  pointed and the half cab afterwards undid it (259 swept at 6 m/s, against 99 now).
+  **`turnSide > 0` IS A TURN TO THE LEFT.** Heading grows +Z toward +X and his right is
+  `(-fz, fx)`, so +X is his left; the clip was picked as `turn_right` for a positive side,
+  which played him spinning against the way the board and the world were going.
   Delete that branch the day switch clips land; riding fakie is a real thing to be able to do,
   and `skate_push_fakie` is the clip that makes it honest.
   **The deck LAGS him through it** (`SK8.turnLag`), because what he pictured was the feet

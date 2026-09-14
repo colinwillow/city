@@ -95,7 +95,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c62</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c63</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -107,7 +107,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c62';
+const BUILD = 'c63';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -2550,7 +2550,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -2761,20 +2761,41 @@ function stepSkate(dt) {
     const fwdC = Math.cos(ang) * s.mag;
     const dir = fwdC >= 0 ? 1 : -1;
     const rel = dir > 0 ? ang : wrapAngle(ang - Math.PI);
-    // No reversal downstream: `rel` is already measured off the end he is being asked to
-    // lead with, so pointing that end at the thumb is the turn, whichever end it is.
-    steer = clamp(rel / .9, -1, 1) * s.mag;
+    // No reversal downstream: `rel` is measured off the end he is being asked to lead with,
+    // and it is what `braking` and the push cycle are decided on -- but it is NOT what he
+    // steers by. STEERING IS ALWAYS `ang`: the shortest signed way to put his NOSE where the
+    // thumb points. Steering by `rel` turned him so his TAIL came round to the thumb, which
+    // is the far side of the circle -- so a stick held behind him while he scrubbed off
+    // speed rotated him AWAY from where it was pointing, and only the half cab afterwards
+    // undid it. There is no fakie push clip for `rel` to serve; restore it the day
+    // `skate_push_fakie` lands and he can honestly ride tail-first.
+    steer = clamp(ang / .9, -1, 1) * s.mag;
     if (p.grounded) {
       p.pushPeriod = lerp(SK8.pushFast, SK8.pushDur, clamp(speed / SK8.pushEase, 0, 1));
       // the stick fights the way he is actually rolling, and he is rolling fast enough for
       // that to be a foot down rather than a push the other way
       const braking = along * dir < -.01 && speed > SK8.fakieAt;
-      // asked to lead with the tail: turn round on the board rather than push backwards
-      if (!braking && !p.turnT && dir < 0 && Math.abs(fwdC) > .35) {
-        p.turnT = SK8.turnDur; p.turnRem = Math.PI; p.turnSide = rel >= 0 ? 1 : -1;
+      // ASKED TO LEAD WITH THE TAIL: turn round on the board rather than push backwards --
+      // AND THE TURN IS THE SHORTEST WAY ROUND, MEASURED, NOT A FIXED HALF TURN. `ang` is
+      // already the signed shortest rotation from his nose to the thumb, so it is the whole
+      // answer: its SIZE is how far he has to come and its SIGN is which way. It used to be
+      // a flat `Math.PI` in the direction of `rel`, which is wrong twice over -- he swept a
+      // full 180 however far off he actually was, and he ended that 180 still `rel` out, so
+      // the thumb only ever half-decided where he finished. Land a quarter turn out and he
+      // went most of the way round the circle to get back to something the stick then had
+      // to correct. The thumb is a heading now: the front of the pad is a direction in the
+      // world and he comes onto it by the near side, from either side, identically.
+      // The duration goes with the angle (the rate is the same PI/turnDur), so a small
+      // correction is quick and a true half cab still takes `turnDur`.
+      if (!braking && !p.turnT && dir < 0 && s.mag > .35) {
+        p.turnRem = Math.abs(ang); p.turnSide = ang >= 0 ? 1 : -1;
+        p.turnT = p.turnFull = Math.max(.12, SK8.turnDur * p.turnRem / Math.PI);
         p.pushing = false; p.pushT = 0;
-        const nm = p.turnSide > 0 ? 'turn_right' : 'turn_left';
-        colinScale(nm, clipLen(nm, SK8.turnDur) / SK8.turnDur);
+        // HEADING GROWS +Z TOWARD +X AND HIS RIGHT IS (-fz, fx), so +X is his LEFT: a
+        // POSITIVE turnSide is a turn to the LEFT. The clip was picked the other way round,
+        // which played him spinning one way while the board and the world went the other.
+        const nm = p.turnSide > 0 ? 'turn_left' : 'turn_right';
+        colinScale(nm, clipLen(nm, SK8.turnDur) / p.turnT);
         snd.jump();
       }
       if (!p.turnT && !braking && Math.abs(fwdC) > .35 && speed < SK8.pushMax) {
@@ -2865,7 +2886,7 @@ function stepSkate(dt) {
     // the way he is now facing, which is the opposite of the point.
     if (p.turnT > 0) {
       p.turnT = Math.max(0, p.turnT - dt);
-      const step = Math.min(p.turnRem, Math.PI * dt / SK8.turnDur);
+      const step = Math.min(p.turnRem, Math.PI * dt / SK8.turnDur);   // same rate whatever the angle
       p.heading += step * p.turnSide; p.turnRem -= step;
       if (p.turnT <= 0 || p.turnRem <= 1e-4) { p.turnT = 0; p.turnRem = 0; }
     }
@@ -2940,7 +2961,7 @@ function poseColin(dt) {
     // ON A HALF CAB THE BOARD LAGS HIM. He asked for his feet to shuffle round on top of a
     // board that stays put, which cannot be literally true if he is going to ride away the
     // other way -- but most of the read is in the order. He turns, the deck follows.
-    const lag = player.turnT > 0 ? -player.turnSide * Math.sin(Math.PI * clamp(1 - player.turnT / SK8.turnDur, 0, 1)) * SK8.turnLag : 0;
+    const lag = player.turnT > 0 ? -player.turnSide * Math.sin(Math.PI * clamp(1 - player.turnT / Math.max(.05, player.turnFull), 0, 1)) * SK8.turnLag * clamp(player.turnFull / SK8.turnDur, .25, 1) : 0;
     board.position.copy(player.pos); board.rotation.set(0, player.heading + player.bYawA + lag, 0, 'YXZ');
     if (player.grounded) { groundNormal(player.pos.x, player.pos.z, player.pos.y, gN); const fx = Math.sin(player.heading), fz = Math.cos(player.heading); const pitch = Math.atan2(gN.x * fx + gN.z * fz, gN.y); board.rotation.x = pitch; }
     else if (player.trick) {
