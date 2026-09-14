@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c24</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c25</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c24';
+const BUILD = 'c25';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -887,21 +887,79 @@ function segTarget(car, s, out) {
 const _tg = { x: 0, z: 0, len: 1 }, _cn = [];
 // A car that reaches him throws him. Its own speed decides how far; HIS FACING decides
 // which way he goes over, which is the only thing the two clips differ by.
+// A CAR HIT IS A SEQUENCE, NOT A TIMER. Flying, then the road, then lying on it, then
+// getting up when you ask him to. Each stage ends when the thing itself ends -- the air
+// clip on ground contact, the fall on its own last frame, the get-up on its own -- rather
+// than on a number I picked, which is why the air clip used to keep playing while he lay
+// there.
+const HIT = {
+  min: 3,            // a car slower than this shoulders him aside rather than launching him
+  ref: 9,            // the car speed the two numbers below are quoted at
+  out: 11.5, up: 9,  // how hard he goes, along the car's heading and upward
+  air: .60,          // gravity while flying: lighter, so he hangs long enough to read
+  again: 1.2,        // what a second hit in the air multiplies by. Pinball.
+  cool: .3,          // one car may not hit him sixty times on the way past
+};
+function clipLen(name, fb) { const a = colin.actions[name]; return a ? a.getClip().duration : fb; }
 function carHit(c) {
   const p = player;
-  if (p.hitT > 0 || c.speed < 3) return;
+  if (c.speed < HIT.min || p.hitCool > 0) return;
+  if (p.hit && p.hit !== 'fly') return;                      // already down; leave him there
   const dx = p.pos.x - c.x, dz = p.pos.z - c.z;
   if (p.pos.y > c.y + c.hh + .6) return;                     // he ollied over it
   const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
   const along = dx * fx + dz * fz, side = -dx * fz + dz * fx;
   if (along < -1.2 || along > c.hl + 1.1 || Math.abs(side) > c.hw + .7) return;
-  const toCar = Math.atan2(-dx, -dz);
-  p.hitFwd = Math.cos(wrapAngle(toCar - p.faceH)) < 0;       // struck head-on -> over backwards
-  p.hitT = 1.6;
-  const k = clamp(c.speed / 9, .6, 1.7);
-  p.vel.x = fx * 9 * k; p.vel.z = fz * 9 * k; p.vel.y = 7 * k;
-  p.grounded = false; p.airT = 0; p.landT = 0;
+  const again = p.hit === 'fly';
+  // PINBALL. Caught in the air by a second car, the new car's heading takes over AND the
+  // way he is going over flips, so the second hit reverses him instead of nudging him.
+  if (again) p.hitFwd = !p.hitFwd;
+  else { const toCar = Math.atan2(-dx, -dz); p.hitFwd = Math.cos(wrapAngle(toCar - p.faceH)) < 0; }
+  p.hit = 'fly'; p.hitSnap = true; p.hitCool = HIT.cool;
+  p.airT = 0; p.landT = 0; p.rollT = 0; p.grounded = false;
+  const k = clamp(c.speed / HIT.ref, .6, 1.8) * (again ? HIT.again : 1);
+  p.vel.x = fx * HIT.out * k; p.vel.z = fz * HIT.out * k; p.vel.y = HIT.up * k;
   if (p.board) { p.board = false; board.visible = false; document.getElementById('boardB').classList.remove('on'); }
+}
+// one integration, shared by all three stages; only the gravity and the damping differ
+function hitMove(dt, gk, half) {
+  const p = player;
+  if (half) { p.vel.x = damp(p.vel.x, 0, half, dt); p.vel.z = damp(p.vel.z, 0, half, dt); }
+  p.vel.y -= MOVE.g * gk * dt;
+  const px = p.pos.x, pz = p.pos.z;
+  p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
+  const g = groundUnder(p.pos, MOVE.step, p.vel); p.wall = g.wall;
+  return settle(p, g, MOVE.step, px, pz);
+}
+function stepHit(dt) {
+  const p = player;
+  p.hitCool = Math.max(0, p.hitCool - dt);
+  if (p.hit === 'fly') {
+    p.airT += dt;
+    if (hitMove(dt, HIT.air, 0) === 'landed') {
+      // THE AIR CLIP ENDS THE INSTANT HE TOUCHES. Thrown forwards he lands on his face,
+      // thrown backwards he lands on his back -- the same flag decides both.
+      p.hitFace = p.hitFwd;
+      p.hit = 'down'; p.hitSnap = true;
+      p.hitT = clipLen(p.hitFace ? 'fall_to_face_down' : 'fall_to_back', 1.2);
+      p.vel.x *= .18; p.vel.z *= .18;
+    }
+  } else if (p.hit === 'down') {
+    hitMove(dt, 1, .09);
+    p.hitT -= dt;
+    // and then he lies there. The stick is what picks him up, not a clock.
+    if (p.hitT <= 0 && (stickWorld().mag > .25 || p.jump)) {
+      p.jump = 0; p.hit = 'up'; p.hitSnap = true;
+      p.hitT = clipLen(p.hitFace ? 'get_up_from_face' : 'get_up_from_back', 1.4);
+    }
+  } else {
+    hitMove(dt, 1, .07);
+    p.hitT -= dt;
+    if (p.hitT <= 0) { p.hit = ''; p.hitSnap = true; p.goT = 0; }   // and up into a walk
+  }
+  p.speed = Math.hypot(p.vel.x, p.vel.z);
+  if (colin.ready) colinAnim(dt);
+  poseColin(dt);
 }
 function stepTraffic(dt) {
   carGridBuild();
@@ -1156,22 +1214,31 @@ function colinScale(name, s) { const a = colin.actions[name]; if (a) a.setEffect
 // and they are rewound whenever their weight comes up off the floor.
 const ONCE = ['jump_going_up', 'jump_coming_down', 'landing_roll', 'idle_jump_init', 'run_jump_init',
   'skate_ollie_init_air', 'skate_ollie_air', 'skate_ollie_landing', 'back_flip', 'front_flip',
-  'flying_backwards', 'flying_forwards'];
+  'flying_backwards', 'flying_forwards', 'fall_to_back', 'fall_to_face_down',
+  'get_up_from_back', 'get_up_from_face'];
 const CW = {};
 function colinSet(t, dt) {
+  // A SNAP, NOT A FADE, on the frame a hit stage changes. Easing out of the flying clip
+  // while he is already face down on the road is exactly the thing that looked wrong.
+  const snap = player.hitSnap; player.hitSnap = false;
   for (const nm in colin.actions) {
     const a = colin.actions[nm], want = t[nm] || 0, cur = CW[nm] || 0;
     if (cur < .01 && want > .01) { a.reset(); a.play(); }
-    const w = CW[nm] = damp(cur, want, .085, dt);
+    const w = CW[nm] = snap ? want : damp(cur, want, .085, dt);
     if (w > .002) { if (!a.isRunning()) a.play(); a.setEffectiveWeight(w); }
     else if (a.isRunning()) { a.setEffectiveWeight(0); a.stop(); }
   }
 }
 function colinAnim(dt) {
   const p = player, sp = p.speed, t = {};
-  // HIT BY A CAR. Which clip is not about the car, it is about which way he was facing:
-  // struck from the front he goes over backwards, struck from behind he is thrown forwards.
-  if (p.hitT > 0) { t[p.hitFwd ? 'flying_forwards' : 'flying_backwards'] = 1; colinSet(t, dt); return; }
+  // HIT BY A CAR: the whole sequence, one clip each, no blending between stages worth
+  // speaking of -- an impact is not something to ease into.
+  if (p.hit) {
+    if (p.hit === 'fly') t[p.hitFwd ? 'flying_forwards' : 'flying_backwards'] = 1;
+    else if (p.hit === 'down') t[p.hitFace ? 'fall_to_face_down' : 'fall_to_back'] = 1;
+    else t[p.hitFace ? 'get_up_from_face' : 'get_up_from_back'] = 1;
+    colinSet(t, dt); return;
+  }
   if (p.board) {
     // crouch -> pop -> rise -> land. The crouch is a blend rather than a state, so a thumb
     // resting on the pad settles into it and a tap goes straight past it to the pop.
@@ -1265,10 +1332,10 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, initClip: '', hitT: 0, hitFwd: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, initClip: '', hit: '', hitT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
-function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; }
+function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
   // left stick -> world direction, relative to the camera azimuth
@@ -1447,19 +1514,7 @@ function stepPlayer(dt) {
   player.landT = Math.max(0, player.landT - dt);
   player.rollT = Math.max(0, player.rollT - dt);
   player.airT = player.grounded ? 0 : player.airT + dt;
-  // while he is flying he is a ragdoll on a parabola: nothing steers, nothing stops it
-  if (player.hitT > 0) {
-    player.hitT -= dt;
-    player.vel.y -= MOVE.g * dt;
-    const px = player.pos.x, pz = player.pos.z;
-    player.pos.x += player.vel.x * dt; player.pos.z += player.vel.z * dt; player.pos.y += player.vel.y * dt;
-    const g = groundUnder(player.pos, MOVE.step, player.vel);
-    if (settle(player, g, MOVE.step, px, pz) === 'landed') { player.vel.x *= .22; player.vel.z *= .22; player.hitT = Math.min(player.hitT, .5); }
-    player.speed = Math.hypot(player.vel.x, player.vel.z);
-    if (colin.ready) colinAnim(dt);
-    poseColin(dt);
-    return;
-  }
+  if (player.hit) { stepHit(dt); return; }
   if (player.board) stepSkate(dt); else stepFoot(dt);
   if (colin.ready) colinAnim(dt);
   // fell in the water / off the world
@@ -1577,7 +1632,7 @@ frame();
     document.getElementById('boot').classList.add('off');
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TOON, COLINM, SKY, CLOUDS, ENV, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
