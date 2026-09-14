@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c35</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c36</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c35';
+const BUILD = 'c36';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -370,7 +370,7 @@ THREE.MeshStandardMaterial.prototype.customProgramCacheKey = function () { retur
 // models use, over the same gradient and sun disc. Its HDRI rides underneath at a low
 // weight -- enough to give the sky some structure and the horizon some warmth without a
 // photograph competing with a low-poly city.
-const SKY = { cloud: .52, wind: new THREE.Vector2(1, .28), speed: 1, envK: 0, t: 0 };
+const SKY = { cloud: .52, wind: new THREE.Vector2(1, .28), speed: 1, envK: .55, t: 0 };
 const skyUni = {
   uZen: { value: new THREE.Color(.16, .40, .86) }, uHor: { value: new THREE.Color(.60, .76, .92) },
   uGnd: { value: new THREE.Color(.30, .37, .44) }, uSun: { value: LIGHT.sunDir },
@@ -421,10 +421,11 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 24, 12), skyMat); sky.f
 // daytime city wants a daytime sky. That was a judgement call I made silently and should
 // have put to you, so: this is now the one you pushed.
 //
-// It is the ENVIRONMENT, not the backdrop. A starfield behind a blue midday sky reads as a
-// bug, so SKY.envK is 0 and the dome keeps its gradient and its clouds. What the panorama
-// does is light the reflections -- the cars, the glass -- and it is sitting ready for the
-// moment there is a night cycle to fade it up with. city.SKY.envK = .5 to see it now.
+// IT IS ALSO THE BACKDROP NOW. I had it at envK 0 -- environment only -- on the reasoning
+// that a starfield behind a blue midday sky reads as a bug. That was the second silent
+// judgement call on this one asset, and it is why you could not tell it had been put in at
+// all: nothing about the picture changed. It rides at .55 over the gradient, and
+// `city.SKY.envK = x` moves it live now rather than only at load.
 const ENV = { url: 'images/HDRI_02_galaxy_2K.jpg', day: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
 (() => {
   if (!THREE.PMREMGenerator) return;
@@ -439,7 +440,7 @@ const ENV = { url: 'images/HDRI_02_galaxy_2K.jpg', day: 'images/HDRI_01_2K.jpg',
     t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping;
     t.generateMipmaps = false; t.minFilter = t.magFilter = THREE.LinearFilter;
     t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true;
-    ENV.tex = t; skyUni.uEnv.value = t; skyUni.uEnvK.value = SKY.envK;
+    ENV.tex = t; skyUni.uEnv.value = t;
   }, undefined, () => console.warn('no environment map; the sky keeps its gradient'));
 })();
 
@@ -448,15 +449,25 @@ const ENV = { url: 'images/HDRI_02_galaxy_2K.jpg', day: 'images/HDRI_01_2K.jpg',
 // world-wide one. Sixteen kept within a couple of hundred metres of him and recycled to
 // the upwind side when they drift out of reach, because a deck spread over a kilometre
 // would need hundreds to read as anything and all but a dozen would be past the far plane.
-// WHY YOU HAVE NOT SEEN THESE. They were at 78-150 m within 260 m of him, which puts them
-// between 17 and 30 degrees above the horizon -- and the camera's pitch is a constant 10
-// degrees BELOW it, so the top of the frame is about 16 degrees up. They were almost
-// entirely above the picture. They are further out and a touch higher now, which drops the
-// angle and puts them in the upper third of the frame where a cloud belongs. They also
-// ignore the fog: at 600 m the exponential haze was eating four fifths of them.
+// WHY YOU HAVE NOT SEEN THESE, TWICE. A cloud is not in the picture because of its height
+// and it is not in the picture because of its distance -- it is in the picture because of
+// its ANGLE, and both previous sets of numbers were heights in metres with the angle left
+// to fall out of them. It never did. The camera is pitched a constant .17 rad down and the
+// vertical fov is 52, so the visible sky is the band from the horizon to .284 rad above it
+// and NOTHING ELSE. At 90-175 m within 620 m that band held maybe a third of them and the
+// rest sat above the top edge.
+// So both numbers below are angles. A cloud is dropped at a random distance in the ring and
+// its height is then whatever puts it at `el` radians up; its scale is whatever makes it
+// `wide` radians across. Every cloud is therefore on screen by construction, at a sane
+// apparent size, and the ring can be moved without any of that coming apart.
+// They also ignore the fog: out here the exponential haze was eating four fifths of them.
 const CLOUDS = {
   urls: ['models/fluffy_cloud_01.glb', 'models/fluffy_cloud.glb'],
-  n: 26, lo: 90, hi: 175, span: [70, 165], near: 620, drift: 2.2, fade: 5, opacity: .82,
+  n: 28,
+  el: [.055, .215],        // radians above the horizon. The top edge of the frame is .284.
+  wide: [.10, .26],        // radians across
+  near: 380, far: 1050,    // the ring they live in. The far plane is 1600.
+  drift: 2.2, fade: 90, opacity: .82,
 };
 const clouds = [];
 function buildClouds(gltfs) {
@@ -469,10 +480,7 @@ function buildClouds(gltfs) {
   for (let i = 0; i < CLOUDS.n; i++) {
     const { root, box, big } = kinds[i % kinds.length];      // every shape gets used evenly
     const inst = root.clone(true);
-    const span = CLOUDS.span[0] + Math.random() * (CLOUDS.span[1] - CLOUDS.span[0]);
-    const k = span / big;
-    inst.scale.set(k, k * (.62 + Math.random() * .28), k);
-    inst.position.set(-(box.max.x + box.min.x) * .5 * k, -box.min.y * k, -(box.max.z + box.min.z) * .5 * k);
+    // scale is set in cloudPlace, because it depends on how far away the cloud lands
     inst.rotation.y = Math.random() * 6.283;
     const mats = [];
     inst.traverse(o => {
@@ -487,7 +495,7 @@ function buildClouds(gltfs) {
       mats.push(o.material);
     });
     const g = new THREE.Group(); g.add(inst); scene.add(g);
-    const c = { g, mats, k: 0 };
+    const c = { g, inst, box, big, mats, k: 0, squash: .62 + Math.random() * .28 };
     clouds.push(c); cloudPlace(c, true);
   }
 }
@@ -495,20 +503,30 @@ function cloudPlace(c, anywhere) {
   const p = player.pos, w = SKY.wind;
   const wl = Math.hypot(w.x, w.y) || 1;
   const a = anywhere ? Math.random() * 6.283 : Math.atan2(-w.x / wl, -w.y / wl) + (Math.random() - .5) * 1.4;
-  const r = anywhere ? 30 + Math.random() * (CLOUDS.near - 30) : CLOUDS.near * (.86 + Math.random() * .13);
-  c.g.position.set(p.x + Math.sin(a) * r, CLOUDS.lo + Math.random() * (CLOUDS.hi - CLOUDS.lo), p.z + Math.cos(a) * r);
+  // anywhere still means anywhere in the RING, not anywhere in the sky: a cloud dropped
+  // close and high is a cloud directly overhead, which is the one place the camera cannot
+  // look. Recycled ones come in at the back of the ring so they drift across it.
+  const r = anywhere ? CLOUDS.near + Math.random() * (CLOUDS.far - CLOUDS.near)
+                     : CLOUDS.far * (.92 + Math.random() * .07);
+  const el = CLOUDS.el[0] + Math.random() * (CLOUDS.el[1] - CLOUDS.el[0]);
+  c.g.position.set(p.x + Math.sin(a) * r, r * Math.tan(el), p.z + Math.cos(a) * r);
+  // and the size is an angle too, so a near cloud is not a wall and a far one is not a speck
+  const k = r * (CLOUDS.wide[0] + Math.random() * (CLOUDS.wide[1] - CLOUDS.wide[0])) / c.big;
+  c.inst.scale.set(k, k * c.squash, k);
+  c.inst.position.set(-(c.box.max.x + c.box.min.x) * .5 * k, -c.box.min.y * k, -(c.box.max.z + c.box.min.z) * .5 * k);
   c.k = 0;
 }
 function stepClouds(dt) {
   SKY.t += dt * SKY.speed; skyUni.uCloudT.value = SKY.t;
+  skyUni.uEnvK.value = ENV.tex ? SKY.envK : 0;
   if (!clouds.length) return;
   const p = player.pos, w = SKY.wind, sp = CLOUDS.drift * SKY.speed;
   for (const c of clouds) {
     c.g.position.x += w.x * sp * dt; c.g.position.z += w.y * sp * dt;
     const d = Math.hypot(c.g.position.x - p.x, c.g.position.z - p.z);
-    if (d > CLOUDS.near * 1.25) cloudPlace(c, false);
+    if (d > CLOUDS.far * 1.12) cloudPlace(c, false);
     // fade in on arrival and out again at the rim, so a recycle is never a pop
-    const edge = clamp((CLOUDS.near * 1.25 - d) / 45, 0, 1);
+    const edge = clamp((CLOUDS.far * 1.12 - d) / CLOUDS.fade, 0, 1);
     c.k = damp(c.k, CLOUDS.opacity * edge, .14, dt);
     c.g.visible = c.k > .01;
     for (const m of c.mats) m.opacity = c.k;
@@ -664,7 +682,12 @@ function census() {
     else if (o.isSkinnedMesh) { skin++; mesh++; } else if (o.isMesh) mesh++;
     if (o.parent && o.parent.isBone) bone++;
   });
-  dbgInfo = ' · pts' + pts + ' spr' + spr + ' line' + ln + ' onBone' + bone + ' skin' + skin + ' mesh' + mesh;
+  // cloud/env are the two "did that asset actually arrive" questions, answered by counting
+  // rather than by me reasoning about it from here. cloud0 means the GLBs never loaded;
+  // cloudN with vis0 means they loaded and are off the edge of the frame. Different bugs.
+  let vis = 0; for (const c of clouds) if (c.g.visible) vis++;
+  dbgInfo = ' · pts' + pts + ' spr' + spr + ' line' + ln + ' onBone' + bone + ' skin' + skin + ' mesh' + mesh
+    + ' cloud' + clouds.length + '/vis' + vis + ' env' + (ENV.tex ? 1 : 0);
 }
 // ALBEDO ONLY: his textures with no lighting of any kind. If his hair and face read
 // correctly here, the grey is coming from the lights and not from the maps or the
