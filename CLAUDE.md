@@ -188,18 +188,24 @@ playwright unless he asks for it by name.
   A mirrored placement reverses the winding, so the DECK faces down, and `triAdd` throws a
   downward face away as "not a floor": the collider was handed the underside and the deck was
   never in it. `rasterMesh` swaps two indices when `matrixWorld.determinant() < 0`.
-  It is also why those surfaces render BLACK. `normGeo` already reversed the index winding to
-  keep a mirrored face pointing outward, but `applyMatrix4` carries the NORMALS through the
-  mirror too, so the two disagree on every triangle and the shading normal points into the
-  ground. `DoubleSide` does not save it — three only flips a normal for a BACK face, and after
-  the winding fix these are front faces with backwards normals. The normals are negated too.
-  **Black ground and ground you fall through are the same bug.** Found by counting, not
-  looking: `npm run normals` reports up-facing vs down-facing vs normals-disagreeing per mesh,
+  Found by counting, not looking: `npm run normals` reports up-facing vs down-facing per mesh,
   and `road_c_02_003` came back 233 up / 367 down while its unmirrored siblings `_002` and
   `_004` came back 367 / 233 — the same numbers, swapped.
-- **`land` MUST NOT SWALLOW `landscape`.** `isWalk` used `/^(land|...)/`, so the scenery shells
-  went into the ground raster; `landscape_005` is inside out in the file (3 up-facing triangles
-  against 436 down). It is `land(?!scape)` now.
+  **DO NOT NEGATE THE NORMALS IN `normGeo`. c52 DID AND IT PAINTED 174 MESHES BLACK.**
+  The winding reversal there and `applyMatrix4`'s normal matrix already agree: a pure
+  reflection's inverse-transpose is itself, so the stored normal survives the mirror pointing
+  the same way the re-wound face does. Negating on top points the shading normal INTO the
+  ground. **What made that mistake pass was a measurement that did not test the code** —
+  `normals.mjs` compares the RAW file's winding against the transformed normal, which of
+  course disagrees, because it never models `normGeo`'s own reversal. Verified properly the
+  second time by running the mirror, the reversal and the normal matrix on one triangle and
+  taking the dot: **+1, they agree.** A tool that measures the asset is not a tool that
+  measures the pipeline.
+- **`landscape` IS WALKABLE AND MUST STAY WALKABLE** — those shells are the hillsides and he
+  runs up them. c52 excluded them because `landscape_005` reads 3 up-facing triangles against
+  436 down, which looked like a broken mesh. It is not: it is MIRRORED (determinant −1124), and
+  `rasterMesh`'s determinant flip two lines further down already puts it the right way up. The
+  exclusion took the hills away for a problem that was already solved.
 - **FOLLOWING AND CROSSING ARE TWO DIFFERENT PROBLEMS AND ONLY ONE WAS SOLVED.** Following is
   longitudinal — a car in my lane going my way, match its speed at a gap. Crossing is not: at
   a junction the other car is at ninety degrees and its heading says nothing about whether we
@@ -429,6 +435,21 @@ playwright unless he asks for it by name.
   ollie out, which is the one part that has to feel deliberate. No balance meter yet, and no
   grind clip: `skate_idol_crouch` stands in because it is the only board pose with his knees
   bent and it reads far better on a rail than the ollie hang.
+- **HOLD THE RIGHT PAD ON FOOT AND HE WINDS UP.** The same thumb that taps to jump: held it is
+  a sprint AND a charge, and letting go is a jump scaled by how long it was held. One input
+  doing two things that belong together — you run at something and leap it. The forward part of
+  the launch goes along his TRAVEL, not his facing, so a wind-up on the spot just goes up.
+      charge   0%   top 9.0 m/s   jump 2.81 m high, 1.06 s,  9.5 m far
+      charge  50%   top 11.5      jump 4.11 m       1.28 s, 17.9 m
+      charge 100%   top 14.0      jump 5.66 m       1.51 s, 28.5 m
+  On the board that thumb is still the ollie, so the wind-up is on foot only.
+- **THE MAP (`MAP`, `buildMap`, `drawMap`) IS A SCHEMATIC, NOT A RADAR.** The whole city at
+  once, north up, because the question it answers is "where is the park from here" and he
+  could not find the ramps at all. **The road network IS the map** — `tiles` already holds
+  every road slab's footprint, so it costs nothing to draw. The static half goes into an
+  offscreen canvas ONCE and the frame only blits it and puts an arrow on top, at `MAP.every`
+  rather than every frame, because none of it moves. `pointer-events: none` so it can never
+  eat a thumb; `city.MAP.on = 0` hides it.
 - **Locomotion is Plutopia's model. Read `plutopia/index.html` (`const MOVE`, and the
   integration in `stepPlayer`) before touching it — do not rebuild it, and do not look at
   Peggy, which is the least developed of these games.** Robits is the other good one.
@@ -513,7 +534,10 @@ playwright unless he asks for it by name.
   back as a .30 emission (his Blender look). Emission lands after the toon ramp and after
   shadows, so it lifts his dark side without making him shiny.
 - **Tap the build badge to cycle the render**, one variable each: 1 rim off, 2 outline off,
-  3 fxaa off, 4 bloom off, 5 full res (no upscale), 6 no post, 7 flat Colin.
+  3 fxaa off, 4 bloom off, 5 full res (no upscale), 6 no post, 7 flat Colin, 8 sun only,
+  9 nan map, **10 no shadow, 11 no hole**. A big dark region is either a shadow or it is
+  shading, and those are different bugs — one tap on 10 says which, which is worth more than
+  any amount of reading.
 - **`tools/probe.mjs` rebuilds the heightmap offline** and prints profiles and pinholes.
   The bridge deck is continuous at ~6.3 over its whole span — it has been checked, so a
   fall-through there is not the heightmap. The deck is only ~21 m wide with water either

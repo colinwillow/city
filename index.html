@@ -59,6 +59,9 @@
   #boardB{right:calc(166px + env(safe-area-inset-right));bottom:calc(61px + env(safe-area-inset-bottom))}
   #resetB{top:calc(14px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));width:40px;height:40px;font-size:16px}
   #soundB{top:calc(14px + env(safe-area-inset-top));right:calc(62px + env(safe-area-inset-right));width:40px;height:40px;font-size:15px}
+  #map{position:fixed;top:calc(62px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));
+    width:116px;height:116px;border-radius:14px;z-index:4;pointer-events:none;
+    border:1.5px solid rgba(157,247,255,.30);box-shadow:0 4px 16px rgba(0,0,0,.45)}
   /* ---- chips ---- */
   .chip{position:fixed;z-index:4;font:600 11px/1 var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--ink);opacity:.7;
     padding:7px 10px;border-radius:999px;border:1px solid rgba(157,247,255,.22);background:rgba(10,14,40,.45);backdrop-filter:blur(6px)}
@@ -91,7 +94,8 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c58</b><i id="perf">···</i></div>
+<canvas id="map" hidden></canvas>
+<div class="chip" id="build"><b id="buildN">c59</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -103,7 +107,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c58';
+const BUILD = 'c59';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -142,6 +146,13 @@ const MOVE = {
   max: 9, acc: 24, accFall: .93, drag: 46,
   push0: .30, pushT: .85, pushOut: 2.6,
   airAcc: 11, airDrag: 1.2,
+  // HOLD THE RIGHT PAD ON FOOT AND HE WINDS UP. The same thumb that taps to jump: held, it is
+  // a sprint AND a charge, and letting go is a jump scaled by how long you held it. One input
+  // doing two things that belong together -- you run at something and leap it.
+  chargeMax: .9,     // seconds to a full wind-up
+  sprint: 1.55,      // top speed multiplier at full charge
+  chargeUp: .42,     // extra jump SPEED at full charge, as a fraction
+  chargeOut: 5.0,    // and how much he is thrown along his travel, m/s
   turn: 26, airTurn: 9,
   face0: 11, face1: 5.2,
   plantAt: 2.2, plantFull: 6.5,
@@ -1116,7 +1127,7 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
 // possible source of pale specks on a silhouette.
 let DBG = 0;
 const DBGN = ['', 'rim off', 'outline off', 'fxaa off', 'bloom off', 'full res', 'no post', 'albedo only',
-  'sun only', 'nan map'];
+  'sun only', 'nan map', 'no shadow', 'no hole'];
 // What is actually IN the scene graph, counted rather than assumed. Answers the question
 // directly on the phone, where there is no console to traverse from.
 let dbgInfo = '';
@@ -1176,6 +1187,10 @@ function applyDbg() {
   // sun only: the cold half of the lighting off, so what is left is the sun and his texture
   hemi.intensity = DBG === 8 ? 0 : LIGHT.hemi;
   fill.intensity = DBG === 8 ? 0 : LIGHT.fill;
+  // A BIG DARK REGION IS EITHER A SHADOW OR IT IS SHADING, AND THOSE ARE DIFFERENT BUGS.
+  // One tap on each of these says which, which is worth more than any amount of reading.
+  sun.castShadow = DBG !== 10;
+  HOLE.on = DBG === 11 ? 0 : 1;
   if (DBG === 8) TOON.rim = 0;
   if (DBG) census(); else dbgInfo = '';
 }
@@ -1851,20 +1866,25 @@ function normGeo(g, m, flat) {
   out.setIndex(idx);
   if (g.attributes.normal) out.setAttribute('normal', _f32(g.attributes.normal, 3)); else out.computeVertexNormals();
   out.applyMatrix4(m);
-  // AND THAT IS WHY IT IS BLACK. The winding was reversed above to keep a mirrored face
-  // pointing outward, but applyMatrix4 carries the NORMALS through the mirror as well -- so
-  // the two end up disagreeing on every triangle (measured: 296/296, 548/548, 772/772 on the
-  // road tiles) and the shading normal points into the ground, away from the sun. DoubleSide
-  // does not save it: three only flips a normal for a BACK face, and after the winding fix
-  // these are front faces with backwards normals.
-  if (m.determinant() < 0) { const na = out.attributes.normal, arr = na.array; for (let i = 0; i < arr.length; i++) arr[i] = -arr[i]; na.needsUpdate = true; }
+  // NO NORMAL NEGATION HERE, AND c52 WAS WRONG TO ADD ONE. The winding reversal above and
+  // applyMatrix4's normal matrix already agree: a pure reflection's inverse-transpose is
+  // itself, so the stored normal survives the mirror pointing the same way the re-wound face
+  // does. Negating on top of that points the shading normal INTO the ground and renders the
+  // surface black -- 174 walkable meshes of it.
+  // What made that mistake pass review was a measurement that did not test the code: the
+  // tool compared the RAW file's winding against the transformed normal, which of course
+  // disagrees, because it never modelled this function's own reversal. Verified properly this
+  // time by running the mirror, the reversal and the normal matrix on one triangle and taking
+  // the dot: +1. They agree.
   return out;
 }
 const isCar = n => /^(car|jeep|truck|tractor)_/.test(n);
-// `land` must not swallow `landscape`. The scenery shells are excluded from the solids on
-// purpose and one of them (landscape_005) is inside out in the file -- 3 up-facing triangles
-// against 436 down -- so letting it into the ground raster fed the heightmap garbage.
-const isWalk = n => /^(land(?!scape)|green_|sand_|road_|parking_area|bridge|basketballcourt|park_[a-z]|farmstractures_11)/.test(n);
+// `landscape` IS WALKABLE and must stay walkable -- those shells are the hillsides, and he
+// runs up them. c52 excluded them because `landscape_005` reads 3 up-facing triangles against
+// 436 down, which looked like a broken mesh; it is not, it is MIRRORED (determinant -1124),
+// and rasterMesh's own determinant flip already puts it the right way up. Excluding them took
+// the hills away for a problem that was already solved two lines further down.
+const isWalk = n => /^(land|green_|sand_|road_|parking_area|bridge|basketballcourt|park_[a-z]|farmstractures_11)/.test(n);
 const isWater = n => /^water_/.test(n);
 const isTree = n => /^tree/.test(n);
 const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
@@ -2138,6 +2158,61 @@ function buildRamps(gltf) {
     if (/metal/i.test(nm)) railsFrom(o);
   });
   console.log('park: ' + PARK.built + ' ramps placed, ' + RAILS.length + ' grind rails found');
+}
+
+// ---------- the map ----------
+// He could not find the ramps, which is a fair complaint about a city with no map in it. This
+// is a schematic, not a radar: the whole place at once, north up, so "where is the park from
+// here" is answerable at a glance rather than by driving around. The road network IS the map --
+// it is what he navigates by, and `tiles` already holds every road slab's footprint.
+// The static half is drawn ONCE into an offscreen canvas; the frame only blits it and puts an
+// arrow on top, at MAP.every rather than every frame, because none of it moves.
+const MAP = { on: 1, px: 116, pad: 7, every: .07, k: 1, x0: 0, z0: 0, o: 0, t: 9, base: null, ctx: null };
+function buildMap() {
+  const el = document.getElementById('map'); if (!el || !tiles.length) return;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  el.width = el.height = Math.round(MAP.px * dpr);
+  MAP.ctx = el.getContext('2d');
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (const t of tiles) { if (t.minx < x0) x0 = t.minx; if (t.maxx > x1) x1 = t.maxx; if (t.minz < z0) z0 = t.minz; if (t.maxz > z1) z1 = t.maxz; }
+  for (const s of PARK.spots) { x0 = Math.min(x0, s.x - 12); x1 = Math.max(x1, s.x + 12); z0 = Math.min(z0, s.z - 12); z1 = Math.max(z1, s.z + 12); }
+  if (!(x1 > x0)) return;
+  // square the world box so the city is not stretched into the canvas
+  const w = x1 - x0, h = z1 - z0, side = Math.max(w, h);
+  MAP.o = MAP.pad * dpr;
+  MAP.k = (el.width - MAP.o * 2) / side;
+  MAP.x0 = x0 - (side - w) / 2; MAP.z0 = z0 - (side - h) / 2;
+  const b = document.createElement('canvas'); b.width = b.height = el.width;
+  const c = b.getContext('2d');
+  c.fillStyle = 'rgba(9,14,26,.72)'; c.fillRect(0, 0, b.width, b.height);
+  c.fillStyle = 'rgba(158,178,204,.55)';
+  for (const t of tiles) c.fillRect(MAP.o + (t.minx - MAP.x0) * MAP.k, MAP.o + (t.minz - MAP.z0) * MAP.k,
+    Math.max(1, (t.maxx - t.minx) * MAP.k), Math.max(1, (t.maxz - t.minz) * MAP.k));
+  // the ramps, which are the thing he cannot find
+  for (const s of PARK.spots) {
+    const X = MAP.o + (s.x - MAP.x0) * MAP.k, Y = MAP.o + (s.z - MAP.z0) * MAP.k;
+    c.fillStyle = 'rgba(127,233,255,.28)'; c.beginPath(); c.arc(X, Y, 5.5 * dpr, 0, 6.283); c.fill();
+    c.fillStyle = '#7fe9ff'; c.beginPath(); c.arc(X, Y, 2.6 * dpr, 0, 6.283); c.fill();
+  }
+  MAP.base = b; MAP.dpr = dpr;
+  el.hidden = false;
+}
+function drawMap(dt) {
+  if (!MAP.base) return;
+  const el = MAP.ctx.canvas;
+  if (!MAP.on) { el.hidden = true; return; }
+  el.hidden = false;
+  MAP.t += dt; if (MAP.t < MAP.every) return; MAP.t = 0;
+  const c = MAP.ctx, d = MAP.dpr;
+  c.clearRect(0, 0, el.width, el.height);
+  c.drawImage(MAP.base, 0, 0);
+  const X = MAP.o + (player.pos.x - MAP.x0) * MAP.k, Y = MAP.o + (player.pos.z - MAP.z0) * MAP.k;
+  // World forward is (sin h, cos h) and the canvas has x right, z DOWN -- so an arrow drawn
+  // pointing up the canvas, (0,-1), has to be turned by PI - faceH to end up along it.
+  c.save(); c.translate(X, Y); c.rotate(Math.PI - player.faceH);
+  c.fillStyle = '#fff'; c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1.2 * d;
+  c.beginPath(); c.moveTo(0, -5.6 * d); c.lineTo(3.8 * d, 4.4 * d); c.lineTo(0, 2.2 * d); c.lineTo(-3.8 * d, 4.4 * d);
+  c.closePath(); c.fill(); c.stroke(); c.restore();
 }
 
 const pendingCars = [];
@@ -2449,7 +2524,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -2535,7 +2610,9 @@ function stepFoot(dt) {
     const er = wrapAngle(p.heading - p.faceH);
     brake = 1 - MOVE.turnBrake * plant * Math.min(1, Math.abs(er) / (Math.PI * .55));
   }
-  const want = s.mag > .1 ? MOVE.max * s.mag * brake : 0;
+  // the sprint: the wind-up raises his ceiling while it is held
+  const chg = clamp(p.charge / MOVE.chargeMax, 0, 1);
+  const want = s.mag > .1 ? MOVE.max * lerp(1, MOVE.sprint, chg) * s.mag * brake : 0;
   const tvx = dvx * want, tvz = dvz * want;
   // how long he has been asking, and how much of his legs that has bought him
   p.goT = want ? p.goT + dt : Math.max(0, p.goT - dt * MOVE.pushOut);
@@ -2560,7 +2637,14 @@ function stepFoot(dt) {
   // jump
   p.coyote = p.grounded ? MOVE.coyote : p.coyote - dt;
   if (p.jump && p.coyote > 0) {
-    p.vel.y = MOVE.jump; p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0;
+    // A CHARGE JUMP. Held, it is higher AND longer -- the forward part goes along his TRAVEL
+    // rather than his facing, so a wind-up into a run leaps, and a wind-up on the spot just
+    // goes up. Both come off the same release, which is the tap that always jumped.
+    const k = clamp(p.charge / MOVE.chargeMax, 0, 1);
+    p.vel.y = MOVE.jump * (1 + MOVE.chargeUp * k);
+    if (k > .05 && sp0 > .5) { const inv = 1 / sp0; p.vel.x += p.vel.x * inv * MOVE.chargeOut * k; p.vel.z += p.vel.z * inv * MOVE.chargeOut * k; }
+    p.charge = 0;
+    p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0;
     p.initClip = sp0 > 3 ? 'run_jump_init' : 'idle_jump_init';
     snd.jump();
   }
@@ -2805,6 +2889,9 @@ function stepPlayer(dt) {
   // the crouch: a thumb resting on the right pad that has not turned into a look
   const wantC = stick.R.down && (stick.R.far || 0) < .35;
   player.crouch = clamp(player.crouch + (wantC ? dt * 9 : -dt * 11), 0, 1);
+  // the wind-up is on foot only; on the board that same thumb is the ollie and the crouch
+  const winding = wantC && !player.board && player.grounded && !player.hit;
+  player.charge = winding ? Math.min(MOVE.chargeMax, player.charge + dt) : (player.jump ? player.charge : 0);
   player.landT = Math.max(0, player.landT - dt);
   player.rollT = Math.max(0, player.rollT - dt);
   player.airT = player.grounded ? 0 : player.airT + dt;
@@ -2924,6 +3011,7 @@ function frame() {
   WHEELS.set(player.speed, player.board && player.grounded && !player.hit, !!player.rail && SFX.on);
   stepCam(dt);
   stepHole();
+  drawMap(dt);
   if (colin.mixer) colin.mixer.update(dt);
   renderPost();
   fpsN++; fpsT += dt; if (fpsT > .5) { fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; perfEl.textContent = fps + ' fps · ' + renderer.info.render.calls + ' dc' + dbgInfo + missing(); }
@@ -2952,11 +3040,12 @@ frame();
     try { const c = await loadGLB('models/colin.glb', 'loading colin'); buildColin(c); } catch (e) { console.warn('colin failed', e); }
     const sg = groundAt(player.pos.x, player.pos.z, 60, 0);
     player.pos.y = sg.hit ? sg.floor : hmAt(player.pos.x, player.pos.z); player.safe.copy(player.pos);
+    buildMap();
     ready = true;
     document.getElementById('boot').classList.add('off');
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
