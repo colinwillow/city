@@ -3,6 +3,7 @@
   "private": true,
   "description": "Tooling for the city map. The game itself needs none of this.",
   "scripts": {
+    "bump": "node tools/bump.mjs",
     "bake": "node tools/bake.mjs",
     "check:syntax": "node tools/syntax.mjs index.html"
   },

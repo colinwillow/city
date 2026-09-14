@@ -1,14 +1,21 @@
 # City — working rules
 
 Single-file Three.js r180 game in `index.html` (native ES modules, import map, no build
-step). Bump `BUILD` (top of the module script and the `#build` chip) on every push, Pages
-caches `index.html`. **Push straight to `main`** — the owner previews live on a phone.
+step). **Run `npm run bump` before every push** — it raises `BUILD` in both places and
+rewrites `version.json`. Pages caches `index.html` for ten minutes and an iOS home-screen
+app caches it harder, so a build that does not announce itself cannot be told apart from
+the one before it. **Push straight to `main`** — the owner previews live on a phone.
+
+The number is the big cyan figure top-left; it pulses three times on load. A running copy
+polls `version.json` every 15s past the cache and puts a "build cN ready · tap" pill on
+screen when the server has moved on, so he never has to guess whether a reload took.
 
 ## Verification budget
 
-**The owner tests the game. You do not.** Make the change, bump `BUILD`, run the ~1s
-syntax gate (`npm run check:syntax`), push, and say "shipped unverified". No screenshots,
-no headless runs, no playwright unless he asks for it by name.
+**The owner tests the game. You do not.** Make the change, `npm run bump`, run the ~1s
+syntax gate (`npm run check:syntax`), push, and say "shipped unverified" **with the build
+number** so he knows what to look for on the badge. No screenshots, no headless runs, no
+playwright unless he asks for it by name.
 
 ## Layout
 
@@ -22,7 +29,10 @@ no headless runs, no playwright unless he asks for it by name.
   walk_fwd_neutral, run_fwd, turn_left/right, dances, waving; 42 face morphs on `head`).
 - `vendor/` — three r180 (module + core), GLTFLoader, DRACOLoader + wasm, BufferGeometryUtils,
   SkeletonUtils. All from the glorp/robits repos.
-- `tools/` — `syntax.mjs` (the gate), `bake.mjs`.
+- `tools/` — `syntax.mjs` (the gate), `bake.mjs`, `bump.mjs`.
+- `version.json` — written by `bump.mjs`; the running game polls it to detect its successor.
+- `.github/workflows/pages.yml` — deploys the repo root. Harmless if Pages is set to
+  "deploy from a branch" instead; both paths deploy the same commit.
 
 ## Landmines
 

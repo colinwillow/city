@@ -50,7 +50,20 @@
   /* ---- chips ---- */
   .chip{position:fixed;z-index:4;font:600 11px/1 var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--ink);opacity:.7;
     padding:7px 10px;border-radius:999px;border:1px solid rgba(157,247,255,.22);background:rgba(10,14,40,.45);backdrop-filter:blur(6px)}
-  #build{top:calc(14px + env(safe-area-inset-top));left:calc(14px + env(safe-area-inset-left))}
+  #build{top:calc(14px + env(safe-area-inset-top));left:calc(14px + env(safe-area-inset-left));opacity:1;padding:6px 12px}
+  #build b{font-size:18px;font-weight:700;letter-spacing:.04em;color:#8ef0ff;text-shadow:0 0 12px rgba(120,238,255,.75)}
+  #build i{font-style:normal;font-size:10px;opacity:.55;margin-left:8px;letter-spacing:.1em}
+  /* Three slow pulses on load. The question this answers is "did it actually reload",
+     and a number that looks identical whether it changed or not cannot answer it. */
+  #build.fresh{animation:fresh 1.5s ease-out 3}
+  @keyframes fresh{0%,100%{border-color:rgba(157,247,255,.22);box-shadow:none}
+    45%{border-color:rgba(157,247,255,.95);box-shadow:0 0 26px rgba(120,238,255,.8),inset 0 0 18px rgba(120,238,255,.3)}}
+  /* The newer build is on the server and this one is not it. */
+  #upd{position:fixed;top:calc(60px + env(safe-area-inset-top));left:50%;z-index:6;border:0;cursor:pointer;
+    font:700 12px/1 var(--disp);letter-spacing:.14em;text-transform:uppercase;color:#04141c;padding:12px 17px;border-radius:999px;
+    background:linear-gradient(180deg,#a6f4ff,#49cdec);box-shadow:0 6px 22px rgba(0,0,0,.5),0 0 26px rgba(120,238,255,.55);
+    animation:updp 1.5s ease-in-out infinite}
+  @keyframes updp{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.06)}}
   #speed{top:calc(14px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:13px;min-width:70px;text-align:center}
   #speed b{font-size:20px;letter-spacing:0;margin-right:4px}
   #help{bottom:calc(26px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);opacity:.45;text-align:center;letter-spacing:.1em;text-transform:none;font-size:11px}
@@ -65,7 +78,8 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build">c2</div>
+<div class="chip" id="build"><b id="buildN">c3</b><i id="perf">···</i></div>
+<button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · mouse drag look · space jump · shift run · B board · R reset</div>
 
@@ -76,7 +90,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c2';
+const BUILD = 'c3';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -791,8 +805,35 @@ function stepCam(dt) {
 }
 
 // ---------- HUD ----------
-const speedEl = document.getElementById('speed').querySelector('b'), buildEl = document.getElementById('build');
+const speedEl = document.getElementById('speed').querySelector('b');
+const buildEl = document.getElementById('build'), buildNEl = document.getElementById('buildN'), perfEl = document.getElementById('perf');
 let fpsT = 0, fpsN = 0, fps = 0;
+buildNEl.textContent = BUILD; buildEl.classList.add('fresh');
+
+// WHICH BUILD IS ON THE GLASS, and whether it is the newest one.
+// Pages puts a ten-minute cache on index.html and an iOS home-screen app holds it
+// harder than that, so "has it reloaded yet" is a real question that the running
+// copy cannot answer about itself -- it will always report the build it IS.
+// version.json is rewritten by tools/bump.mjs on every push, and this asks the
+// SERVER for it past the cache, so the game finds out about its own successor.
+const updEl = document.getElementById('upd');
+let updSeen = null;
+async function checkUpdate() {
+  try {
+    // The query string is the point: a distinct URL is a cache miss at every hop,
+    // which a no-store header alone does not buy you on a CDN.
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const v = await r.json();
+    if (v.build && v.build !== BUILD && v.build !== updSeen) {
+      updSeen = v.build; updEl.hidden = false; updEl.textContent = 'build ' + v.build + ' ready · tap';
+    }
+  } catch (e) { /* offline, or no version.json yet: nothing worth saying */ }
+}
+updEl.addEventListener('click', () => location.replace(location.pathname + '?v=' + Date.now()));
+setInterval(checkUpdate, 15000);
+addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
+checkUpdate();
 
 // ---------- frame ----------
 const clock = new THREE.Clock();
@@ -807,7 +848,7 @@ function frame() {
   stepCam(dt);
   if (colin.mixer) colin.mixer.update(dt);
   renderPost();
-  fpsN++; fpsT += dt; if (fpsT > .5) { fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; buildEl.textContent = BUILD + ' · ' + fps + ' fps · ' + renderer.info.render.calls + ' dc'; }
+  fpsN++; fpsT += dt; if (fpsT > .5) { fps = Math.round(fpsN / fpsT); fpsN = 0; fpsT = 0; perfEl.textContent = fps + ' fps · ' + renderer.info.render.calls + ' dc'; }
   speedEl.textContent = Math.round(player.speed * 3.6);
 }
 frame();
