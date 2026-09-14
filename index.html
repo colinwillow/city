@@ -5,13 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>City</title>
 <link rel="manifest" href="manifest.webmanifest">
-<!-- ?v= ON EVERY ICON. A phone that has already seen icons/apple-touch-icon.png keeps the
-     one it has for ever, and a home-screen shortcut keeps it harder still -- replacing the
-     file in place changes nothing anybody can see. Raise the number when the art changes.
-     Even then iOS only re-reads it when the shortcut is removed and re-added. -->
-<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png?v=3">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=3">
-<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=3">
+<!-- THE VERSION IS IN THE FILENAME AND NEVER IN A QUERY STRING. iOS drops an
+     apple-touch-icon link whose href carries a `?` -- so the cache-buster that was meant to
+     make the new icon arrive is what made NO icon arrive, and the home screen fell back to a
+     screenshot. A new filename is a new URL with no query: it beats the icon cache without
+     tripping that. Even so iOS only re-reads it when the shortcut is removed and re-added. -->
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-v3.png">
+<link rel="apple-touch-icon" sizes="167x167" href="icons/apple-touch-icon-167-v3.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/apple-touch-icon-152-v3.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-v3.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192-v3.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512-v3.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="City">
@@ -87,7 +91,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c50</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c51</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -99,7 +103,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c50';
+const BUILD = 'c51';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;

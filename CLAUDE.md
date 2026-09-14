@@ -67,10 +67,17 @@ playwright unless he asks for it by name.
   itself — ship that and you get a rounded icon inset in a white square with a second rounded
   shape inside it), and it **flattens** onto the artwork's own corner colour, because iOS
   composites a transparent PNG onto black rather than onto the home screen.
-  **Every icon URL carries `?v=`.** A phone that has seen `icons/apple-touch-icon.png` keeps
-  what it has for ever and a home-screen shortcut keeps it harder still, so replacing the file
-  in place changes nothing anyone can see. Raise the number with the art — and even then iOS
-  only re-reads it when the shortcut is removed and re-added.
+  **NEVER PUT A QUERY STRING ON AN `apple-touch-icon` HREF. iOS DROPS THE LINK ENTIRELY.**
+  A phone that has seen `icons/apple-touch-icon.png` keeps what it has for ever and a
+  home-screen shortcut keeps it harder still, so the file has to arrive under a new URL — but
+  `?v=3`, the obvious way to do that, is the one way that cannot work here: the cache-buster
+  meant to make the new icon appear is what made NO icon appear, and the home screen fell back
+  to a screenshot of the page. **The version goes in the FILENAME** (`apple-touch-icon-v3.png`,
+  `icon-192-v3.png`), which is a new URL with no query. `V` at the top of `tools/icons.mjs`;
+  raise it with the art, re-run, and repoint `index.html` and the manifest.
+  Even then iOS only re-reads it when the shortcut is removed and re-added — and the page
+  itself is cached for ten minutes, so hard-reload before adding it or the phone re-reads the
+  OLD head.
 - `models/ramps/skate_ramps_fun_boxes.glb` — four ramps in one file, two materials:
   `ramp_color` and `metal`. **`metal` is only ever a grind rail or coping**, which is what the
   rail extractor keys on. Split by node name, re-centred on their own footprints, and placed

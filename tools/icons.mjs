@@ -12,6 +12,14 @@
 import sharp from 'sharp';
 import { existsSync } from 'fs';
 
+// THE VERSION GOES IN THE FILENAME, NOT IN A QUERY STRING. iOS ignores an apple-touch-icon
+// link whose href carries a `?`, which is exactly what a cache-buster looks like -- so the
+// bust that was meant to make a new icon arrive is the thing that made NO icon arrive. A new
+// filename is a new URL with no query: it dodges the query bug and the icon cache at once.
+// Raise this when the artwork changes, re-run, and point index.html and the manifest at the
+// new names. The unversioned copies stay for anything that looks for the conventional path.
+const V = 3;
+
 const SRC = process.argv[2] || 'icons/source.png';
 if (!existsSync(SRC)) { console.error('no source image at ' + SRC + ' -- pass one, or put it there'); process.exit(1); }
 
@@ -57,13 +65,18 @@ console.log('corner rgb(' + bg.r + ',' + bg.g + ',' + bg.b + ')');
 
 const OUT = [
   ['icons/icon-1024.png', 1024],
+  ['icons/icon-512-v' + V + '.png', 512],
+  ['icons/icon-192-v' + V + '.png', 192],
+  ['icons/apple-touch-icon-v' + V + '.png', 180],       // iPhone home screen
+  ['icons/apple-touch-icon-167-v' + V + '.png', 167],   // iPad Pro
+  ['icons/apple-touch-icon-152-v' + V + '.png', 152],   // older iPad
   ['icons/icon-512.png', 512],
   ['icons/icon-192.png', 192],
-  ['icons/apple-touch-icon.png', 180],   // iOS home screen
+  ['icons/apple-touch-icon.png', 180],
 ];
 for (const [file, n] of OUT) {
   await sharp(SRC).extract({ left: x0, top: y0, width: side, height: side })
     .resize(n, n, { fit: 'cover' }).flatten(bg).png({ compressionLevel: 9 }).toFile(file);
   console.log('wrote ' + file + '  ' + n + 'x' + n);
 }
-console.log('\nNow raise ICONV in index.html and manifest.webmanifest, or a phone that has\nalready seen these URLs will keep the icons it has.');
+console.log('\nPoint index.html and manifest.webmanifest at the -v' + V + ' names. NEVER add a\nquery string to an apple-touch-icon href -- iOS drops the link entirely.');
