@@ -5,7 +5,8 @@
   "scripts": {
     "bump": "node tools/bump.mjs",
     "bake": "node tools/bake.mjs",
-    "check:syntax": "node tools/syntax.mjs index.html"
+    "check:syntax": "node tools/syntax.mjs index.html",
+    "inspect": "node tools/inspect.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

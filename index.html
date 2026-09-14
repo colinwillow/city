@@ -78,10 +78,10 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c3</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c4</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
-<div class="chip" id="help">WASD move · mouse drag look · space jump · shift run · B board · R reset</div>
+<div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
 
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
 <script type="module">
@@ -90,7 +90,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c3';
+const BUILD = 'c4';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -116,7 +116,14 @@ const SK8 = {
   bailAng: 1.15,     // landing more sideways than this scrubs the speed
   pivot: 1.6,        // yaw rate standing still on the board
 };
-const CAM = { dist: 6.4, distV: .11, el: .30, elMin: -.2, elMax: 1.15, look: 1.35, yawRate: 2.4, elRate: 1.5, follow: 1.8, idle: .55, half: .07, fov: 52, fovRush: 9 };
+// THE RIGHT STICK ORBITS, IT DOES NOT PITCH. Up and down on that pad are spent the
+// moment they move the lens, and they are worth more as verbs -- jump, and whatever
+// comes after it. So the elevation is a constant: a shallow look-down that keeps him
+// and the street he is on both in frame, and the pad's whole travel means yaw.
+const CAM = { dist: 6.4, distV: .11, el: .17, look: 1.3, yawRate: 2.4, follow: 1.8, idle: .55, half: .07, fov: 52, fovRush: 9 };
+// Walk, then run. Holding the left stick out past RUN.at for RUN.after seconds breaks
+// him into a run on its own, so the right pad never has to be held to move fast.
+const RUN = { at: .82, after: .65, in: .34, out: .22 };
 const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rimP: 3.4, rimCol: new THREE.Color('#dcefff') };
 const LIGHT = { sun: 3.4, hemi: 1.6, fill: .9, sunDir: new THREE.Vector3(.55, 1, .35).normalize() };
 const POST = { bloom: .85, bloomTh: 1.45, bloomKnee: .6, outline: .55, outlineW: 1, vig: .45, exposure: 1.05 };
@@ -153,7 +160,7 @@ sun.shadow.mapSize.set(2048, 2048);
 const sc = sun.shadow.camera; sc.left = sc.bottom = -48; sc.right = sc.top = 48; sc.near = 10; sc.far = 420;
 // normalBias is in WORLD UNITS along the surface normal. At .5 it moved the lookup half a
 // metre -- a third of the way through the body it was meant to bias by one texel.
-sun.shadow.bias = -.0003; sun.shadow.normalBias = .04;
+sun.shadow.bias = -.0008; sun.shadow.normalBias = .085;   // ~2 texels at 4.7 cm: enough to keep a curved back off its own shadow
 scene.add(sun); scene.add(sun.target);
 const hemi = new THREE.HemisphereLight(0x9bc5ee, 0x4b5a48, LIGHT.hemi); scene.add(hemi);
 const fill = new THREE.DirectionalLight(0x9fd4e8, LIGHT.fill); fill.position.set(-1, .4, -.6); scene.add(fill);
@@ -293,6 +300,11 @@ addEventListener('resize', resize); addEventListener('orientationchange', () => 
 // ---------- heightmap (walkable surfaces rasterised once at load) ----------
 const HM = { x0: -430, z0: -260, w: 1050, h: 650, res: 1, a: null };
 HM.a = new Float32Array(HM.w * HM.h).fill(-1e9);
+// How far above its own lowest point a walkable mesh may still count as floor.
+// bridge_a is ONE mesh: a deck at 7 m and the towers carrying it at 17, 28, 36 and 45.
+// Taking the max of all of it made the tower tops the ground, which is the car that
+// launches over the bridge and the hole he drops through on the way back down.
+const DECK = 12;
 function hmRaster(ax, ay, az, bx, by, bz, cx, cy, cz, cap, water) {
   const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
   const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
@@ -311,7 +323,10 @@ function hmRaster(ax, ay, az, bx, by, bz, cx, cy, cz, cap, water) {
       const y = ay + s * uy + t * vy;
       if (y > cap) continue;
       const idx = k * HM.w + i;
-      if (water) { if (HM.a[idx] < .05) HM.a[idx] = -3; }
+      // Water drowns whatever sits below ITS OWN surface -- not whatever sits below a
+      // fixed 5 cm, which was the old rule and which quietly drowned every lawn that
+      // happened to be modelled at exactly y = 0.
+      if (water) { if (HM.a[idx] < y - .15) HM.a[idx] = -3; }
       else if (y > HM.a[idx]) HM.a[idx] = y;
     }
   }
@@ -430,7 +445,9 @@ function stepTraffic(dt) {
     const a = c.from, b = c.to; const dx = b.cx - a.cx, dz = b.cz - a.cz;
     c.s = ((c.x - a.cx) * dx + (c.z - a.cz) * dz) / (l * l);
     if (c.s >= 1) pickNext(c);
-    c.y = hmAt(c.x, c.z) + c.lift;
+    // A rate limit rather than a snap: whatever the ground says, no car changes height
+    // faster than it could drive up it. One bad cell can no longer fire one into orbit.
+    c.y += clamp(hmAt(c.x, c.z) + c.lift - c.y, -14 * dt, 14 * dt);
     c.g.position.set(c.x, c.y, c.z); c.g.rotation.y = c.yaw;
     // world box for the player to bump into
     const ex = Math.abs(fx) * c.hl + Math.abs(fz) * c.hw, ez = Math.abs(fz) * c.hl + Math.abs(fx) * c.hw;
@@ -496,8 +513,7 @@ function buildCity(gltf) {
     }
     if (isWater(name)) { waters.push(mesh); }
     else if (isWalk(name)) {
-      const capped = /^(park_|basketball|farmstractures)/.test(name);
-      rasterMesh(mesh, capped ? b.miny + .6 : 1e9, false);
+      rasterMesh(mesh, b.miny + (/^(park_|basketball|farmstractures)/.test(name) ? .6 : DECK), false);
     } else if (isTree(name)) {
       const t = { minx: _v.x - .45, maxx: _v.x + .45, minz: _v.z - .45, maxz: _v.z + .45, miny: b.miny, maxy: b.maxy }; solids.push(t); gridAdd(t);
     } else if (/^streetsign/.test(name) && (b.maxx - b.minx > 4 || b.maxz - b.minz > 4)) {
@@ -564,10 +580,22 @@ function buildColin(gltf) {
   // Under a baked room that is his shading; under a 3.4 sun it is a surface that starts
   // above white before the light arrives. Both go, and he receives shadow like everything
   // else -- without it he stood in full sun inside a building's shadow.
+  // THE WHITE BLOCKS. His teeth primitive ships with no material index at all, so three
+  // hands it createDefaultMaterial(): untextured pure white. Six thousand vertices of it
+  // sit inside his head and reach a millimetre FURTHER FORWARD than his face does, so it
+  // punches through his lips -- and being the one surface in the frame at full white, it
+  // is also the one thing left clearing the bloom threshold, which is what spreads it
+  // into hard pale slabs. It gets the head's material, which is what it meant to wear.
+  const headMat = (model.getObjectByName('head') || {}).material;
   const mats = new Set();
   model.traverse(o => {
     if (!o.isMesh) return;
     o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
+    if (headMat && o.material && !o.material.map) o.material = headMat;
+    // No visemes here yet, and 42 morph targets on the head ride along on every draw as
+    // a texture the vertex shader samples. They come back when he needs to talk.
+    if (o.geometry && o.geometry.morphAttributes) o.geometry.morphAttributes = {};
+    o.morphTargetInfluences = undefined; o.morphTargetDictionary = undefined;
     for (const m of (Array.isArray(o.material) ? o.material : [o.material])) if (m) mats.add(m);
   });
   for (const m of mats) {
@@ -638,7 +666,7 @@ document.getElementById('resetB').addEventListener('pointerdown', e => { e.preve
 {
   let drag = null; const el = renderer.domElement;
   el.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') { drag = { x: e.clientX, y: e.clientY }; } });
-  addEventListener('pointermove', e => { if (!drag || e.pointerType !== 'mouse') return; cam.az -= (e.clientX - drag.x) * .006; cam.el = clamp(cam.el + (e.clientY - drag.y) * .004, CAM.elMin, CAM.elMax); cam.idle = 0; drag.x = e.clientX; drag.y = e.clientY; });
+  addEventListener('pointermove', e => { if (!drag || e.pointerType !== 'mouse') return; cam.az -= (e.clientX - drag.x) * .006; cam.idle = 0; drag.x = e.clientX; drag.y = e.clientY; });
   addEventListener('pointerup', () => { drag = null; });
   el.addEventListener('wheel', e => { CAM.dist = clamp(CAM.dist + e.deltaY * .01, 2.5, 16); }, { passive: true });
 }
@@ -647,7 +675,7 @@ document.addEventListener('gesturestart', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, sprint: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushT: 0, pushK: 0, airT: 0, rHold: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushT: 0, pushK: 0, airT: 0, rHold: 0, runT: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) player.pushT = .1; }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; }
@@ -685,8 +713,11 @@ function groundUnder(p, step, vel) {
 function stepFoot(dt) {
   const s = stickWorld(); const p = player;
   p.rHold = stick.R.down ? p.rHold + dt : 0;
-  const wantRun = s.mag > .5 && p.grounded && (p.rHold > .22 || keys.shift);
-  p.sprint = damp(p.sprint, wantRun ? 1 : 0, wantRun ? .12 : .2, dt);
+  // The stick has to be OUT, not merely moving: a slow walk round a corner is a walk.
+  // The timer resets the moment he eases off, so a run is something he commits to.
+  p.runT = (s.mag > RUN.at && p.grounded) ? p.runT + dt : 0;
+  const wantRun = p.runT > RUN.after || keys.shift;
+  p.sprint = damp(p.sprint, wantRun ? 1 : 0, wantRun ? RUN.in : RUN.out, dt);
   const top = lerp(MOVE.walk, MOVE.run, p.sprint) * s.mag;
   const tx = s.x * top, tz = s.z * top; const a = (s.mag > 0 ? MOVE.accel : MOVE.decel) * (p.grounded ? 1 : .35) * dt;
   let dx = tx - p.vel.x, dz = tz - p.vel.z; const dl = Math.hypot(dx, dz); if (dl > a) { dx *= a / dl; dz *= a / dl; }
@@ -779,15 +810,15 @@ function stepPlayer(dt) {
 
 // ---------- camera ----------
 function stepCam(dt) {
-  const rx = stick.R.x, ry = stick.R.y;
-  if (Math.abs(rx) > .05 || Math.abs(ry) > .05) { cam.az -= rx * CAM.yawRate * dt; cam.el = clamp(cam.el + ry * CAM.elRate * dt, CAM.elMin, CAM.elMax); cam.idle = 0; }
+  const rx = stick.R.x;
+  if (Math.abs(rx) > .05) { cam.az -= rx * CAM.yawRate * dt; cam.idle = 0; }
   else cam.idle += dt;
   const sp = player.speed;
   if (cam.idle > CAM.idle && sp > .8) {
     const want = player.board ? Math.atan2(player.vel.x, player.vel.z) : player.heading;
     cam.az += wrapAngle(want - cam.az) * Math.min(1, CAM.follow * dt * clamp(sp / 5, .3, 1.4));
-    cam.el = damp(cam.el, CAM.el, 1.2, dt);
   }
+  cam.el = CAM.el;
   const dist = CAM.dist + sp * CAM.distV;
   cam.tgt.set(player.pos.x, player.pos.y + CAM.look, player.pos.z);
   const ce = Math.cos(cam.el);

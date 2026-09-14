@@ -29,7 +29,9 @@ playwright unless he asks for it by name.
   walk_fwd_neutral, run_fwd, turn_left/right, dances, waving; 42 face morphs on `head`).
 - `vendor/` — three r180 (module + core), GLTFLoader, DRACOLoader + wasm, BufferGeometryUtils,
   SkeletonUtils. All from the glorp/robits repos.
-- `tools/` — `syntax.mjs` (the gate), `bake.mjs`, `bump.mjs`.
+- `tools/` — `syntax.mjs` (the gate), `bake.mjs`, `bump.mjs`, `inspect.mjs` (reads both
+  GLBs: per-mesh UVs, skin weights, morph counts, and the upward-facing triangle heights
+  of the bridge and elevated roads — this is how the deck/tower bug was found).
 - `version.json` — written by `bump.mjs`; the running game polls it to detect its successor.
 - `.github/workflows/pages.yml` — deploys the repo root. Harmless if Pages is set to
   "deploy from a branch" instead; both paths deploy the same commit.
@@ -44,5 +46,15 @@ playwright unless he asks for it by name.
   can be walked *under*. Buildings, trees, fences, props and cars are axis-aligned boxes;
   a box top within `step` of the feet is a floor (that is how roofs and curbs work).
 - **Forward is `(sin h, cos h)`**, right is `(-fz, fx)`. Colin faces +Z in his file.
+- **A walkable mesh contributes only its deck.** `bridge_a` is one mesh with a deck at
+  7 m and towers at 17/28/36/45; rasterising the max made the tower tops the ground.
+  Every walkable mesh is capped at `miny + DECK` (12 m) for that reason.
+- **`colin.glb`'s `teeth` primitive has NO material index.** three hands it
+  `createDefaultMaterial()` — untextured pure white — and it reaches a millimetre further
+  forward than his face, so it punches through his lips. `buildColin` reassigns any
+  material without a `map` to the head's. Any future mesh in that file needs the same care.
+- **Right stick is yaw only** and `CAM.el` is a constant. Up/down on that pad is reserved
+  for verbs. Running is a consequence of holding the left stick out (see `RUN`), never of
+  the right pad.
 - Tunables live in `MOVE`, `SK8`, `CAM`, `TOON`, `LIGHT`, `POST` at the top; all exposed on
   `window.city` for the console.
