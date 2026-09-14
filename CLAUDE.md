@@ -29,7 +29,8 @@ playwright unless he asks for it by name.
   walk_fwd_neutral, run_fwd, turn_left/right, dances, waving; 42 face morphs on `head`).
 - `vendor/` — three r180 (module + core), GLTFLoader, DRACOLoader + wasm, BufferGeometryUtils,
   SkeletonUtils. All from the glorp/robits repos.
-- `tools/` — `syntax.mjs` (the gate), `bake.mjs`, `bump.mjs`, `inspect.mjs` (reads both
+- `tools/` — `syntax.mjs` (the gate), `bake.mjs`, `bump.mjs`, `skin.mjs` (every vertex's
+  distance to its dominant bone — proved the rig clean), `inspect.mjs` (reads both
   GLBs: per-mesh UVs, skin weights, morph counts, and the upward-facing triangle heights
   of the bridge and elevated roads — this is how the deck/tower bug was found).
 - `version.json` — written by `bump.mjs`; the running game polls it to detect its successor.
@@ -54,7 +55,17 @@ playwright unless he asks for it by name.
   forward than his face, so it punches through his lips. `buildColin` reassigns any
   material without a `map` to the head's. Any future mesh in that file needs the same care.
 - **Right stick is yaw only** and `CAM.el` is a constant. Up/down on that pad is reserved
-  for verbs. Running is a consequence of holding the left stick out (see `RUN`), never of
-  the right pad.
+  for verbs, and nothing may be bound to it without asking.
+- **Speed is a ramp.** Full stick asks for `MOVE.run`; thrust tapers with `MOVE.fade`, so
+  walk and run are two points on one curve, not two states. The gait blends three clips
+  by measured speed (`GAIT`) — never add a run *flag*.
+- **`Colin_Head_MIX` rides at weight 1.** It is the blend shape that turns the generic
+  base head into his; the other 41 targets are visemes and stay at zero.
+- **Downsampling needs more than one tap.** The bloom bright pass writes a buffer a third
+  the width of its source; one bilinear tap at that ratio is nearly a point sample, which
+  turned every bright speck into a hard-edged slab. It boxes five taps now, and the blur
+  runs twice.
+- **Tap the build badge to cycle the render**: 0 game, 1 no post chain at all, 2 also
+  strips Colin to a flat unlit material. Use it before theorising about what draws what.
 - Tunables live in `MOVE`, `SK8`, `CAM`, `TOON`, `LIGHT`, `POST` at the top; all exposed on
   `window.city` for the console.
