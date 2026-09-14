@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c20</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c21</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c20';
+const BUILD = 'c21';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -593,6 +593,78 @@ function hmAt(x, z) {
   return lerp(lerp(a[o], a[o + 1], tx), lerp(a[o + HM.w], a[o + HM.w + 1], tx), tz);
 }
 const _n = new THREE.Vector3();
+// ---------- the real collider: actual triangles, in a grid ----------
+// THE HEIGHTMAP IS AN APPROXIMATION AND THIS IS THE THING IT WAS APPROXIMATING.
+// One height per square metre, bilinear between them, which means a 15 cm kerb is spread
+// into a 1 m ramp -- so he neither steps onto the pavement nor is stopped by it, he just
+// rises through it. It also cannot represent two surfaces at the same x,z at all, which
+// is the same reason the bridge and its ramp misbehaved.
+//
+// This stores every GROUND triangle in world space, bucketed by its footprint, and
+// answers a query with point-in-triangle. Exact kerbs, exact ramps, and two answers per
+// query -- the highest surface at or below his feet, and the lowest above them -- which
+// is what lets him stand on the bridge and also walk underneath it.
+//
+// Only real ground goes in: roads, land, grass, sand, parking, the bridge, the courts.
+// Park furniture stays on the heightmap, where a centimetre does not matter and the
+// triangle count does; a query with no triangle under it falls back to it.
+const TRI = { cell: 4, x0: -430, z0: -260, w: 264, h: 164, cells: null, v: null, n: 0 };
+let _triRaw = [];
+function triAdd(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
+  const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+  const nl = Math.hypot(nx, ny, nz);
+  if (nl < 1e-9 || ny / nl < .35) return;                 // a wall is not a floor
+  _triRaw.push(ax, ay, az, bx, by, bz, cx, cy, cz, nx / nl, ny / nl, nz / nl);
+}
+function triBuild() {
+  TRI.n = _triRaw.length / 12;
+  TRI.v = new Float32Array(_triRaw); _triRaw = null;
+  TRI.cells = new Array(TRI.w * TRI.h);
+  const V = TRI.v;
+  for (let t = 0; t < TRI.n; t++) {
+    const o = t * 12;
+    const i0 = clamp(Math.floor((Math.min(V[o], V[o+3], V[o+6]) - TRI.x0) / TRI.cell), 0, TRI.w - 1);
+    const i1 = clamp(Math.floor((Math.max(V[o], V[o+3], V[o+6]) - TRI.x0) / TRI.cell), 0, TRI.w - 1);
+    const k0 = clamp(Math.floor((Math.min(V[o+2], V[o+5], V[o+8]) - TRI.z0) / TRI.cell), 0, TRI.h - 1);
+    const k1 = clamp(Math.floor((Math.max(V[o+2], V[o+5], V[o+8]) - TRI.z0) / TRI.cell), 0, TRI.h - 1);
+    for (let k = k0; k <= k1; k++) for (let i = i0; i <= i1; i++) {
+      const c = k * TRI.w + i; (TRI.cells[c] || (TRI.cells[c] = [])).push(t);
+    }
+  }
+  let used = 0, big = 0;
+  for (const c of TRI.cells) if (c) { used++; if (c.length > big) big = c.length; }
+  console.log('collider: ' + TRI.n + ' ground triangles, ' + used + ' cells, worst cell ' + big +
+    ', ' + ((TRI.v.byteLength) / 1048576).toFixed(1) + ' MB');
+}
+const _gr = { floor: -Infinity, ceil: Infinity, nx: 0, ny: 1, nz: 0, hit: false };
+function groundAt(x, z, y, step) {
+  _gr.floor = -Infinity; _gr.ceil = Infinity; _gr.nx = 0; _gr.ny = 1; _gr.nz = 0; _gr.hit = false;
+  if (!TRI.cells) return _gr;
+  const i = Math.floor((x - TRI.x0) / TRI.cell), k = Math.floor((z - TRI.z0) / TRI.cell);
+  if (i < 0 || k < 0 || i >= TRI.w || k >= TRI.h) return _gr;
+  const list = TRI.cells[k * TRI.w + i]; if (!list) return _gr;
+  const V = TRI.v, top = y + step + .02;
+  for (let a = 0; a < list.length; a++) {
+    const o = list[a] * 12;
+    const ax = V[o], ay = V[o+1], az = V[o+2];
+    const ux = V[o+3] - ax, uy = V[o+4] - ay, uz = V[o+5] - az;
+    const vx = V[o+6] - ax, vy = V[o+7] - ay, vz = V[o+8] - az;
+    const det = ux * vz - uz * vx; if (det > -1e-9 && det < 1e-9) continue;
+    const wx = x - ax, wz = z - az;
+    const sc = (wx * vz - wz * vx) / det, tc = (ux * wz - uz * wx) / det;
+    if (sc < -1e-4 || tc < -1e-4 || sc + tc > 1 + 1e-4) continue;
+    const h = ay + sc * uy + tc * vy;
+    if (h <= top) { if (h > _gr.floor) { _gr.floor = h; _gr.nx = V[o+9]; _gr.ny = V[o+10]; _gr.nz = V[o+11]; _gr.hit = true; } }
+    else if (h < _gr.ceil) _gr.ceil = h;
+  }
+  return _gr;
+}
+// the real surface normal where there is one, the smoothed heightmap gradient where not
+function groundNormal(x, z, y, out) {
+  const g = groundAt(x, z, y, .8);
+  return g.hit ? out.set(g.nx, g.ny, g.nz) : hmNormal(x, z, out);
+}
 function hmNormal(x, z, out) { const d = .6; const dx = hmAt(x + d, z) - hmAt(x - d, z), dz = hmAt(x, z + d) - hmAt(x, z - d); return out.set(-dx, 2 * d, -dz).normalize(); }
 
 // ---------- solids: axis-aligned boxes in a hash grid ----------
@@ -719,7 +791,8 @@ function stepTraffic(dt) {
     if (c.s >= 1) pickNext(c);
     // A rate limit rather than a snap: whatever the ground says, no car changes height
     // faster than it could drive up it. One bad cell can no longer fire one into orbit.
-    c.y += clamp(hmAt(c.x, c.z) + c.lift - c.y, -14 * dt, 14 * dt);
+    const cg = groundAt(c.x, c.z, c.y + .8, 1.2);
+    c.y += clamp((cg.hit ? cg.floor : hmAt(c.x, c.z)) + c.lift - c.y, -14 * dt, 14 * dt);
     c.g.position.set(c.x, c.y, c.z); c.g.rotation.y = c.yaw;
     // world box for the player to bump into
     const ex = Math.abs(fx) * c.hl + Math.abs(fz) * c.hw, ez = Math.abs(fz) * c.hl + Math.abs(fx) * c.hw;
@@ -755,13 +828,14 @@ const isWalk = n => /^(land|green_|sand_|road_|parking_area|bridge|basketballcou
 const isWater = n => /^water_/.test(n);
 const isTree = n => /^tree/.test(n);
 const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
-function rasterMesh(mesh, cap, water) {
+function rasterMesh(mesh, cap, water, precise) {
   const g = mesh.geometry, p = g.attributes.position, m = mesh.matrixWorld, idx = g.index;
   const cnt = idx ? idx.count : p.count;
   for (let i = 0; i + 2 < cnt; i += 3) {
     const ia = idx ? idx.getX(i) : i, ib = idx ? idx.getX(i + 1) : i + 1, ic = idx ? idx.getX(i + 2) : i + 2;
     _a.fromBufferAttribute(p, ia).applyMatrix4(m); _b.fromBufferAttribute(p, ib).applyMatrix4(m); _c.fromBufferAttribute(p, ic).applyMatrix4(m);
     hmRaster(_a.x, _a.y, _a.z, _b.x, _b.y, _b.z, _c.x, _c.y, _c.z, cap, water);
+    if (precise) triAdd(_a.x, _a.y, _a.z, _b.x, _b.y, _b.z, _c.x, _c.y, _c.z);
   }
 }
 let cityMat = null;
@@ -786,7 +860,9 @@ function buildCity(gltf) {
     }
     if (isWater(name)) { waters.push(mesh); }
     else if (isWalk(name)) {
-      rasterMesh(mesh, b.miny + (/^(park_|basketball|farmstractures)/.test(name) ? .6 : DECK), false);
+      // the heightmap gets everything; the precise collider gets real ground only
+      rasterMesh(mesh, b.miny + (/^(park_|basketball|farmstractures)/.test(name) ? .6 : DECK), false,
+        /^(land|green_|sand_|road_|parking_area|bridge|basketballcourt)/.test(name));
     } else if (isTree(name)) {
       const t = { minx: _v.x - .45, maxx: _v.x + .45, minz: _v.z - .45, maxz: _v.z + .45, miny: b.miny, maxy: b.maxy }; solids.push(t); gridAdd(t);
     } else if (/^streetsign/.test(name) && (b.maxx - b.minx > 4 || b.maxz - b.minz > 4)) {
@@ -809,6 +885,7 @@ function buildCity(gltf) {
     }
   }
   for (const w of waters) rasterMesh(w, 1e9, true);
+  triBuild();
   for (let i = 0; i < HM.a.length; i++) if (HM.a[i] < -1e8) HM.a[i] = 0;   // anything never touched is ground level
   // road graph: tiles that touch in plan and sit at the same level (a ramp joins any level)
   for (let i = 0; i < tiles.length; i++) for (let j = i + 1; j < tiles.length; j++) {
@@ -1083,12 +1160,15 @@ function groundUnder(p, step, vel) {
   gridQuery(p.x, p.z, 1.2, _boxes);
   for (const c of carsNear(p.x, p.z, 8, _cars)) _boxes.push(c.box);
   const r = resolveBoxes(p, .38, 1.7, step, _boxes, vel);
-  // A single bilinear sample at a kerb averages the road and the pavement, and he sinks
-  // into the difference. Five samples across his own footprint take the highest, so he
-  // stands ON an edge rather than halfway through it.
+  // The real triangle where there is one, and only then the heightmap. They are not
+  // combined: taking the max of an exact surface and a smeared one just puts the smear
+  // back. Where the collider has no triangle (park furniture) the old five-sample trick
+  // still earns its keep, because a bilinear kerb is exactly what it is compensating for.
+  const g = groundAt(p.x, p.z, p.y, step);
   const q = .22;
-  const hm = Math.max(hmAt(p.x, p.z), hmAt(p.x + q, p.z), hmAt(p.x - q, p.z), hmAt(p.x, p.z + q), hmAt(p.x, p.z - q));
-  return { floor: Math.max(hm, r.floor), hm, wall: r.hitWall };
+  const hm = g.hit ? g.floor
+    : Math.max(hmAt(p.x, p.z), hmAt(p.x + q, p.z), hmAt(p.x - q, p.z), hmAt(p.x, p.z + q), hmAt(p.x, p.z - q));
+  return { floor: Math.max(hm, r.floor), hm, wall: r.hitWall, ceil: g.ceil };
 }
 function stepRoll(dt) {
   const p = player;
@@ -1201,7 +1281,7 @@ function stepSkate(dt) {
   // rebuild the velocity on the (turned) heading, then let the hill have its say
   const nfx = Math.sin(p.heading), nfz = Math.cos(p.heading), nrx = -nfz, nrz = nfx;
   p.vel.x = nfx * along + nrx * lat; p.vel.z = nfz * along + nrz * lat;
-  if (p.grounded) { hmNormal(p.pos.x, p.pos.z, gN); p.vel.x += SK8.g * gN.y * gN.x * dt; p.vel.z += SK8.g * gN.y * gN.z * dt; }
+  if (p.grounded) { groundNormal(p.pos.x, p.pos.z, p.pos.y, gN); p.vel.x += SK8.g * gN.y * gN.x * dt; p.vel.z += SK8.g * gN.y * gN.z * dt; }
   // ollie
   p.coyote = p.grounded ? MOVE.coyote : p.coyote - dt;
   if (p.jump && p.coyote > 0) { p.vel.y = SK8.ollie; p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0; }
@@ -1258,7 +1338,7 @@ function poseColin(dt) {
   colin.root.rotation.z = lean * .6;
   if (player.board) {
     board.position.copy(player.pos); board.rotation.set(0, player.heading, 0, 'YXZ');
-    if (player.grounded) { hmNormal(player.pos.x, player.pos.z, gN); const fx = Math.sin(player.heading), fz = Math.cos(player.heading); const pitch = Math.atan2(gN.x * fx + gN.z * fz, gN.y); board.rotation.x = pitch; }
+    if (player.grounded) { groundNormal(player.pos.x, player.pos.z, player.pos.y, gN); const fx = Math.sin(player.heading), fz = Math.cos(player.heading); const pitch = Math.atan2(gN.x * fx + gN.z * fz, gN.y); board.rotation.x = pitch; }
     board.rotation.z = lean; board.position.y += player.pushK * .01;
   }
 }
@@ -1352,7 +1432,8 @@ frame();
     buildCity(city);
     setBoot('waking colin', 1);
     try { const c = await loadGLB('models/colin.glb', 'loading colin'); buildColin(c); } catch (e) { console.warn('colin failed', e); }
-    player.pos.y = hmAt(player.pos.x, player.pos.z); player.safe.copy(player.pos);
+    const sg = groundAt(player.pos.x, player.pos.z, 60, 0);
+    player.pos.y = sg.hit ? sg.floor : hmAt(player.pos.x, player.pos.z); player.safe.copy(player.pos);
     ready = true;
     document.getElementById('boot').classList.add('off');
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }

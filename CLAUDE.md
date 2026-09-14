@@ -47,9 +47,16 @@ playwright unless he asks for it by name.
   `travel agency` as `travel_agency`. Every category test in `buildCity` is a prefix regex.
 - **Cars**: local −Z is up, local Y is the length; `CAR_FWD` says which end is the nose.
   Mirrored placements (scale −1) get their heading from `matrixWorld`, not the quaternion.
-- **Heightmap is 2D**: one height per metre cell (max of all walkable surfaces), so nothing
-  can be walked *under*. Buildings, trees, fences, props and cars are axis-aligned boxes;
-  a box top within `step` of the feet is a floor (that is how roofs and curbs work).
+- **Ground is a REAL triangle collider now (`TRI`, `groundAt`), not the heightmap.** Every
+  ground triangle — roads, land, grass, sand, parking, bridge, courts — is stored in world
+  space in a 4 m grid and queried by point-in-triangle. It returns TWO answers: the highest
+  surface at or below `y + step`, and the lowest above. That is what gives exact kerbs and
+  ramps, and what lets him stand on the bridge *and* walk under it.
+  The heightmap (`hmAt`, 1 m cells, bilinear) survives only as the fallback for park
+  furniture and anything the collider has no triangle for. **Never max the two together** —
+  combining an exact surface with a smeared one just puts the smear back.
+  Buildings, trees, fences, props and cars are still axis-aligned boxes; a box top within
+  `step` of the feet is a floor, which is how roofs work.
 - **Forward is `(sin h, cos h)`**, right is `(-fz, fx)`. Colin faces +Z in his file.
 - **A walkable mesh contributes only its deck.** `bridge_a` is one mesh with a deck at
   7 m and towers at 17/28/36/45; rasterising the max made the tower tops the ground.
