@@ -56,9 +56,13 @@ playwright unless he asks for it by name.
   material without a `map` to the head's. Any future mesh in that file needs the same care.
 - **Right stick is yaw only** and `CAM.el` is a constant. Up/down on that pad is reserved
   for verbs, and nothing may be bound to it without asking.
-- **Speed is a ramp.** Full stick asks for `MOVE.run`; thrust tapers with `MOVE.fade`, so
-  walk and run are two points on one curve, not two states. The gait blends three clips
-  by measured speed (`GAIT`) — never add a run *flag*.
+- **The gather is in the TARGET speed, never in the acceleration.** `MOVE.gather` raises a
+  momentum term over ~2s which raises the target; velocity reaches that target in ~3
+  frames (`MOVE.accelHL`) and always points along `heading`. Ramping acceleration instead
+  is what produced the moonwalk — the velocity genuinely pointed where he wasn't facing.
+  This model is Peggy's (`src/player/Peggy.js`), which is Robits' before it; read it
+  before touching locomotion rather than rebuilding it a sixth time.
+- The gait blends three clips by measured speed (`GAIT`) — never add a run *flag*.
 - **`Colin_Head_MIX` rides at weight 1.** It is the blend shape that turns the generic
   base head into his; the other 41 targets are visemes and stay at zero.
 - **Downsampling needs more than one tap.** The bloom bright pass writes a buffer a third
@@ -67,5 +71,12 @@ playwright unless he asks for it by name.
   runs twice.
 - **Tap the build badge to cycle the render**: 0 game, 1 no post chain at all, 2 also
   strips Colin to a flat unlit material. Use it before theorising about what draws what.
+- **`tools/probe.mjs` rebuilds the heightmap offline** and prints profiles and pinholes.
+  The bridge deck is continuous at ~6.3 over its whole span — it has been checked, so a
+  fall-through there is not the heightmap. The deck is only ~21 m wide with water either
+  side, and cars on it are solid boxes that can shove you off.
+- **Colin's rig has been read and is clean**: `tools/skin.mjs` (no vertex >30 cm from its
+  bone), normals all unit length, UVs in range, weights summing to 1. Do not re-theorise
+  about torn geometry.
 - Tunables live in `MOVE`, `SK8`, `CAM`, `TOON`, `LIGHT`, `POST` at the top; all exposed on
   `window.city` for the console.

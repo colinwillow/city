@@ -78,7 +78,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c5</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c6</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -90,24 +90,43 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c5';
+const BUILD = 'c6';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
 // frame-rate independent smoothing: how far toward the target in one half-life
 const damp = (cur, tgt, half, dt) => lerp(cur, tgt, 1 - Math.pow(0.5, dt / half));
 const wrapAngle = a => { a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; };
+const dampAngle = (cur, tgt, half, dt) => cur + wrapAngle(tgt - cur) * (1 - Math.pow(0.5, dt / half));
 
 // ---------- tuning ----------
-// SPEED IS A RAMP, NOT A GEAR. A full stick asks for MOVE.run and nothing switches:
-// thrust tapers as he gains speed, so he pulls away from a standstill promptly and the
-// top of the range takes a second or so to reach. About .35 s to a walking pace and
-// about 1.2 s to a full run, with every speed between them a real speed he can hold.
-const MOVE = { walk: 3.4, run: 7.2, accel: 12, fade: .8, decel: 16, jump: 7.6, g: 22, dead: .12, curve: 1.25, step: .55, coyote: .12 };
+// LOCOMOTION, and the model matters more than the numbers. This is Peggy's, which is
+// Robits' before it, and the thing it gets right is WHERE the ramp lives.
+//
+// The gather from a walk to a sprint is a MOMENTUM term that raises the TARGET speed
+// over a couple of seconds. It is not slow acceleration. Velocity itself reaches
+// whatever the target currently is in about three frames -- a 60 ms half-life -- and it
+// is always pointed along his heading. That is the whole difference between a character
+// and a sled: turn the stick and the target turns with it, and he is travelling the new
+// way before the next footfall, instead of carrying the old direction across the turn
+// and moonwalking through it.
+//
+// Slow acceleration was the bug. It reads as ice however the animation is blended,
+// because the velocity genuinely is pointing somewhere he is not facing.
+const MOVE = {
+  walk: 2.4, run: 8.0,        // the two ends of the gather; everything between is real
+  gather: .5, decay: 1.7,     // momentum per second while the stick is out, and off it
+  floor: 0,                   // a fresh push starts at a walk, not at a jog
+  accelHL: .06,               // velocity -> target: ~3 frames. This is what kills the slide
+  brakeHL: .22,               // stick released: a short coast, not a stop on a sixpence
+  airHL: .40,                 // and much less authority off the ground
+  turnHL: .07,                // he turns deliberately, but the body goes where he faces
+  jump: 7.6, g: 22, dead: .12, curve: 1, step: .55, coyote: .12,
+};
 // GAIT. Three clips at once, weighted by how fast he is ACTUALLY travelling, so the
 // blend is a consequence of the speed rather than a second decision about it. Each
 // clip's clock is tied to the ground speed as well, so the feet do not skate.
-const GAIT = { walkAt: 1.5, runAt: 5.4, walkRef: 1.45, runRef: 4.6, tsLo: .65, tsHi: 1.75 };
+const GAIT = { walkAt: 1.4, runAt: 5.6, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7 };
 const SK8 = {
   pushV: 2.7,        // m/s added per push
   pushPeriod: .52,   // seconds between pushes while the stick is held forward
@@ -131,7 +150,12 @@ const SK8 = {
 const CAM = { dist: 6.4, distV: .11, el: .17, look: 1.3, yawRate: 2.4, follow: 1.8, idle: .55, half: .07, fov: 52, fovRush: 9 };
 const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rimP: 3.4, rimCol: new THREE.Color('#dcefff') };
 const LIGHT = { sun: 3.4, hemi: 1.6, fill: .9, sunDir: new THREE.Vector3(.55, 1, .35).normalize() };
-const POST = { bloom: .85, bloomTh: 1.45, bloomKnee: .6, outline: .55, outlineW: 1, vig: .45, exposure: 1.05 };
+// BLOOM IS OFF. Not because it is proven guilty -- the rig, the normals, the weights and
+// the materials have all been read and are all clean, and c5 fixed a real aliasing fault
+// in the bright pass -- but because it has been blamed three times and never ruled out.
+// At 0 the pale specks either go with it or they do not, and either answer is worth more
+// than another guess. Put it back to .85 once we know.
+const POST = { bloom: 0, bloomTh: 1.45, bloomKnee: .6, outline: .55, outlineW: 1, vig: .45, exposure: 1.05 };
 const Q = { dpr: Math.min(devicePixelRatio || 1, 2) * (MOBILE ? .8 : 1), present: Math.min(devicePixelRatio || 1, 2), bloomDiv: 3 };
 const CAR_FWD = 1;        // +1: the car mesh's local +Y is its nose. Flip to -1 if they drive backwards.
 const COLIN_HEIGHT = 1.75;
@@ -310,10 +334,18 @@ function applyDbg() {
     else if (o.userData.m0) { o.material = o.userData.m0; o.userData.m0 = null; }
   });
 }
+// The composite still wants a bloom texture bound even at zero strength; give it the
+// scene and multiply it out rather than branching the shader.
+function renderBloomSkip() {
+  quad.material = compMat; compMat.uniforms.tD.value = rtScene.texture; compMat.uniforms.tB.value = rtScene.texture; compMat.uniforms.tZ.value = rtScene.depthTexture;
+  compMat.uniforms.uPx.value.set(1 / rtScene.width, 1 / rtScene.height); compMat.uniforms.uNear.value = camera.near; compMat.uniforms.uFar.value = camera.far;
+  renderer.setRenderTarget(null); renderer.render(quadScene, quadCam);
+}
 function renderPost() {
   renderer.info.reset();
   if (DBG) { renderer.setRenderTarget(null); renderer.clear(); renderer.render(scene, camera); return; }
   renderer.setRenderTarget(rtScene); renderer.clear(); renderer.render(scene, camera);
+  if (POST.bloom <= 0) { compMat.uniforms.uStr.value = 0; renderBloomSkip(); return; }
   quad.material = brightMat; brightMat.uniforms.tD.value = rtScene.texture;
   brightMat.uniforms.uSrc.value.set(Q.bloomDiv * .5 / rtScene.width, Q.bloomDiv * .5 / rtScene.height);
   renderer.setRenderTarget(rtA); renderer.clear(); renderer.render(quadScene, quadCam);
@@ -339,8 +371,9 @@ function resize() {
 addEventListener('resize', resize); addEventListener('orientationchange', () => setTimeout(resize, 300));
 
 // ---------- heightmap (walkable surfaces rasterised once at load) ----------
-const HM = { x0: -430, z0: -260, w: 1050, h: 650, res: 1, a: null };
+const HM = { x0: -430, z0: -260, w: 1050, h: 650, res: 1, a: null, cov: null };
 HM.a = new Float32Array(HM.w * HM.h).fill(-1e9);
+HM.cov = new Uint8Array(HM.w * HM.h);
 // How far above its own lowest point a walkable mesh may still count as floor.
 // bridge_a is ONE mesh: a deck at 7 m and the towers carrying it at 17, 28, 36 and 45.
 // Taking the max of all of it made the tower tops the ground, which is the car that
@@ -364,11 +397,12 @@ function hmRaster(ax, ay, az, bx, by, bz, cx, cy, cz, cap, water) {
       const y = ay + s * uy + t * vy;
       if (y > cap) continue;
       const idx = k * HM.w + i;
-      // Water drowns whatever sits below ITS OWN surface -- not whatever sits below a
-      // fixed 5 cm, which was the old rule and which quietly drowned every lawn that
-      // happened to be modelled at exactly y = 0.
-      if (water) { if (HM.a[idx] < y - .15) HM.a[idx] = -3; }
-      else if (y > HM.a[idx]) HM.a[idx] = y;
+      // Water only opens a hole where NOTHING walkable reached. Keying it off a height
+      // instead -- either the old fixed 5 cm or the water's own surface -- drowns roads
+      // that legitimately run at ground level through a water footprint, and a drowned
+      // road is a hole you fall through.
+      if (water) { if (!HM.cov[idx]) HM.a[idx] = -3; }
+      else if (y > HM.a[idx]) { HM.a[idx] = y; HM.cov[idx] = 1; }
     }
   }
 }
@@ -564,6 +598,18 @@ function buildCity(gltf) {
     const key = gkey(Math.floor(_v.x / CH), Math.floor(_v.z / CH)); let l = chunks.get(key); if (!l) chunks.set(key, l = []);
     l.push(normGeo(mesh.geometry, mesh.matrixWorld, mesh.userData.flat)); statics++;
   }
+  // PINHOLES. A cell every surface happened to miss, ringed by cells that all found one,
+  // is not a gap in the world -- it is a gap in the rasteriser, and it reads in game as
+  // falling through a road for one stride. Fill any such cell from its lowest neighbour.
+  for (let pass = 0; pass < 2; pass++) {
+    for (let k = 1; k < HM.h - 1; k++) for (let i = 1; i < HM.w - 1; i++) {
+      const o = k * HM.w + i;
+      const a1 = HM.a[o - 1], a2 = HM.a[o + 1], a3 = HM.a[o - HM.w], a4 = HM.a[o + HM.w];
+      if (!(HM.cov[o - 1] && HM.cov[o + 1] && HM.cov[o - HM.w] && HM.cov[o + HM.w])) continue;
+      const lo = Math.min(a1, a2, a3, a4);
+      if (lo - HM.a[o] > .6) { HM.a[o] = lo; HM.cov[o] = 1; }
+    }
+  }
   for (const w of waters) rasterMesh(w, 1e9, true);
   for (let i = 0; i < HM.a.length; i++) if (HM.a[i] < -1e8) HM.a[i] = 0;   // anything never touched is ground level
   // road graph: tiles that touch in plan and sit at the same level (a ramp joins any level)
@@ -728,7 +774,7 @@ document.addEventListener('gesturestart', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushT: 0, pushK: 0, airT: 0, rHold: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushT: 0, pushK: 0, airT: 0, rHold: 0, mom: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) player.pushT = .1; }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; }
@@ -766,14 +812,16 @@ function groundUnder(p, step, vel) {
 function stepFoot(dt) {
   const s = stickWorld(); const p = player;
   p.rHold = stick.R.down ? p.rHold + dt : 0;
-  const sp0 = Math.hypot(p.vel.x, p.vel.z);
-  const top = MOVE.run * s.mag;
-  const tx = s.x * top, tz = s.z * top;
-  const a = (s.mag > 0 ? MOVE.accel * (1 - MOVE.fade * clamp(sp0 / MOVE.run, 0, 1)) : MOVE.decel) * (p.grounded ? 1 : .35) * dt;
-  let dx = tx - p.vel.x, dz = tz - p.vel.z; const dl = Math.hypot(dx, dz); if (dl > a) { dx *= a / dl; dz *= a / dl; }
-  p.vel.x += dx; p.vel.z += dz;
+  // the gather: walk, quick walk, jog, run, sprint, as one number climbing while he holds
+  p.mom = clamp(s.mag > .35 && p.grounded ? p.mom + MOVE.gather * dt : p.mom - MOVE.decay * dt, MOVE.floor, 1);
+  // he turns toward the stick, and the TARGET is along his heading -- never along the
+  // stick. A turn therefore redirects him rather than adding a sideways component.
+  if (s.mag > 0) p.heading = dampAngle(p.heading, Math.atan2(s.x, s.z), MOVE.turnHL, dt);
+  const want = lerp(MOVE.walk, MOVE.run, p.mom) * s.mag;
+  const tx = Math.sin(p.heading) * want, tz = Math.cos(p.heading) * want;
+  const hl = !p.grounded ? MOVE.airHL : (s.mag > 0 ? MOVE.accelHL : MOVE.brakeHL);
+  p.vel.x = damp(p.vel.x, tx, hl, dt); p.vel.z = damp(p.vel.z, tz, hl, dt);
   const sp = Math.hypot(p.vel.x, p.vel.z);
-  if (s.mag > 0) p.heading += clamp(wrapAngle(Math.atan2(s.x, s.z) - p.heading), -12 * dt, 12 * dt);
   // jump
   p.coyote = p.grounded ? MOVE.coyote : p.coyote - dt;
   if (p.jump && p.coyote > 0) { p.vel.y = MOVE.jump; p.grounded = false; p.coyote = 0; }
