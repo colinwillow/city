@@ -91,12 +91,28 @@ playwright unless he asks for it by name.
   combining an exact surface with a smeared one just puts the smear back.
   Buildings, trees, fences, props and cars are still axis-aligned boxes; a box top within
   `step` of the feet is a floor, which is how roofs work.
-- **A CAR HIT IS SCORED ON CLOSING SPEED, NEVER THE CAR'S SPEEDOMETER**, and it has three
-  tiers: a graze nudges him and **keeps the board**, a shoulder takes the board but leaves
-  him on his feet, and a launch runs the fly/fall/get-up sequence. Riding alongside traffic
-  at the same pace and brushing a wing closes at nearly nothing and must cost nearly
-  nothing — losing the board to a touch means five seconds of pushing to get back, which is
-  the worst thing a car can do to you.
+- **A CAR IS A CUSHION, NOT A WALL. `carHit` works along the CONTACT NORMAL.** The face is
+  whichever of the two axes he is least deep into — nose or flank — and everything is
+  expressed along the normal out of it: the closing speed that picks the tier, the
+  restitution that sends him off it, and the direction of a launch. Only the normal
+  component of his velocity is ever touched, so what he had ALONG a flank he keeps, and he
+  comes off a car carrying his line instead of stopping against a box.
+  Three things this must not lose:
+  1. **The score is not either speed on its own.** `w` is the face's own speed along the
+     normal, `-u` is his into it, and being hit is not the same event as running into
+     something: `HIT.mine` (.45) is how much of his own approach counts. A car overtaking
+     him in the next lane closes at nothing; skating hard into a parked flank ricochets and
+     **keeps the board**; only a fast car, or a head-on, launches him.
+  2. **`p.preVx/preVz`, set in `groundUnder`.** `resolveBoxes` deletes the into-surface
+     component on the very frame of contact, and `carHit` runs after it in `stepTraffic` —
+     so the approach speed the bounce needs is already gone by then. Every ricochet came out
+     as a dead stop until this was stashed.
+  3. **`u' - w = -e(u - w)` is a point mass off an infinitely heavy wall**, so a car doing
+     11 hands him 2x its own speed. `HIT.push` caps it, and a ricochet may only ever ADD —
+     if he is already leaving faster than the cushion would send him, it says nothing.
+  The old box test ran from 1.2 m behind the car's CENTRE to 1.1 m past its nose, on the
+  mistaken reading that `along` was measured from the tail. `hl`/`hw` are half extents about
+  the centre: the back half of every car was intangible.
 - **The skate push cycle is a function of speed and the CLIP IS TIME-SCALED TO MATCH.** A
   skater leaving a dead stop takes three or four quick hard pushes; one fixed 1.55 s cycle
   put the second shove a second and a half after the first, so the first 10 m/s took five

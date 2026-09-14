@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c38</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c39</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c38';
+const BUILD = 'c39';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1021,9 +1021,20 @@ const HIT = {
   // it was being scored as one because only the car's own speed was read. A car doing 9
   // that you are already doing 8 beside closes at 1 and does nothing; the same car head-on
   // closes at 17 and launches you.
-  min: 3, graze: 7, hard: 12,
-  nudge: 3.2,        // what a graze pushes with. IT DOES NOT TAKE THE BOARD.
-  bump: 5.5,         // the shove a shoulder gives, along the car's heading
+  // AND BEING HIT BY A CAR IS NOT THE SAME EVENT AS RUNNING INTO ONE. Both close at the
+  // same rate, but only one of them should put you on the road: `mine` is how much of his
+  // own approach speed counts toward the score that picks the tier. At .45 a car has to be
+  // doing most of the work to launch him, and skating hard into a parked flank ricochets.
+  min: 2.5, graze: 8, hard: 12, mine: .45,
+  // BILLIARDS. Restitution on the contact face: the component of his velocity going INTO
+  // it comes back out at this fraction, the component ALONG it is untouched. So a glancing
+  // hit costs him his line and not his speed, and a square one sends him back the way he
+  // came instead of stopping him dead against a box.
+  bounce: .62, bounceHard: .85,
+  // AND A CEILING ON IT. The cushion formula is a point mass off an infinitely heavy wall,
+  // so a car doing 11 hands him 2x its own speed -- physically right and 20 m/s of wrong.
+  // Above this he should have been launched anyway, and above HIT.hard he is.
+  push: 9,
   ref: 14,           // the closing speed the two launch numbers are quoted at
   // HE IS NOT SUPPOSED TO OUTFLY THE CAR. 11.5 out / 9 up under .6 gravity was an apex of
   // 3.4 m and seventeen metres of travel -- the length of the block, and it read as a
@@ -1047,26 +1058,39 @@ function carHit(c) {
   if (p.pos.y > c.y + c.hh + .6) return;                     // he ollied over it
   const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
   const along = dx * fx + dz * fz, side = -dx * fz + dz * fx;
-  if (along < -1.2 || along > c.hl + 1.1 || Math.abs(side) > c.hw + .7) return;
+  // A SYMMETRIC BOX. The old test ran from 1.2 m behind the car's CENTRE to 1.1 m past its
+  // nose, on the mistaken reading that `along` was measured from the tail -- so the back
+  // half of every car in the game was intangible.
+  const R = .42;
+  const pl = c.hl + R - Math.abs(along), pw = c.hw + R - Math.abs(side);
+  if (pl <= 0 || pw <= 0) return;
   const again = p.hit === 'fly';
-  const rel = again ? c.speed : Math.hypot(fx * c.speed - p.vel.x, fz * c.speed - p.vel.z);
-  if (rel < HIT.min && !again) return;
-  // TIER ONE: a graze. He is nudged off the car's line and that is all -- HE KEEPS THE
-  // BOARD. Losing it to a touch and then needing five seconds to get going again is the
-  // worst thing a car can do to you, and it was happening at the lightest contact.
-  if (rel < HIT.graze && !again) {
+  // THE CONTACT FACE IS THE SHALLOWEST AXIS -- the nose or the flank, and those are two
+  // different events. n points out of that face, toward him, and everything below is
+  // expressed along it. This is what makes the side of a car behave like a cushion rather
+  // than like a wall he stops against.
+  const nose = pl < pw, sg = (nose ? Math.sign(along) : Math.sign(side)) || 1;
+  const nx = nose ? fx * sg : -fz * sg, nz = nose ? fz * sg : fx * sg;
+  const w = (fx * nx + fz * nz) * c.speed;                   // the face's own speed along n
+  const u = p.preVx * nx + p.preVz * nz;                     // his, before the box resolver
+  // Being hit and running into are scored differently -- see HIT.mine.
+  const score = again ? c.speed : Math.max(w, 0) + HIT.mine * Math.max(-u, 0);
+  if (score < HIT.min && !again) return;
+  if (!again && score < HIT.hard) {
     p.hitCool = HIT.cool;
-    const b = HIT.nudge * clamp(rel / HIT.graze, .3, 1);
-    p.vel.x += fx * b; p.vel.z += fz * b; return;
-  }
-  // TIER TWO: shouldered. No fly, no fall, no get-up -- he loses the board and is pushed.
-  // There is no stagger clip yet, so today this reads as a hard shove and the gait carries
-  // it; when a stumble arrives it hangs off this branch and nothing else moves.
-  if (rel < HIT.hard && !again) {
-    p.hitCool = HIT.cool;
-    const b = HIT.bump * clamp(rel / HIT.hard, .35, 1);
-    p.vel.x += fx * b; p.vel.z += fz * b; p.goT = 0; p.pushing = false; p.pushT = 0;
-    dropBoard(); return;
+    // u' - w = -e (u - w): a ball off a moving cushion. Only the normal component is
+    // touched, so whatever he had ALONG the car's flank he keeps, and he comes off it
+    // carrying his line instead of losing it.
+    const e = score < HIT.graze ? HIT.bounce : HIT.bounceHard;
+    const un = p.vel.x * nx + p.vel.z * nz;
+    const d = Math.min(w * (1 + e) - e * u, HIT.push) - un;
+    // never a brake: if he is already leaving faster than the cushion would send him, the
+    // cushion has nothing to say. A ricochet may only ever add.
+    if (d > 0) { p.vel.x += nx * d; p.vel.z += nz * d; }
+    // TIER ONE keeps the board: he is turned, not dismounted. TIER TWO takes it -- he is
+    // still on his feet and still travelling, but he is off the board and walking it off.
+    if (score >= HIT.graze) { p.goT = 0; p.pushing = false; p.pushT = 0; dropBoard(); }
+    return;
   }
   // PINBALL. Caught in the air by a second car, the new car's heading takes over AND the
   // way he is going over flips, so the second hit reverses him instead of nudging him.
@@ -1074,8 +1098,12 @@ function carHit(c) {
   else { const toCar = Math.atan2(-dx, -dz); p.hitFwd = Math.cos(wrapAngle(toCar - p.faceH)) < 0; }
   p.hit = 'fly'; p.hitSnap = true; p.hitCool = HIT.cool;
   p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.pushing = false; p.pushT = 0; p.grounded = false;
-  const k = clamp(rel / HIT.ref, .7, 1.2) * (again ? HIT.again : 1);
-  p.vel.x = fx * HIT.out * k; p.vel.z = fz * HIT.out * k; p.vel.y = HIT.up * k;
+  const k = clamp(score / HIT.ref, .7, 1.2) * (again ? HIT.again : 1);
+  // OFF THE FACE, not down the road. A flank hit throws him sideways and a nose hit throws
+  // him forwards, because n already says which one it was; the car's heading is mixed in
+  // so a flank hit still carries a little of the traffic's direction with it.
+  const mx = nx + fx * .42, mz = nz + fz * .42, ml = Math.hypot(mx, mz) || 1;
+  p.vel.x = mx / ml * HIT.out * k; p.vel.z = mz / ml * HIT.out * k; p.vel.y = HIT.up * k;
   dropBoard();
 }
 function dropBoard() {
@@ -1537,7 +1565,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -1569,6 +1597,11 @@ function settle(p, g, step, px, pz) {
 // reports no floor at all, and lets him carry on down. Sweeping from the higher of the two
 // is what stops it -- and it is why this only ever bit at speed.
 function groundUnder(p, step, vel, fromY) {
+  // HIS VELOCITY BEFORE THE RESOLVER GETS AT IT. resolveBoxes removes the component going
+  // into a surface on the very frame the contact happens, so by the time carHit runs, the
+  // approach speed it wants to bounce has already been deleted and every ricochet came out
+  // as a dead stop. This is the only place that matters and it is one line.
+  if (vel) { player.preVx = vel.x; player.preVz = vel.z; }
   // heightmap + roofs + cars; walls push the position out
   gridQuery(p.x, p.z, 1.2, _boxes);
   for (const c of carsNear(p.x, p.z, 8, _cars)) _boxes.push(c.box);
