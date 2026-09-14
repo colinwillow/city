@@ -165,24 +165,44 @@ playwright unless he asks for it by name.
   its node transform, but `setFromObject` applies it anyway — his armature is scaled 0.01
   and turned a quarter turn, so the box came back a hundredth of his size and on its side.
   That was the feet-through-the-floor bug.
-- **Right stick is yaw only** and `CAM.el` is a constant. Up/down on that pad was reserved
-  for verbs; **the verbs are now air tricks** (asked for and granted). The rule that keeps
-  them apart is flick vs drag, which `bindStick` already understood and nothing was using:
-  past `FLICK.at` (.72 of travel) inside 280 ms is a gesture, anything slower is the camera.
-  Ollie, then flick — up front flip, down back flip, left/right a procedural 180, or a 360
-  past `TRICK.fullAt`. A spin can ride on a flip. **In the air on the board that pad does
-  not drive the camera at all**, or a spin flick whips the lens round with it; on the ground
-  nothing changed. Three things here are load-bearing:
-  1. **The spin is applied AFTER the velocity is rebuilt on the heading.** Everything else
-     in `stepSkate` turns the heading and puts the velocity back on it, which is right on
-     the ground where the wheels are what steers. Do a 180 that way in the air and his
-     TRAJECTORY reverses with him. A shuv turns the board under a line that keeps going.
-  2. **The trick fills the jump; the clip is stretched to fit the air he has left.** An
-     ollie is 1.26 s of air, `back_flip` is 1.77 s of clip and `front_flip` is 0.80 — at 1x
-     the backflip could never once have been landed and the frontflip would finish a third
-     of the way up. `trickDur` comes from the ballistics and the clip is scaled to it.
-  3. The landing scrubs speed if the flip is under `TRICK.land` of the way round, and the
-     board is carried round the same pivot his body turns about rather than spun in place.
+- **THE CONTROL MAP. Read this before touching either pad.**
+  - **Left pad — steering and the BODY.** Hold it to steer (ground) or spin (air). Flick up
+    = front flip, flick down = back flip. Left/right are never flicks: you hold them.
+  - **Right pad — the camera on the ground, the BOARD in the air.** Tap = ollie. Drag =
+    camera yaw, **ground only**. Flick up = kickflip, down = 360 flip (a kickflip and a
+    shove at once, which is what a varial is), left/right = the two pop shove-its.
+  - **A FLICK IS A FAST MOVE, NOT A RELEASE.** It used to be judged on `pointerup`, which
+    cannot work for the left pad: that thumb is already down and holding a direction when
+    the trick is wanted, so `held` was always past the window and the gesture could never
+    have fired. It is measured on the pad's own travel — more than `FLICK.at` of its radius
+    covered inside `FLICK.within` — so it fires mid-hold, and a slow drag still never
+    reaches it. The history is seeded at the CENTRE on pointerdown, because on an absolute
+    pad a thumb slammed onto the top edge is a flick and a delta from where it landed says
+    the stick never moved.
+- **AIR YAW BEATS GROUND YAW, AND THE CAMERA LETS GO.** `SK8.spin` is 9.5 rad/s — a 360 in
+  .66 s against 5.0 s at ground cruising rate — because in the air nothing is holding him.
+  And `stepCam` forces `cam.idle = 0` while he is airborne on the board, so the auto-follow
+  never fires: the follow is what makes riding pleasant on the ground and exactly what makes
+  a spin unreadable in the air, since the lens comes round with him and nothing appears to
+  have happened except that you are dizzy. `CAM.idle` then delays its return on landing.
+- **EVERY AIR ROTATION IS APPLIED AFTER THE VELOCITY IS REBUILT ON THE HEADING.** This is
+  the one that will be broken by accident. `stepSkate` turns the heading and then puts the
+  velocity back on it, which is right on the ground where the wheels are what steers — do it
+  that way in the air and his TRAJECTORY comes round with him. A spin turns the board under
+  a line that keeps going, which is also the only thing that makes landing switch mean
+  anything. `if (p.grounded) p.heading += turn;` up top, the air version below the rebuild.
+  The switch reversal (`along < -.5`) is likewise ground-only: in the air he is just turning.
+- **Board tricks are pure geometry, no clip.** The deck runs along its local Z, so with Euler
+  `YXZ`: `rotation.z` is the kickflip axis, `rotation.y` is the shove, `rotation.x` is the
+  body flip carrying the board round. `bRoll`/`bYaw` are radians REMAINING, `bRollA`/`bYawA`
+  what has been applied. **Wrap the applied pair on landing** or a landed 360 visibly settles
+  back through a whole turn on the road. Colin holds the ordinary air pose through all of it.
+- **The trick fills the jump; the clip is stretched to fit the air he has left.** An ollie is
+  1.26 s of air, `back_flip` is 1.77 s of clip and `front_flip` is 0.80 — at 1x the backflip
+  could never once have been landed and the frontflip would finish a third of the way up.
+  `trickDur` comes from the ballistics at the moment of the flick and the clip is scaled to
+  it. Landing under `TRICK.land` of the way round, or with more than ~.9 rad of board
+  rotation left, scrubs speed.
 - **`SK8.bailAng` already forgives a 180**: it folds the angle with `min(off, PI - off)`, so
   landing switch costs nothing. Do not "fix" that.
 - **Locomotion is Plutopia's model. Read `plutopia/index.html` (`const MOVE`, and the

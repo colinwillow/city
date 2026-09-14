@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c41</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c42</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c41';
+const BUILD = 'c42';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -194,7 +194,11 @@ const SK8 = {
   // see: no crouch, no load, just a man suddenly higher. This is the wind-up. It is brief,
   // and the crouch clip runs fast through it so it reads as a compression, then he goes.
   pop: .13,
-  spin: 4.2,         // air yaw rate with the stick
+  // AIR YAW BEATS GROUND YAW, and by a lot. On the ground the wheels are what he is
+  // steering and it is rate-limited to turnLo/turnHi; in the air there is nothing holding
+  // him, so holding the stick over spins him on the spot -- a 360 in about .7 s at full
+  // deflection. This is the manual spin, and it is why the flick does not need to do one.
+  spin: 9.5,         // air yaw rate with the stick
   lean: .5,          // visual roll per unit steer
   step: .42,         // curb height the wheels roll up
   bailAng: 1.15,     // landing more sideways than this scrubs the speed
@@ -208,11 +212,16 @@ const SK8 = {
 // PAD IS TRICKS AND NOT THE CAMERA, or a spin flick whips the lens round with it. On the
 // ground nothing about that pad has changed.
 const TRICK = {
-  spin: 9.2,         // rad/s: a 360 in about .68 s, a 180 in .34
-  fullAt: .95,       // a flick past this much of the pad's travel asks for the 360
-  land: .80,         // a flip less far along than this when he touches is not landed
-  bail: .45,         // what an unlanded flip costs him
-  pivot: .95,        // the height a flip turns about, which is what carries the board round
+  // BOARD TRICKS ARE PURE GEOMETRY. The deck runs along its local Z, so a kickflip is a
+  // roll about Z and a shove-it is a yaw about Y, and a varial is both at once. None of
+  // them need a clip, which is why they can exist today: Colin holds the air pose and the
+  // board does the work under him.
+  flip: 18,          // rad/s of roll: a kickflip in about .35 s
+  shove: 16,         // rad/s of yaw: a 360 shove in about .39 s
+  land: .80,         // a body flip less far along than this when he touches is not landed
+  bail: .45,         // what an unlanded trick costs him
+  pivot: .95,        // the height a body flip turns about, which carries the board round
+  rest: .14,         // how fast the board settles back under him after a landing
 };
 // THE RIGHT STICK ORBITS, IT DOES NOT PITCH. Up and down on that pad are spent the
 // moment they move the lens, and they are worth more as verbs -- jump, and whatever
@@ -1128,7 +1137,7 @@ function carHit(c) {
 }
 function dropBoard() {
   if (!player.board) return;
-  player.trick = ''; player.trickT = 0; player.spinLeft = 0;
+  player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0;
   player.board = false; board.visible = false; document.getElementById('boardB').classList.remove('on');
 }
 // one integration, shared by all three stages; only the gravity and the damping differ
@@ -1545,52 +1554,82 @@ const stick = { L: { x: 0, y: 0, down: 0 }, R: { x: 0, y: 0, down: 0 } };
 const keys = {};
 addEventListener('keydown', e => { keys[e.key.toLowerCase()] = 1; if (e.key === ' ') { player.jump = 1; e.preventDefault(); } if (e.key.toLowerCase() === 'b') toggleBoard(); if (e.key.toLowerCase() === 'r') respawn(); });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
-const FLICK = { at: .72, within: .28 };
+// A FLICK IS A FAST MOVE, NOT A RELEASE. It used to be judged on pointerup, which cannot
+// work for the left pad: that thumb is already down and holding a direction when the trick
+// is wanted, so `held` was always past the window and the gesture could never fire. It is
+// measured off the pad's own travel now -- more than `at` of its radius covered inside
+// `within` seconds -- so it fires the instant the thumb moves, mid-hold, and a slow drag
+// still never reaches it. `gap` stops one sweep firing twice.
+const FLICK = { at: .72, within: .28, gap: .30 };
 function bindStick(el, out, onTap, onFlick, rel, onRel) {
   const knob = el.querySelector('.knob');
   let id = null, t0 = 0, far = 0, lx = 0, ly = 0, ox = 0, oy = 0; const RAD = 52;
+  let hist = [], lastFlick = -1e9;
   const set = (cx, cy) => {
     let dx, dy;
     if (rel) { dx = cx - ox; dy = cy - oy; } else { const r = el.getBoundingClientRect(); dx = cx - (r.left + r.width / 2); dy = cy - (r.top + r.height / 2); }
     const d = Math.hypot(dx, dy); if (d > RAD) { dx *= RAD / d; dy *= RAD / d; }
     out.x = lx = dx / RAD; out.y = ly = dy / RAD; out.far = Math.max(out.far || 0, Math.hypot(out.x, out.y)); knob.style.transform = `translate(${dx}px,${dy}px)`;
+    if (!onFlick) return;
+    // the DELTA over the window, not the distance from the centre: that is what lets the
+    // gesture fire out of a held position instead of only out of rest.
+    const now = performance.now();
+    hist.push({ x: lx, y: ly, t: now });
+    while (hist.length > 1 && now - hist[0].t > FLICK.within * 1000) hist.shift();
+    if (now - lastFlick < FLICK.gap * 1000) return;
+    const r0 = hist[0], ddx = lx - r0.x, ddy = ly - r0.y;
+    if (Math.hypot(ddx, ddy) > FLICK.at) { lastFlick = now; hist = [{ x: lx, y: ly, t: now }]; onFlick(ddx, ddy); }
   };
-  el.addEventListener('pointerdown', e => { id = e.pointerId; t0 = performance.now(); ox = e.clientX; oy = e.clientY; el.setPointerCapture(id); out.down = 1; out.far = 0; el.classList.add('act'); set(e.clientX, e.clientY); far = Math.hypot(out.x, out.y); e.stopPropagation(); e.preventDefault(); });
+  el.addEventListener('pointerdown', e => { id = e.pointerId; t0 = performance.now(); ox = e.clientX; oy = e.clientY; el.setPointerCapture(id); out.down = 1; out.far = 0;
+    // seeded at the CENTRE, not at the touch: on an absolute pad a thumb slammed straight
+    // onto the top edge is a flick, and measuring the delta from where it landed says the
+    // stick never moved.
+    hist = [{ x: 0, y: 0, t: performance.now() }];
+    el.classList.add('act'); set(e.clientX, e.clientY); far = Math.hypot(out.x, out.y); e.stopPropagation(); e.preventDefault(); });
   el.addEventListener('pointermove', e => { if (e.pointerId !== id) return; set(e.clientX, e.clientY); far = Math.max(far, Math.hypot(out.x, out.y)); e.stopPropagation(); });
   const end = e => {
     if (e.pointerId !== id) return; const held = performance.now() - t0;
-    if (onFlick && far > FLICK.at && held < FLICK.within * 1000 && Math.hypot(lx, ly) > .35) onFlick(lx, ly, far);
-    else if (onTap && far < .42 && held < 260) onTap();
+    if (onTap && far < .42 && held < 260) onTap();
     if (onRel) onRel(far, held / 1000);
-    id = null; out.down = 0; out.x = out.y = 0; out.far = 0; knob.style.transform = 'translate(0,0)'; el.classList.remove('act'); e.stopPropagation();
+    id = null; out.down = 0; out.x = out.y = 0; out.far = 0; hist = []; knob.style.transform = 'translate(0,0)'; el.classList.remove('act'); e.stopPropagation();
   };
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
 }
-bindStick(document.getElementById('stkL'), stick.L, null, null, false);
+// LEFT PAD: steering, and the BODY. Up is a front flip, down is a back flip. Left and
+// right are not flicks at all -- you hold them, and in the air that is the manual spin.
+bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
+  const p = player;
+  if (!p.board || p.grounded || p.hit || p.trick) return;
+  if (Math.abs(dy) <= Math.abs(dx)) return;             // left/right is the held spin
+  const nm = dy < 0 ? 'front_flip' : 'back_flip';
+  if (!colin.actions[nm]) return;
+  // THE TRICK FILLS THE JUMP, so the clip is stretched to the air he has left rather than
+  // the other way round. It has to be: an ollie is 1.26 s of air and back_flip is 1.77 s
+  // of clip, so at 1x he could never once have landed it, while front_flip at .80 would
+  // finish a third of the way up and hold a pose for the rest of the flight.
+  const gy = groundAt(p.pos.x, p.pos.z, p.pos.y, SK8.step);
+  const h = Math.max(0, p.pos.y - (gy.hit ? gy.floor : p.pos.y));
+  const air = (p.vel.y + Math.sqrt(p.vel.y * p.vel.y + 2 * SK8.g * h)) / SK8.g;
+  p.trick = dy < 0 ? 'front' : 'back'; p.trickT = 0;
+  p.trickDur = clamp(air * .88, .42, 1.7);
+  colinScale(nm, clipLen(nm, p.trickDur) / p.trickDur);
+}, false);
 // A TAP AND A HELD CROUCH ARE THE SAME GESTURE, released. The pad still orbits: push it
 // sideways past .42 and it is a look, so neither the crouch nor the jump ever fires. That
 // is the whole rule, and it leaves the pad's up and down completely unspent.
-bindStick(document.getElementById('stkR'), stick.R, null, trickFlick, true, far => { if (far < .42) player.jump = 1; });
-// Ollie first, then flick: this only answers in the air, and only on the board.
-function trickFlick(lx, ly, far) {
+// RIGHT PAD: the camera on the ground, THE BOARD in the air. Up kickflip, down 360 flip
+// (a kickflip and a shove together, which is what a varial is), left and right the two
+// shove-its. All four are geometry on the deck; his pose does not change.
+bindStick(document.getElementById('stkR'), stick.R, null, boardFlick, true, far => { if (far < .42) player.jump = 1; });
+function boardFlick(dx, dy) {
   const p = player;
   if (!p.board || p.grounded || p.hit) return;
-  if (Math.abs(ly) > Math.abs(lx)) {
-    const nm = ly < 0 ? 'front_flip' : 'back_flip';
-    if (p.trick || !colin.actions[nm]) return;        // one flip per jump
-    // THE TRICK FILLS THE JUMP, so the clip is stretched to the air he has left rather than
-    // the other way round. It has to be: an ollie is 1.26 s of air and back_flip is 1.77 s
-    // of clip, so at 1x he could never once have landed it, while front_flip at .80 would
-    // finish a third of the way up and hold a pose for the rest of the flight.
-    const gy = groundAt(p.pos.x, p.pos.z, p.pos.y, SK8.step);
-    const h = Math.max(0, p.pos.y - (gy.hit ? gy.floor : p.pos.y));
-    const air = (p.vel.y + Math.sqrt(p.vel.y * p.vel.y + 2 * SK8.g * h)) / SK8.g;
-    p.trick = ly < 0 ? 'front' : 'back'; p.trickT = 0;
-    p.trickDur = clamp(air * .88, .42, 1.7);
-    colinScale(nm, clipLen(nm, p.trickDur) / p.trickDur);
+  const TAU = Math.PI * 2;
+  if (Math.abs(dy) > Math.abs(dx)) {
+    if (dy < 0) p.bRoll += TAU;                       // kickflip
+    else { p.bRoll += TAU; p.bYaw -= TAU; }           // 360 flip / varial: both at once
   } else {
-    // a spin can ride on top of a flip, which is the whole point of having both
-    p.spinLeft += (lx > 0 ? 1 : -1) * (far > TRICK.fullAt ? Math.PI * 2 : Math.PI);
+    p.bYaw += (dx > 0 ? TAU : -TAU);                  // pop shove-it, either way round
   }
 }
 document.getElementById('boardB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleBoard(); });
@@ -1609,10 +1648,10 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, trick: '', trickT: 0, trickDur: 0, spinLeft: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
-function toggleBoard() { player.trick = ''; player.trickT = 0; player.spinLeft = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
-function respawn() { player.trick = ''; player.trickT = 0; player.spinLeft = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
+function toggleBoard() { player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
+function respawn() { player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
   // left stick -> world direction, relative to the camera azimuth
@@ -1778,8 +1817,11 @@ function stepSkate(dt) {
     } else { p.pushing = false; p.pushT = 0; }
   } else { p.pushing = false; p.pushT = 0; }
   const rate = p.grounded ? (speed < .4 ? SK8.pivot : lerp(SK8.turnLo, SK8.turnHi, clamp(speed / 12, 0, 1))) : SK8.spin;
-  const turn = steer * rate * (along < -.5 ? -1 : 1) * dt;
-  p.heading += turn;
+  // the switch reversal belongs to the wheels. In the air he is just turning.
+  const turn = steer * rate * (p.grounded && along < -.5 ? -1 : 1) * dt;
+  // ON THE GROUND ONLY. In the air the same addition would put his TRAJECTORY on the new
+  // heading a few lines down -- see the block after the velocity is rebuilt.
+  if (p.grounded) p.heading += turn;
   p.steer = damp(p.steer, steer * clamp(speed / 4, 0, 1), .08, dt);
   // grip and drag
   if (p.grounded) { lat *= Math.exp(-SK8.grip * dt); along *= Math.exp(-SK8.drag * dt); }
@@ -1793,11 +1835,22 @@ function stepSkate(dt) {
   // ground, where the wheels are what he is steering. Do a 180 that way in the air and his
   // TRAJECTORY reverses with him. A shuv turns the board under a line that keeps going.
   if (!p.grounded) {
-    if (p.spinLeft) {
-      const d = Math.sign(p.spinLeft) * Math.min(Math.abs(p.spinLeft), TRICK.spin * dt);
-      p.heading += d; p.spinLeft -= d;
-    }
+    // THE AIR SPIN GOES IN HERE, AFTER THE VELOCITY IS REBUILT, and that is not a detail.
+    // Everything above turns the heading and then puts the velocity back on it, which is
+    // right on the ground where the wheels are what he is steering. Spin that way in the
+    // air and his LINE comes round with him. A spin turns the board under a line that
+    // keeps going -- which is also what makes landing switch mean anything.
+    p.heading += turn;
     if (p.trick) p.trickT += dt;
+    // and the board's own two axes: roll is the flip, yaw is the shove.
+    const dr = Math.sign(p.bRoll) * Math.min(Math.abs(p.bRoll), TRICK.flip * dt);
+    p.bRoll -= dr; p.bRollA += dr;
+    const dy = Math.sign(p.bYaw) * Math.min(Math.abs(p.bYaw), TRICK.shove * dt);
+    p.bYaw -= dy; p.bYawA += dy;
+  } else {
+    // back under his feet. Not snapped: a landing that was half a turn out should be seen
+    // to settle rather than teleport.
+    p.bRollA = damp(p.bRollA, 0, TRICK.rest, dt); p.bYawA = damp(p.bYawA, 0, TRICK.rest, dt);
   }
   if (p.grounded) { groundNormal(p.pos.x, p.pos.z, p.pos.y, gN); p.vel.x += SK8.g * gN.y * gN.x * dt; p.vel.z += SK8.g * gN.y * gN.z * dt; }
   // ollie
@@ -1814,9 +1867,16 @@ function stepSkate(dt) {
   if (g.wall) { const f = Math.exp(-SK8.scuff * dt); p.vel.x *= f; p.vel.z *= f; }
   const how = settle(p, g, SK8.step, px, pz);
   if (how === 'landed') {
-    // A flip he has not come most of the way round on is not a landing, it is a scrape.
-    if (p.trick) { if (p.trickT / Math.max(.05, p.trickDur) < TRICK.land) { p.vel.x *= TRICK.bail; p.vel.z *= TRICK.bail; } p.trick = ''; p.trickT = 0; }
-    p.spinLeft = 0;
+    // A trick he has not come most of the way round on is not a landing, it is a scrape --
+    // and that goes for the board's two axes as much as for his body.
+    const short = (p.trick && p.trickT / Math.max(.05, p.trickDur) < TRICK.land)
+      || Math.abs(p.bRoll) > .9 || Math.abs(p.bYaw) > .9;
+    if (short) { p.vel.x *= TRICK.bail; p.vel.z *= TRICK.bail; }
+    p.trick = ''; p.trickT = 0; p.bRoll = 0; p.bYaw = 0;
+    // WRAPPED, or a landed 360 settles back through a whole turn on the road. A completed
+    // trick wraps to about zero and nothing is seen to move; a half-done one takes the
+    // short way home from wherever it stopped.
+    p.bRollA = wrapAngle(p.bRollA); p.bYawA = wrapAngle(p.bYawA);
     const la = colin.actions['skate_ollie_landing'];
     p.landT = la ? la.getClip().duration : .8;         // likewise: the clip's length, not a guess // landing sideways scrubs the roll
     const sp = Math.hypot(p.vel.x, p.vel.z);
@@ -1849,7 +1909,9 @@ function poseColin(dt) {
   const lean = damp(player.lean, player.board ? -player.steer * SK8.lean : 0, .1, dt); player.lean = lean;
   colin.root.rotation.z = lean * .6;
   if (player.board) {
-    board.position.copy(player.pos); board.rotation.set(0, player.heading, 0, 'YXZ');
+    // YXZ: Z is applied in the board's own frame, and the deck runs along its local Z, so
+    // rotation.z IS the kickflip axis. Y is world yaw, which is the shove-it. They stack.
+    board.position.copy(player.pos); board.rotation.set(0, player.heading + player.bYawA, 0, 'YXZ');
     if (player.grounded) { groundNormal(player.pos.x, player.pos.z, player.pos.y, gN); const fx = Math.sin(player.heading), fz = Math.cos(player.heading); const pitch = Math.atan2(gN.x * fx + gN.z * fz, gN.y); board.rotation.x = pitch; }
     else if (player.trick) {
       // His feet stay on it, so it turns about the same point his body does rather than
@@ -1860,7 +1922,7 @@ function poseColin(dt) {
       board.position.x -= cy * sa * fx; board.position.z -= cy * sa * fz; board.position.y += cy * (1 - Math.cos(a));
       board.rotation.x = a;
     }
-    board.rotation.z = lean; board.position.y += player.pushK * .01;
+    board.rotation.z = lean + player.bRollA; board.position.y += player.pushK * .01;
   }
 }
 
@@ -1871,7 +1933,12 @@ function stepCam(dt) {
   if (Math.abs(rx) > .05) { cam.az -= rx * CAM.yawRate * dt; cam.idle = 0; }
   else cam.idle += dt;
   const sp = player.speed;
-  if (cam.idle > CAM.idle && sp > .8) {
+  // AND IT DOES NOT CHASE HIM ROUND EITHER. The auto-follow is what makes riding pleasant
+  // on the ground, and it is exactly what makes a spin unreadable in the air: he turns, the
+  // lens turns with him, and nothing appears to have happened except that you are dizzy.
+  // Off the ground the camera holds still and lets him rotate in front of it.
+  if (player.board && !player.grounded) cam.idle = 0;
+  else if (cam.idle > CAM.idle && sp > .8) {
     const want = sp > 1.2 ? Math.atan2(player.vel.x, player.vel.z) : player.faceH;
     cam.az += wrapAngle(want - cam.az) * Math.min(1, CAM.follow * dt * clamp(sp / 5, .3, 1.4));
   }
