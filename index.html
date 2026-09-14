@@ -65,7 +65,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build">c1</div>
+<div class="chip" id="build">c2</div>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · mouse drag look · space jump · shift run · B board · R reset</div>
 
@@ -76,7 +76,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c1';
+const BUILD = 'c2';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -105,8 +105,8 @@ const SK8 = {
 const CAM = { dist: 6.4, distV: .11, el: .30, elMin: -.2, elMax: 1.15, look: 1.35, yawRate: 2.4, elRate: 1.5, follow: 1.8, idle: .55, half: .07, fov: 52, fovRush: 9 };
 const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rimP: 3.4, rimCol: new THREE.Color('#dcefff') };
 const LIGHT = { sun: 3.4, hemi: 1.6, fill: .9, sunDir: new THREE.Vector3(.55, 1, .35).normalize() };
-const POST = { bloom: .7, bloomTh: .78, outline: .55, outlineW: 1, vig: .45, exposure: 1.05 };
-const Q = { dpr: Math.min(devicePixelRatio || 1, 2) * (MOBILE ? .8 : 1), present: Math.min(devicePixelRatio || 1, 2), bloomDiv: MOBILE ? 4 : 3 };
+const POST = { bloom: .85, bloomTh: 1.45, bloomKnee: .6, outline: .55, outlineW: 1, vig: .45, exposure: 1.05 };
+const Q = { dpr: Math.min(devicePixelRatio || 1, 2) * (MOBILE ? .8 : 1), present: Math.min(devicePixelRatio || 1, 2), bloomDiv: 3 };
 const CAR_FWD = 1;        // +1: the car mesh's local +Y is its nose. Flip to -1 if they drive backwards.
 const COLIN_HEIGHT = 1.75;
 const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
@@ -132,9 +132,14 @@ const camera = new THREE.PerspectiveCamera(CAM.fov, innerWidth / innerHeight, .3
 
 // ---------- lights ----------
 const sun = new THREE.DirectionalLight(0xfff1dc, LIGHT.sun); sun.castShadow = true;
-sun.shadow.mapSize.set(MOBILE ? 1024 : 2048, MOBILE ? 1024 : 2048);
-const sc = sun.shadow.camera; sc.left = sc.bottom = -70; sc.right = sc.top = 70; sc.near = 10; sc.far = 420;
-sun.shadow.bias = -.0005; sun.shadow.normalBias = .5;
+sun.shadow.mapSize.set(2048, 2048);
+// 96 m across 2048 texels is 4.7 cm -- about 37 texels up a person, which is the least
+// that reads as a shadow rather than as a handful of squares. The cost of the smaller box
+// is that a building further than 48 m stops casting; the crispness is worth it.
+const sc = sun.shadow.camera; sc.left = sc.bottom = -48; sc.right = sc.top = 48; sc.near = 10; sc.far = 420;
+// normalBias is in WORLD UNITS along the surface normal. At .5 it moved the lookup half a
+// metre -- a third of the way through the body it was meant to bias by one texel.
+sun.shadow.bias = -.0003; sun.shadow.normalBias = .04;
 scene.add(sun); scene.add(sun.target);
 const hemi = new THREE.HemisphereLight(0x9bc5ee, 0x4b5a48, LIGHT.hemi); scene.add(hemi);
 const fill = new THREE.DirectionalLight(0x9fd4e8, LIGHT.fill); fill.position.set(-1, .4, -.6); scene.add(fill);
@@ -186,10 +191,11 @@ const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const quadScene = new THREE.Scene();
 const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), null); quad.frustumCulled = false; quadScene.add(quad);
 const VS = 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }';
-const brightMat = new THREE.ShaderMaterial({ uniforms: { tD: { value: null }, uTh: { value: POST.bloomTh }, uKnee: { value: .24 } }, vertexShader: VS, fragmentShader: `
+const brightMat = new THREE.ShaderMaterial({ uniforms: { tD: { value: null }, uTh: { value: POST.bloomTh }, uKnee: { value: POST.bloomKnee } }, vertexShader: VS, fragmentShader: `
   uniform sampler2D tD; uniform float uTh,uKnee; varying vec2 vUv;
   void main(){ vec3 c=texture2D(tD,vUv).rgb; float l=dot(c,vec3(0.2126,0.7152,0.0722));
-    float s=smoothstep(uTh-uKnee,uTh+uKnee,l); gl_FragColor=vec4(c*s,1.0); }` });
+    float soft = clamp(l - uTh + uKnee, 0.0, 2.0*uKnee); soft = soft*soft/(4.0*uKnee + 1e-4);
+    gl_FragColor = vec4(c * (max(soft, l - uTh) / max(l, 1e-4)), 1.0); }` });
 const blurMat = new THREE.ShaderMaterial({ uniforms: { tD: { value: null }, uDir: { value: new THREE.Vector2(1, 0) }, uRes: { value: new THREE.Vector2(1, 1) } }, vertexShader: VS, fragmentShader: `
   uniform sampler2D tD; uniform vec2 uDir,uRes; varying vec2 vUv;
   void main(){ vec2 t=uDir/uRes; vec3 c=vec3(0.0);
@@ -539,7 +545,23 @@ function buildColin(gltf) {
   const bb = new THREE.Box3().setFromObject(model); const h = bb.getSize(new THREE.Vector3()).y || 1;
   model.scale.multiplyScalar(COLIN_HEIGHT / h); model.updateMatrixWorld(true);
   const bb2 = new THREE.Box3().setFromObject(model); model.position.y -= bb2.min.y;
-  model.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; o.frustumCulled = false; if (o.material) { o.material.transparent = false; o.material.alphaTest = 0; o.material.depthWrite = true; } } });
+  // He is authored for the kitchen: every material carries an emissive map at .1-.4 (his
+  // Blender look feeds the diffuse back in as emission) and KHR_materials_specular at 2x.
+  // Under a baked room that is his shading; under a 3.4 sun it is a surface that starts
+  // above white before the light arrives. Both go, and he receives shadow like everything
+  // else -- without it he stood in full sun inside a building's shadow.
+  const mats = new Set();
+  model.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
+    for (const m of (Array.isArray(o.material) ? o.material : [o.material])) if (m) mats.add(m);
+  });
+  for (const m of mats) {
+    m.transparent = false; m.alphaTest = 0; m.depthWrite = true;
+    if (m.emissive) m.emissive.setScalar(0); m.emissiveIntensity = 0; m.emissiveMap = null;
+    if (m.specularColor) m.specularColor.setScalar(1); m.specularIntensity = 1;
+    m.roughness = .9; m.metalness = 0; m.needsUpdate = true;
+  }
   colin.model = model; colin.root.add(model);
   colin.mixer = new THREE.AnimationMixer(model);
   for (const clip of gltf.animations) { const a = colin.mixer.clipAction(clip); a.enabled = true; colin.actions[clip.name] = a; }
