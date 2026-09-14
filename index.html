@@ -82,7 +82,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c45</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c46</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -94,7 +94,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c45';
+const BUILD = 'c46';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -160,7 +160,7 @@ const MOVE = {
 const ROLL = { at: -7, min: 4, max: 10, free: .42 };
 const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7 };
 const SK8 = {
-  pushV: 4.4,        // m/s added by one shove
+  pushV: 5.4,        // m/s added by one shove
   // THE PUSH CLIP IS THE CLOCK. It is not a pose to blend in and out of -- it is a whole
   // cycle, ride to push to ride, and holding the stick forward should simply loop it. The
   // shove fires at the point in that cycle where his foot is actually on the road, so the
@@ -174,15 +174,24 @@ const SK8 = {
   // the clock, and the reason this is not just a bigger number in pushV.
   pushDur: 1.55,     // the cruising cycle, matching skate_push_standing
   pushFast: .60,     // the cycle at a dead stop -- the clip runs 2.6x through it
-  pushEase: 14,      // the speed by which it has stretched back to pushDur
+  pushEase: 16,      // the speed by which it has stretched back to pushDur
   pushPlant: .42,    // where in the cycle the foot shoves
   // PUSHING KEEPS PAYING, JUST LESS. Each shove gives less the faster he is already going
   // while drag takes more, so speed BUILDS over a long stretch and settles near 20 m/s
   // instead of being cut off at a number. A short street will not get him there.
-  pushMax: 22,
+  // THE CEILING IS FOUR NUMBERS, NOT ONE, and raising pushV alone would not have moved it.
+  // Top speed is where one shove per cycle exactly pays for the drag over that cycle, so it
+  // is set by pushV, the taper on it, and BOTH drags together -- and pushMax gates pushing
+  // outright on top of all of it. 22 with a .45 taper meant the shove was down to half
+  // strength at 12 m/s and he settled around 16; he was fighting his own taper long before
+  // he was fighting the air. Now: 10 m/s in .9 s, 20 in 6.5, settling near 26 (94 km/h),
+  // and a coast from the top down to 8 takes sixteen seconds, which is the other half of
+  // what fast means -- speed you keep.
+  pushMax: 32,
+  taper: .36,        // how much of a shove the speed he already has takes off it
   brake: 9,          // m/s^2 with the stick pulled back
-  drag: .07,         // rolling resistance, per second
-  air: .0025,        // quadratic air drag
+  drag: .052,        // rolling resistance, per second
+  air: .0016,        // quadratic air drag
   grip: 7,           // how fast sideways velocity dies (carve vs slide)
   // THE SCUFF OF BRUSHING SOMETHING. resolveBoxes already removes only the component going
   // INTO a surface, so a slide along a car keeps its speed on its own. This is the scrape
@@ -431,7 +440,7 @@ const WHEELS = {
   set(speed, on) {
     if (!SFX.ctx) return;
     this.start(); if (!this.g) return;
-    const k = clamp(speed / 13, 0, 1), t = SFX.ctx.currentTime;
+    const k = clamp(speed / 20, 0, 1), t = SFX.ctx.currentTime;
     this.g.gain.setTargetAtTime(on && SFX.on ? .035 + .20 * k * k : 0, t, .09);
     this.f.frequency.setTargetAtTime(200 + 1000 * k, t, .09);
   },
@@ -2238,7 +2247,7 @@ function stepSkate(dt) {
         // before. It compounds, which is exactly what you described. A push is a push
         // now: the angle decides WHETHER he pushes and which way he steers, never how
         // hard he pushes. Only his current speed tapers it.
-        const shove = () => { along += SK8.pushV * (1 - .45 * speed / SK8.pushMax); p.pushK = 1; };
+        const shove = () => { along += SK8.pushV * (1 - SK8.taper * speed / SK8.pushMax); p.pushK = 1; };
         if (!p.pushing) { p.pushing = true; p.pushT = 0; shove(); }   // the first one lands at once
         else { p.pushT += dt; if (p.pushT >= p.pushPeriod) { p.pushT -= p.pushPeriod; shove(); } }
       } else {
@@ -2254,7 +2263,9 @@ function stepSkate(dt) {
   // when what was asked for was to keep spinning. So the air reads the pad's OWN X axis
   // and turns at that rate for as long as it is held, which never runs out.
   // The switch reversal belongs to the wheels too. In the air he is just turning.
-  const rate = speed < .4 ? SK8.pivot : lerp(SK8.turnLo, SK8.turnHi, clamp(speed / 12, 0, 1));
+  // /20 rather than /12: the steering used to reach its tightest limit at 12 m/s, which was
+  // most of the old speed range. It would now be a rail for everything above half throttle.
+  const rate = speed < .4 ? SK8.pivot : lerp(SK8.turnLo, SK8.turnHi, clamp(speed / 20, 0, 1));
   const airX = clamp(stick.L.x + ((keys.d || keys.arrowright) ? 1 : 0) - ((keys.a || keys.arrowleft) ? 1 : 0), -1, 1);
   const turn = p.grounded ? steer * rate * (along < -.5 ? -1 : 1) * dt
     // NEGATED. Heading grows from +Z toward +X, which reads as anticlockwise from behind
@@ -2395,7 +2406,7 @@ function stepCam(dt) {
   cam.pos.x = damp(cam.pos.x, wx, CAM.half, dt); cam.pos.y = damp(cam.pos.y, wy, CAM.half, dt); cam.pos.z = damp(cam.pos.z, wz, CAM.half, dt);
   const floor = hmAt(cam.pos.x, cam.pos.z) + .6; if (cam.pos.y < floor) cam.pos.y = floor;
   camera.position.copy(cam.pos); camera.lookAt(cam.tgt);
-  cam.rush = damp(cam.rush, clamp((sp - 8) / 12, 0, 1), .25, dt);
+  cam.rush = damp(cam.rush, clamp((sp - 8) / 18, 0, 1), .25, dt);   // saturated at 20; the top is 26 now
   camera.fov = CAM.fov + cam.rush * CAM.fovRush; camera.updateProjectionMatrix();
   compMat.uniforms.uRush.value = cam.rush * .6;
   sky.position.copy(camera.position);
