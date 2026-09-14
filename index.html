@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c36</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c37</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c36';
+const BUILD = 'c37';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -158,12 +158,21 @@ const MOVE = {
 const ROLL = { at: -7, min: 4, max: 10, free: .42 };
 const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7 };
 const SK8 = {
-  pushV: 3.8,        // m/s added by one shove
+  pushV: 4.4,        // m/s added by one shove
   // THE PUSH CLIP IS THE CLOCK. It is not a pose to blend in and out of -- it is a whole
   // cycle, ride to push to ride, and holding the stick forward should simply loop it. The
   // shove fires at the point in that cycle where his foot is actually on the road, so the
   // physics answers to the animation rather than the other way round.
-  pushDur: 1.55,     // one cycle, matching skate_push_standing
+  // KICKING OFF IS NOT CRUISING. A skater leaving a dead stop takes three or four quick
+  // hard pushes and only settles into the long cycle once he is rolling. One fixed 1.55 s
+  // cycle meant the first shove landed instantly and the second a second and a half later,
+  // so the first 10 m/s took five seconds of standing on a moving plank. The cycle is a
+  // function of speed now and THE CLIP IS TIME-SCALED TO MATCH IT, so the foot still meets
+  // the road on the frame the shove fires -- which is the whole point of the clip being
+  // the clock, and the reason this is not just a bigger number in pushV.
+  pushDur: 1.55,     // the cruising cycle, matching skate_push_standing
+  pushFast: .60,     // the cycle at a dead stop -- the clip runs 2.6x through it
+  pushEase: 14,      // the speed by which it has stretched back to pushDur
   pushPlant: .42,    // where in the cycle the foot shoves
   // PUSHING KEEPS PAYING, JUST LESS. Each shove gives less the faster he is already going
   // while drag takes more, so speed BUILDS over a long stretch and settles near 20 m/s
@@ -173,6 +182,12 @@ const SK8 = {
   drag: .07,         // rolling resistance, per second
   air: .0025,        // quadratic air drag
   grip: 7,           // how fast sideways velocity dies (carve vs slide)
+  // THE SCUFF OF BRUSHING SOMETHING. resolveBoxes already removes only the component going
+  // INTO a surface, so a slide along a car keeps its speed on its own. This is the scrape
+  // on top of that, and it used to be `vel *= .7` EVERY FRAME -- an exponential with a
+  // tenth-of-a-second half life, so the lightest touch of a wing was a dead stop, and it
+  // got worse the higher the frame rate. Per second now, and gentle.
+  scuff: 2.2,
   turnLo: 3.2, turnHi: 1.25,   // yaw rate at a crawl / at speed (rad/s)
   ollie: 12.6, g: 20,   // a big ollie: about 4 m
   // THE POP. He was launching on the frame your thumb came up, so there was nothing to
@@ -978,9 +993,15 @@ const HIT = {
   // is shoved, but he keeps his feet and never leaves the gait; above `hard` it is a
   // LAUNCH, the fly/fall/get-up sequence. More tiers go here as the clips for them land:
   // each one wants its own animation, which is the part that does not exist yet.
-  min: 2.5, hard: 7,
+  // AND IT IS THE CLOSING SPEED THAT PICKS THE TIER, NEVER THE CAR'S SPEEDOMETER. Riding
+  // alongside traffic at the same pace and brushing a wing is not being hit by a car, and
+  // it was being scored as one because only the car's own speed was read. A car doing 9
+  // that you are already doing 8 beside closes at 1 and does nothing; the same car head-on
+  // closes at 17 and launches you.
+  min: 3, graze: 7, hard: 12,
+  nudge: 3.2,        // what a graze pushes with. IT DOES NOT TAKE THE BOARD.
   bump: 5.5,         // the shove a shoulder gives, along the car's heading
-  ref: 11,           // the car speed the two launch numbers are quoted at
+  ref: 14,           // the closing speed the two launch numbers are quoted at
   // HE IS NOT SUPPOSED TO OUTFLY THE CAR. 11.5 out / 9 up under .6 gravity was an apex of
   // 3.4 m and seventeen metres of travel -- the length of the block, and it read as a
   // second vehicle rather than as a person. Halved, and the ceiling on `k` matters as much
@@ -997,7 +1018,7 @@ function clipLen(name, fb) {
 }
 function carHit(c) {
   const p = player;
-  if (c.speed < HIT.min || p.hitCool > 0) return;
+  if (p.hitCool > 0) return;
   if (p.hit && p.hit !== 'fly') return;                      // already down; leave him there
   const dx = p.pos.x - c.x, dz = p.pos.z - c.z;
   if (p.pos.y > c.y + c.hh + .6) return;                     // he ollied over it
@@ -1005,12 +1026,22 @@ function carHit(c) {
   const along = dx * fx + dz * fz, side = -dx * fz + dz * fx;
   if (along < -1.2 || along > c.hl + 1.1 || Math.abs(side) > c.hw + .7) return;
   const again = p.hit === 'fly';
-  // TIER ONE: shouldered. No fly, no fall, no get-up -- he loses the board and is pushed.
+  const rel = again ? c.speed : Math.hypot(fx * c.speed - p.vel.x, fz * c.speed - p.vel.z);
+  if (rel < HIT.min && !again) return;
+  // TIER ONE: a graze. He is nudged off the car's line and that is all -- HE KEEPS THE
+  // BOARD. Losing it to a touch and then needing five seconds to get going again is the
+  // worst thing a car can do to you, and it was happening at the lightest contact.
+  if (rel < HIT.graze && !again) {
+    p.hitCool = HIT.cool;
+    const b = HIT.nudge * clamp(rel / HIT.graze, .3, 1);
+    p.vel.x += fx * b; p.vel.z += fz * b; return;
+  }
+  // TIER TWO: shouldered. No fly, no fall, no get-up -- he loses the board and is pushed.
   // There is no stagger clip yet, so today this reads as a hard shove and the gait carries
   // it; when a stumble arrives it hangs off this branch and nothing else moves.
-  if (c.speed < HIT.hard && !again) {
+  if (rel < HIT.hard && !again) {
     p.hitCool = HIT.cool;
-    const b = HIT.bump * clamp(c.speed / HIT.hard, .35, 1);
+    const b = HIT.bump * clamp(rel / HIT.hard, .35, 1);
     p.vel.x += fx * b; p.vel.z += fz * b; p.goT = 0; p.pushing = false; p.pushT = 0;
     dropBoard(); return;
   }
@@ -1020,7 +1051,7 @@ function carHit(c) {
   else { const toCar = Math.atan2(-dx, -dz); p.hitFwd = Math.cos(wrapAngle(toCar - p.faceH)) < 0; }
   p.hit = 'fly'; p.hitSnap = true; p.hitCool = HIT.cool;
   p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.pushing = false; p.pushT = 0; p.grounded = false;
-  const k = clamp(c.speed / HIT.ref, .7, 1.2) * (again ? HIT.again : 1);
+  const k = clamp(rel / HIT.ref, .7, 1.2) * (again ? HIT.again : 1);
   p.vel.x = fx * HIT.out * k; p.vel.z = fz * HIT.out * k; p.vel.y = HIT.up * k;
   dropBoard();
 }
@@ -1395,7 +1426,12 @@ function colinAnim(dt) {
     // decaying impulse and back out again, which cut the shove off partway through and is
     // the twitch you saw. Held forward it simply loops -- and its clock is the very phase
     // the shove is fired from, so the foot and the push cannot drift apart.
-    else if (p.pushing) t[p.crouch > .5 ? 'skate_push_crouch' : 'skate_push_standing'] = 1;
+    else if (p.pushing) {
+      // one clip per cycle whatever the cycle is: the clip is stretched to the period so
+      // the plant stays on the shove. clipLen, not a constant, so either push clip works.
+      const nm = p.crouch > .5 ? 'skate_push_crouch' : 'skate_push_standing';
+      colinScale(nm, clipLen(nm, SK8.pushDur) / Math.max(.2, p.pushPeriod)); t[nm] = 1;
+    }
     else if (p.crouch > .04) { colinScale('skate_idol_crouch', 1); t['skate_idol_crouch'] = p.crouch; t['skate_idol_standing'] = 1 - p.crouch; }
     else t['skate_idol_standing'] = 1;
   } else if (!p.grounded) {
@@ -1479,7 +1515,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, initClip: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -1620,6 +1656,7 @@ function stepSkate(dt) {
     steer = clamp(ang / .9, -1, 1) * s.mag;
     if (Math.abs(ang) > Math.PI * .72) steer = 0;     // pulling straight back is the brake, not a turn
     if (p.grounded) {
+      p.pushPeriod = lerp(SK8.pushFast, SK8.pushDur, clamp(speed / SK8.pushEase, 0, 1));
       if (fwdC > .35 && speed < SK8.pushMax) {
         // A PLAIN REPEATING TIMER, and the clip simply loops beside it. I had been
         // writing the action's time from my own phase counter every frame, which is one
@@ -1634,7 +1671,7 @@ function stepSkate(dt) {
         // hard he pushes. Only his current speed tapers it.
         const shove = () => { along += SK8.pushV * (1 - .45 * speed / SK8.pushMax); p.pushK = 1; };
         if (!p.pushing) { p.pushing = true; p.pushT = 0; shove(); }   // the first one lands at once
-        else { p.pushT += dt; if (p.pushT >= SK8.pushDur) { p.pushT -= SK8.pushDur; shove(); } }
+        else { p.pushT += dt; if (p.pushT >= p.pushPeriod) { p.pushT -= p.pushPeriod; shove(); } }
       } else {
         p.pushing = false; p.pushT = 0;
         if (fwdC < -.35) along = along > 0 ? Math.max(0, along - SK8.brake * dt * -fwdC) : Math.min(0, along + SK8.brake * dt * -fwdC);
@@ -1664,7 +1701,7 @@ function stepSkate(dt) {
   const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
   const g = groundUnder(p.pos, SK8.step, p.vel, py); p.wall = g.wall;
-  if (g.wall) { p.vel.x *= .7; p.vel.z *= .7; }
+  if (g.wall) { const f = Math.exp(-SK8.scuff * dt); p.vel.x *= f; p.vel.z *= f; }
   const how = settle(p, g, SK8.step, px, pz);
   if (how === 'landed') {
     const la = colin.actions['skate_ollie_landing'];

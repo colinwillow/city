@@ -77,6 +77,23 @@ playwright unless he asks for it by name.
   combining an exact surface with a smeared one just puts the smear back.
   Buildings, trees, fences, props and cars are still axis-aligned boxes; a box top within
   `step` of the feet is a floor, which is how roofs work.
+- **A CAR HIT IS SCORED ON CLOSING SPEED, NEVER THE CAR'S SPEEDOMETER**, and it has three
+  tiers: a graze nudges him and **keeps the board**, a shoulder takes the board but leaves
+  him on his feet, and a launch runs the fly/fall/get-up sequence. Riding alongside traffic
+  at the same pace and brushing a wing closes at nearly nothing and must cost nearly
+  nothing — losing the board to a touch means five seconds of pushing to get back, which is
+  the worst thing a car can do to you.
+- **The skate push cycle is a function of speed and the CLIP IS TIME-SCALED TO MATCH.** A
+  skater leaving a dead stop takes three or four quick hard pushes; one fixed 1.55 s cycle
+  put the second shove a second and a half after the first, so the first 10 m/s took five
+  seconds. `pushFast`/`pushEase` stretch the period from .60 s to `pushDur`, and `colinAnim`
+  scales the push clip by `clipLen / pushPeriod` so the foot still meets the road on the
+  frame the shove fires. That coupling is the point — do not just raise `pushV`.
+- **Never scrub velocity with a bare `*= k` per frame.** `resolveBoxes` already removes only
+  the component going INTO a surface, so a slide along a car keeps its speed by itself. The
+  extra `vel *= .7` on top of it was an exponential with a tenth-of-a-second half life,
+  which made the lightest touch of a wing a dead stop — and worse at a higher frame rate.
+  `Math.exp(-k * dt)`, always.
 - **Forward is `(sin h, cos h)`**, right is `(-fz, fx)`. Colin faces +Z in his file.
 - **A walkable mesh contributes only its deck.** `bridge_a` is one mesh with a deck at
   7 m and towers at 17/28/36/45; rasterising the max made the tower tops the ground.
