@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c34</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c35</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c34';
+const BUILD = 'c35';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -950,11 +950,21 @@ const HIT = {
   // getup is how fast the standing-up plays, and free is the tail of it that belongs to
   // you -- so the last third can be run out of rather than waited through.
   rest: .22, getup: 1.35, free: .34,
-  min: 3,            // a car slower than this shoulders him aside rather than launching him
-  ref: 9,            // the car speed the two numbers below are quoted at
-  out: 11.5, up: 9,  // how hard he goes, along the car's heading and upward
-  air: .60,          // gravity while flying: lighter, so he hangs long enough to read
-  again: 1.2,        // what a second hit in the air multiplies by. Pinball.
+  // TIERS. A hit is not one thing. Under `min` the car is crawling and nothing happens;
+  // between `min` and `hard` it is a SHOULDER -- the board goes out from under him and he
+  // is shoved, but he keeps his feet and never leaves the gait; above `hard` it is a
+  // LAUNCH, the fly/fall/get-up sequence. More tiers go here as the clips for them land:
+  // each one wants its own animation, which is the part that does not exist yet.
+  min: 2.5, hard: 7,
+  bump: 5.5,         // the shove a shoulder gives, along the car's heading
+  ref: 11,           // the car speed the two launch numbers are quoted at
+  // HE IS NOT SUPPOSED TO OUTFLY THE CAR. 11.5 out / 9 up under .6 gravity was an apex of
+  // 3.4 m and seventeen metres of travel -- the length of the block, and it read as a
+  // second vehicle rather than as a person. Halved, and the ceiling on `k` matters as much
+  // as the numbers: a fast car used to multiply all of this by 1.8.
+  out: 7, up: 6.5,
+  air: .75,          // gravity while flying: lighter, so he hangs long enough to read
+  again: 1.15,       // what a second hit in the air multiplies by. Pinball.
   cool: .3,          // one car may not hit him sixty times on the way past
 };
 // the USABLE length, which is the clip minus whatever TRIM took off either end
@@ -972,15 +982,28 @@ function carHit(c) {
   const along = dx * fx + dz * fz, side = -dx * fz + dz * fx;
   if (along < -1.2 || along > c.hl + 1.1 || Math.abs(side) > c.hw + .7) return;
   const again = p.hit === 'fly';
+  // TIER ONE: shouldered. No fly, no fall, no get-up -- he loses the board and is pushed.
+  // There is no stagger clip yet, so today this reads as a hard shove and the gait carries
+  // it; when a stumble arrives it hangs off this branch and nothing else moves.
+  if (c.speed < HIT.hard && !again) {
+    p.hitCool = HIT.cool;
+    const b = HIT.bump * clamp(c.speed / HIT.hard, .35, 1);
+    p.vel.x += fx * b; p.vel.z += fz * b; p.goT = 0; p.pushing = false; p.pushT = 0;
+    dropBoard(); return;
+  }
   // PINBALL. Caught in the air by a second car, the new car's heading takes over AND the
   // way he is going over flips, so the second hit reverses him instead of nudging him.
   if (again) p.hitFwd = !p.hitFwd;
   else { const toCar = Math.atan2(-dx, -dz); p.hitFwd = Math.cos(wrapAngle(toCar - p.faceH)) < 0; }
   p.hit = 'fly'; p.hitSnap = true; p.hitCool = HIT.cool;
   p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.pushing = false; p.pushT = 0; p.grounded = false;
-  const k = clamp(c.speed / HIT.ref, .6, 1.8) * (again ? HIT.again : 1);
+  const k = clamp(c.speed / HIT.ref, .7, 1.2) * (again ? HIT.again : 1);
   p.vel.x = fx * HIT.out * k; p.vel.z = fz * HIT.out * k; p.vel.y = HIT.up * k;
-  if (p.board) { p.board = false; board.visible = false; document.getElementById('boardB').classList.remove('on'); }
+  dropBoard();
+}
+function dropBoard() {
+  if (!player.board) return;
+  player.board = false; board.visible = false; document.getElementById('boardB').classList.remove('on');
 }
 // one integration, shared by all three stages; only the gravity and the damping differ
 function hitMove(dt, gk, half) {
@@ -1321,7 +1344,12 @@ function colinSet(t, dt) {
     // .055 is about a sixth and still hides the seam between two clips.
     const w = CW[nm] = snap ? want : damp(cur, want, .055, dt);
     if (w > .002) { if (!a.isRunning()) a.play(); a.setEffectiveWeight(w); }
-    else if (a.isRunning()) { a.setEffectiveWeight(0); a.stop(); }
+    // A FINISHED `ONCE` CLIP IS PAUSED, AND `isRunning()` IS FALSE FOR A PAUSED ACTION.
+    // Gating the shutdown on it therefore skipped it for exactly the clips that need it:
+    // the clip clamped on its last frame kept the weight it was last given -- 1.0 -- and
+    // went on applying that frame for the rest of the session. That is the lying-on-the-
+    // road pose welded onto the walk. The weight is what matters, so ask about the weight.
+    else if (cur > .002 || a.getEffectiveWeight() > .002 || a.isRunning()) { a.setEffectiveWeight(0); a.stop(); }
   }
 }
 function colinAnim(dt) {

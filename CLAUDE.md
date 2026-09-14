@@ -83,6 +83,15 @@ playwright unless he asks for it by name.
   frame and `colinSet` damps toward it. A `crossFadeFrom` state machine has to know what it
   is coming *from*, which breaks the first time two transitions overlap. Clips in `ONCE`
   play once and hold their last frame, and rewind when their weight leaves zero.
+- **NEVER ASK `action.isRunning()` WHETHER A CLIP STILL MATTERS — ASK ITS WEIGHT.** three
+  ends a `LoopOnce` clip with `clampWhenFinished ? this.paused = true : this.enabled = false`,
+  and `isRunning()` returns `enabled && !paused && ...`. So every clip in `ONCE` is *not
+  running* from the instant it finishes. `colinSet` shut clips down inside
+  `else if (a.isRunning())`, which meant a clip that reached its last frame before its state
+  ended never got `setEffectiveWeight(0)` and never got stopped: it kept the 1.0 it was last
+  given and went on applying its final frame **for the rest of the session**. `fall_to_back`
+  is the one that showed — a lying-down pose blended at full weight into the walk, body
+  tilted back, "stuck sideways" — but the roll, the ollie and both jump clips all had it.
 - **Measure Colin with GEOMETRY bounds, never `Box3.setFromObject`.** A skinned mesh ignores
   its node transform, but `setFromObject` applies it anyway — his armature is scaled 0.01
   and turned a quarter turn, so the box came back a hundredth of his size and on its side.
