@@ -55,6 +55,17 @@ playwright unless he asks for it by name.
   (a bail), `plutopia_song_03/04` (the two trade rather than loop). **The cars, the horns and
   the rolling wheels are HIS to record.** The roll is a synth stand-in — brown noise through a
   bandpass whose gain and centre follow his speed (`WHEELS`) — and it is marked as one.
+- `icons/` — `npm run icons [src]` (`tools/icons.mjs`, needs `sharp`) turns one square
+  artwork into 1024/512/192 and the 180 px `apple-touch-icon`. It does two things a plain
+  resize does not, and both matter: it **crops the margin** (generated app-icon art arrives
+  with the rounded corners already drawn and white space outside them, and iOS masks the icon
+  itself — ship that and you get a rounded icon inset in a white square with a second rounded
+  shape inside it), and it **flattens** onto the artwork's own corner colour, because iOS
+  composites a transparent PNG onto black rather than onto the home screen.
+  **Every icon URL carries `?v=`.** A phone that has seen `icons/apple-touch-icon.png` keeps
+  what it has for ever and a home-screen shortcut keeps it harder still, so replacing the file
+  in place changes nothing anyone can see. Raise the number with the art — and even then iOS
+  only re-reads it when the shortcut is removed and re-added.
 - `version.json` — written by `bump.mjs`; the running game polls it to detect its successor.
 - `.github/workflows/pages.yml` — deploys the repo root. Harmless if Pages is set to
   "deploy from a branch" instead; both paths deploy the same commit.

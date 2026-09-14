@@ -1,0 +1,57 @@
+// Turns one square artwork into every icon the app needs.
+//   npm run icons                 -- reads icons/source.png
+//   npm run icons path/to/art.png
+//
+// Two things it does that a plain resize does not, and both matter on iOS:
+//  1. IT CROPS THE MARGIN. Generated app-icon artwork usually arrives with the rounded
+//     corners already drawn and white space outside them. iOS masks the icon itself, so
+//     shipping that gives a rounded icon inset inside a white square with a second, smaller
+//     rounded shape inside it. The margin is measured and cut.
+//  2. IT FLATTENS. A PNG with transparency is composited onto BLACK by iOS, not onto the
+//     home screen. Everything here is written opaque, over the artwork's own corner colour.
+import sharp from 'sharp';
+import { existsSync } from 'fs';
+
+const SRC = process.argv[2] || 'icons/source.png';
+if (!existsSync(SRC)) { console.error('no source image at ' + SRC + ' -- pass one, or put it there'); process.exit(1); }
+
+const img = sharp(SRC);
+const meta = await img.metadata();
+const { data, info } = await img.clone().ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+const W = info.width, H = info.height, C = info.channels;
+const at = (x, y) => (y * W + x) * C;
+const blank = (x, y) => { const i = at(x, y); return data[i + 3] < 24 || (data[i] > 242 && data[i + 1] > 242 && data[i + 2] > 242); };
+
+// the margin, read off the middle row and column -- the corners are rounded, so the edges
+// are not where the content starts
+const my = H >> 1, mx = W >> 1;
+let l = 0; while (l < W - 1 && blank(l, my)) l++;
+let r = W - 1; while (r > 0 && blank(r, my)) r--;
+let t = 0; while (t < H - 1 && blank(mx, t)) t++;
+let b = H - 1; while (b > 0 && blank(mx, b)) b--;
+// square it about the centre of what was found, and keep it inside the image
+const cx = (l + r) / 2, cy = (t + b) / 2;
+let side = Math.min(r - l + 1, b - t + 1);
+side = Math.min(side, W, H);
+let x0 = Math.round(cx - side / 2), y0 = Math.round(cy - side / 2);
+x0 = Math.max(0, Math.min(W - side, x0)); y0 = Math.max(0, Math.min(H - side, y0));
+console.log('source ' + W + 'x' + H + ' ' + meta.format + '  margin l' + l + ' r' + (W - 1 - r) + ' t' + t + ' b' + (H - 1 - b));
+console.log('crop   ' + side + 'x' + side + ' at ' + x0 + ',' + y0);
+
+// the corner colour, so the rounded corners flatten onto something from the picture itself
+const ci = at(Math.min(W - 1, x0 + 6), Math.min(H - 1, y0 + 6));
+const bg = { r: data[ci], g: data[ci + 1], b: data[ci + 2], alpha: 1 };
+console.log('corner rgb(' + bg.r + ',' + bg.g + ',' + bg.b + ')');
+
+const OUT = [
+  ['icons/icon-1024.png', 1024],
+  ['icons/icon-512.png', 512],
+  ['icons/icon-192.png', 192],
+  ['icons/apple-touch-icon.png', 180],   // iOS home screen
+];
+for (const [file, n] of OUT) {
+  await sharp(SRC).extract({ left: x0, top: y0, width: side, height: side })
+    .resize(n, n, { fit: 'cover' }).flatten(bg).png({ compressionLevel: 9 }).toFile(file);
+  console.log('wrote ' + file + '  ' + n + 'x' + n);
+}
+console.log('\nNow raise ICONV in index.html and manifest.webmanifest, or a phone that has\nalready seen these URLs will keep the icons it has.');
