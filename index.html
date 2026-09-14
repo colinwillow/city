@@ -78,7 +78,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c9</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c10</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -90,7 +90,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c9';
+const BUILD = 'c10';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -732,10 +732,14 @@ function buildColin(gltf) {
   // punches through his lips -- and being the one surface in the frame at full white, it
   // is also the one thing left clearing the bloom threshold, which is what spreads it
   // into hard pale slabs. It gets the head's material, which is what it meant to wear.
-  // By MATERIAL name, not object name: the glTF material names are what the file
-  // guarantees, and a lookup that misses here fails silently and leaves white teeth.
+  // FIND IT BY MESH, NOT BY MATERIAL NAME. The c9 export renamed every material to
+  // Material.00N, so a lookup keyed on the name 'head' silently found nothing and the
+  // teeth went back to pure white. The MESH names are the stable thing in this file.
+  // Last resort is any material carrying a texture, so this cannot fail silently again.
   let headMat = null;
-  model.traverse(o => { if (o.isMesh && o.material && o.material.name === 'head') headMat = o.material; });
+  const byName = model.getObjectByName('head');
+  if (byName && byName.material && byName.material.map) headMat = byName.material;
+  if (!headMat) model.traverse(o => { if (!headMat && o.isMesh && o.material && o.material.map) headMat = o.material; });
   const mats = new Set();
   model.traverse(o => {
     if (!o.isMesh) return;
@@ -758,21 +762,51 @@ function buildColin(gltf) {
   }
   colin.model = model; colin.root.add(model);
   colin.mixer = new THREE.AnimationMixer(model);
-  for (const clip of gltf.animations) { const a = colin.mixer.clipAction(clip); a.enabled = true; colin.actions[clip.name] = a; }
-  for (const nm of ['idle_neutral', 'walk_fwd_neutral', 'run_fwd']) colinW(nm, nm === 'idle_neutral' ? 1 : 0);
+  for (const clip of gltf.animations) {
+    const a = colin.mixer.clipAction(clip); a.enabled = true; a.setEffectiveWeight(0);
+    if (ONCE.indexOf(clip.name) >= 0) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+    colin.actions[clip.name] = a;
+  }
+  const a0 = colin.actions['idle_neutral']; if (a0) { a0.play(); a0.setEffectiveWeight(1); CW['idle_neutral'] = 1; }
   colin.ready = true;
 }
-// All three gait clips run permanently; only their weights move. Idle gives way to the
-// walk over the first metre and a half a second, the walk gives way to the run by 5.4,
-// and nothing in here decides anything -- it reads the speed and reports it.
-function colinW(name, w) { const a = colin.actions[name]; if (!a) return; if (!a.isRunning()) a.play(); a.setEffectiveWeight(w); }
+// EVERY CLIP IS A WEIGHT, and the weights are eased rather than crossfaded. A state
+// machine of crossFadeFrom calls has to know what it is coming FROM, which is exactly the
+// bookkeeping that breaks the first time two transitions overlap. Asking for a set of
+// weights each frame and damping toward it cannot get into that state.
 function colinScale(name, s) { const a = colin.actions[name]; if (a) a.setEffectiveTimeScale(s); }
-function colinGait(sp) {
-  const w = clamp(sp / GAIT.walkAt, 0, 1);
-  const r = clamp((sp - GAIT.walkAt) / (GAIT.runAt - GAIT.walkAt), 0, 1);
-  colinW('idle_neutral', 1 - w); colinW('walk_fwd_neutral', w * (1 - r)); colinW('run_fwd', w * r);
-  colinScale('walk_fwd_neutral', clamp(sp / GAIT.walkRef, GAIT.tsLo, GAIT.tsHi));
-  colinScale('run_fwd', clamp(sp / GAIT.runRef, GAIT.tsLo, GAIT.tsHi));
+// Clips that are an event rather than a cycle: they play once and hold their last frame,
+// and they are rewound whenever their weight comes up off the floor.
+const ONCE = ['jump_going_up', 'jump_coming_down', 'landing_roll', 'idle_jump_init', 'run_jump_init',
+  'skate_ollie_init_air', 'skate_ollie_air', 'skate_ollie_landing', 'back_flip', 'front_flip'];
+const CW = {};
+function colinSet(t, dt) {
+  for (const nm in colin.actions) {
+    const a = colin.actions[nm], want = t[nm] || 0, cur = CW[nm] || 0;
+    if (cur < .01 && want > .01) { a.reset(); a.play(); }
+    const w = CW[nm] = damp(cur, want, .085, dt);
+    if (w > .002) { if (!a.isRunning()) a.play(); a.setEffectiveWeight(w); }
+    else if (a.isRunning()) { a.setEffectiveWeight(0); a.stop(); }
+  }
+}
+function colinAnim(dt) {
+  const p = player, sp = p.speed, t = {};
+  if (p.board) {
+    if (!p.grounded) t[p.airT < .35 ? 'skate_ollie_init_air' : 'skate_ollie_air'] = 1;
+    else if (p.pushK > .08) t['skate_push_standing'] = 1;
+    else t['skate_idol_standing'] = 1;
+    colinScale('skate_push_standing', clamp(1 / Math.max(.25, SK8.pushPeriod), .8, 2));
+  } else if (!p.grounded) {
+    // his own arc decides which half of the jump he is in, so a clipped or a long one both read
+    t[p.vel.y > .4 ? 'jump_going_up' : 'jump_coming_down'] = 1;
+  } else {
+    const w = clamp(sp / GAIT.walkAt, 0, 1);
+    const r = clamp((sp - GAIT.walkAt) / (GAIT.runAt - GAIT.walkAt), 0, 1);
+    t['idle_neutral'] = 1 - w; t['walk_fwd_neutral'] = w * (1 - r); t['run_fwd'] = w * r;
+    colinScale('walk_fwd_neutral', clamp(sp / GAIT.walkRef, GAIT.tsLo, GAIT.tsHi));
+    colinScale('run_fwd', clamp(sp / GAIT.runRef, GAIT.tsLo, GAIT.tsHi));
+  }
+  colinSet(t, dt);
 }
 
 // ---------- skateboard (procedural stand-in) ----------
@@ -922,7 +956,6 @@ function stepFoot(dt) {
   const g = groundUnder(p.pos, MOVE.step, p.vel); p.wall = g.wall;
   settle(p, g, MOVE.step, px, pz);
   p.speed = Math.hypot(p.vel.x, p.vel.z); p.moving = damp(p.moving, sp > .3 ? 1 : 0, .1, dt);
-  if (colin.ready) colinGait(sp);
 }
 function stepSkate(dt) {
   const s = stickWorld(); const p = player;
@@ -970,10 +1003,11 @@ function stepSkate(dt) {
   if (!p.grounded) p.airT += dt;
   p.speed = Math.hypot(p.vel.x, p.vel.z); p.faceH = p.heading;
   p.pushK = Math.max(0, p.pushK - dt * 3);
-  if (colin.ready) colinGait(0);
+
 }
 function stepPlayer(dt) {
   if (player.board) stepSkate(dt); else stepFoot(dt);
+  if (colin.ready) colinAnim(dt);
   // fell in the water / off the world
   if (player.pos.y < -2.5) respawn();
   player.safeT += dt;

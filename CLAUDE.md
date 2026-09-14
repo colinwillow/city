@@ -25,8 +25,11 @@ playwright unless he asks for it by name.
   welds and simplifies the heavy meshes, marks them `extras.flat` so the game recomputes
   flat normals). Re-run after touching the source GLB. The game falls back to the source
   file if the bake is missing.
-- `models/colin.glb` — copied from the `colin` repo (Mixamo rig, clips: idle_neutral,
-  walk_fwd_neutral, run_fwd, turn_left/right, dances, waving; 42 face morphs on `head`).
+- `models/colin.glb` — from the `colin` repo, re-exported by the owner. 34 clips: the gait
+  (`idle_neutral`, `walk_fwd_neutral`, `run_fwd`), air (`jump_going_up`,
+  `jump_coming_down`, `landing_roll`, `*_jump_init`, flips), board (`skate_idol_standing`,
+  `skate_idol_crouch`, `skate_push_standing/crouch`, `skate_ollie_init_air`,
+  `skate_ollie_air`, `skate_ollie_landing`), dances, waving. 42 face morphs on `head`.
 - `vendor/` — three r180 (module + core), GLTFLoader, DRACOLoader + wasm, BufferGeometryUtils,
   SkeletonUtils. All from the glorp/robits repos.
 - `tools/` — `syntax.mjs` (the gate), `bake.mjs`, `bump.mjs`, `skin.mjs` (every vertex's
@@ -53,7 +56,17 @@ playwright unless he asks for it by name.
 - **`colin.glb`'s `teeth` primitive has NO material index.** three hands it
   `createDefaultMaterial()` — untextured pure white — and it reaches a millimetre further
   forward than his face, so it punches through his lips. `buildColin` reassigns any
-  material without a `map` to the head's. Any future mesh in that file needs the same care.
+  material without a `map` to the head's. **Find the head material by MESH name, never by
+  material name**: the c9 re-export renamed every material to `Material.00N` and a
+  name-keyed lookup failed silently, putting the white teeth straight back.
+- **Animation is weights, not crossfades.** `colinAnim` asks for a set of clip weights each
+  frame and `colinSet` damps toward it. A `crossFadeFrom` state machine has to know what it
+  is coming *from*, which breaks the first time two transitions overlap. Clips in `ONCE`
+  play once and hold their last frame, and rewind when their weight leaves zero.
+- **Measure Colin with GEOMETRY bounds, never `Box3.setFromObject`.** A skinned mesh ignores
+  its node transform, but `setFromObject` applies it anyway — his armature is scaled 0.01
+  and turned a quarter turn, so the box came back a hundredth of his size and on its side.
+  That was the feet-through-the-floor bug.
 - **Right stick is yaw only** and `CAM.el` is a constant. Up/down on that pad is reserved
   for verbs, and nothing may be bound to it without asking.
 - **Locomotion is Plutopia's model. Read `plutopia/index.html` (`const MOVE`, and the
