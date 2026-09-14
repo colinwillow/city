@@ -41,6 +41,9 @@ playwright unless he asks for it by name.
   how many solid boxes come out, how long the rasterise takes, and how many of them float
   above head height. That last number is the one that says whether you can walk under a
   gantry; it went 0 → 658 across 107 meshes when the splitter landed.
+  `sky.mjs` (`npm run sky [image]`) — the exposure a panorama wants, measured over the visible
+  band rather than guessed. `normals.mjs` (`npm run normals`) — up-facing vs down-facing vs
+  normals-disagreeing per walkable mesh; this is what found the mirrored bridge ramp.
   `spots.mjs` (`npm run spots [m]`) — rebuilds the ground offline and lists the flat, open,
   unbuilt squares of that size, nearest the spawn first. **Placing anything by eye off a
   screenshot is how you get a half pipe inside a bank.** `rails.mjs` (`npm run rails`) — runs
@@ -98,6 +101,21 @@ playwright unless he asks for it by name.
   into. That argument only ever applied to landing, and it made the mid-air pinball flip a
   jump cut from `flying_backwards` to `flying_forwards`. A stage change is a fast blend
   (`HIT.snapHL`, .038) — never an instant set.
+- **THE SKY IS `images/hdr_toon_03.png` (his own painted one).** `ENV.galaxy` and `ENV.day`
+  still hold the two Plutopia panoramas to flip back to.
+  **`SKY.envB` BELONGS TO THE IMAGE, NOT TO THE GAME, AND IT IS A MEASUREMENT.** `npm run sky
+  [image]` measures the mean linear luminance over the only band this camera can see — the
+  horizon to .284 rad, about 16°, and nothing else — and prints the exposure for a target.
+  Two skies four stops apart both look fine in a viewer and only one looks like a sky in here:
+      HDRI_02_galaxy   mean .031 linear  ->  envB 6 to reach .19 and read as a starfield
+      hdr_toon_03      mean .359 linear  ->  TWELVE TIMES brighter, envB 2.0 to reach .72
+  At the galaxy's 6 the painted sky renders at a mean of 2.15, over `POST.bloomTh` across the
+  WHOLE sky — a white smear, not a picture. **Re-measure on every new sky.**
+  **`t.colorSpace` must be set BEFORE `PMREMGenerator.fromEquirectangular`, not after.**
+  The prefilter reads the texture as it finds it and `TextureLoader` hands one back tagged
+  linear, so every sRGB value went into the environment map undecoded. Invisible on a dark
+  galaxy; on a bright sky it is a white reflection on every car instead of a sky one.
+- **(the galaxy's own notes, kept because the mechanism is the same):**
 - **`images/HDRI_02_galaxy_2K.jpg` IS THE SKY.** Not a tint on a gradient, not the
   environment map only — `SKY.envK` is 1 and at 1 the panorama replaces the dome's colour
   entirely above the horizon. Three rounds were lost to shipping it at .55 and .62 mixed

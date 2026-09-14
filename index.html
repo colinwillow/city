@@ -91,7 +91,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c53</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c54</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -103,7 +103,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c53';
+const BUILD = 'c54';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -752,12 +752,18 @@ THREE.MeshStandardMaterial.prototype.customProgramCacheKey = function () { retur
 // models use, over the same gradient and sun disc. Its HDRI rides underneath at a low
 // weight -- enough to give the sky some structure and the horizon some warmth without a
 // photograph competing with a low-poly city.
-// envK 1 means the panorama IS the sky. envB is its exposure: the image is a night galaxy
-// and sRGB->linear puts its mean at about .03, against a gradient sky sitting near .8, so
-// without this it renders as near-black and reads as "you never put it in". At 6 the mean
-// lands about .19 -- clearly a starfield -- and the stars themselves reach 6, which is over
-// the bloom threshold, so they flare. Both move live: city.SKY.envK / city.SKY.envB.
-const SKY = { cloud: .52, wind: new THREE.Vector2(1, .28), speed: 1, envK: 1, envB: 6, t: 0 };
+// envK 1 means the panorama IS the sky. envB is its EXPOSURE, and it belongs to the IMAGE
+// rather than to the game -- measured over the band this camera can actually see, which is
+// the horizon to .284 rad and nothing else:
+//     HDRI_02_galaxy   mean .031 linear  ->  needed envB 6 to reach .19 and read as a sky
+//     hdr_toon_03      mean .359 linear  ->  TWELVE TIMES brighter
+// At the galaxy's 6 the painted sky renders at a mean of 2.15, which is over the bloom
+// threshold across the WHOLE sky: a white smear rather than a picture. 2.0 lands it at .72,
+// about where the old gradient's horizon sat, and leaves its brightest pixels just over the
+// threshold so those still flare.
+// RE-MEASURE ON EVERY NEW SKY -- `npm run sky images/<file>`. Both move live:
+// city.SKY.envK / city.SKY.envB.
+const SKY = { cloud: .52, wind: new THREE.Vector2(1, .28), speed: 1, envK: 1, envB: 2.0, t: 0 };
 const skyUni = {
   uZen: { value: new THREE.Color(.16, .40, .86) }, uHor: { value: new THREE.Color(.60, .76, .92) },
   uGnd: { value: new THREE.Color(.30, .37, .44) }, uSun: { value: LIGHT.sunDir },
@@ -821,11 +827,19 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 24, 12), skyMat); sky.f
 // judgement call on this one asset, and it is why you could not tell it had been put in at
 // all: nothing about the picture changed. It rides at .55 over the gradient, and
 // `city.SKY.envK = x` moves it live now rather than only at load.
-const ENV = { url: 'images/HDRI_02_galaxy_2K.jpg', day: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
+// hdr_toon_03 is his own painted sky. The other two are still here to flip back to:
+// HDRI_02_galaxy_2K (the Plutopia galaxy) and HDRI_01_2K (its daylight neighbour).
+const ENV = { url: 'images/hdr_toon_03.png', galaxy: 'images/HDRI_02_galaxy_2K.jpg', day: 'images/HDRI_01_2K.jpg', map: null, tex: null, k: .55 };
 (() => {
   if (!THREE.PMREMGenerator) return;
   new THREE.TextureLoader().load(ENV.url, t => {
     t.mapping = THREE.EquirectangularReflectionMapping;
+    // THE COLOUR SPACE HAS TO BE SET BEFORE THE PREFILTER, not after it. PMREMGenerator reads
+    // the texture as it finds it, and TextureLoader hands one back tagged linear -- so every
+    // sRGB value went into the environment map undecoded. That barely showed on a dark
+    // galaxy; on a bright painted sky it is the difference between a sky reflection on the
+    // cars and a white one.
+    t.colorSpace = THREE.SRGBColorSpace;
     const p = new THREE.PMREMGenerator(renderer);
     ENV.map = p.fromEquirectangular(t).texture; p.dispose();
     scene.environment = ENV.map;
@@ -834,7 +848,7 @@ const ENV = { url: 'images/HDRI_02_galaxy_2K.jpg', day: 'images/HDRI_01_2K.jpg',
     // derivative cliff at the wrap seam, which reads as a bright column floor to zenith
     t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping;
     t.generateMipmaps = false; t.minFilter = t.magFilter = THREE.LinearFilter;
-    t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true;
+    t.needsUpdate = true;
     ENV.tex = t; skyUni.uEnv.value = t;
   }, undefined, () => console.warn('no environment map; the sky keeps its gradient'));
 })();

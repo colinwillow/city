@@ -13,7 +13,8 @@
     "icons": "node tools/icons.mjs",
     "spots": "node tools/spots.mjs",
     "rails": "node tools/rails.mjs",
-    "normals": "node tools/normals.mjs"
+    "normals": "node tools/normals.mjs",
+    "sky": "node tools/sky.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",
