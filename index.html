@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c19</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c20</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c19';
+const BUILD = 'c20';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -181,7 +181,14 @@ const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rim0: .26, rimP
 // His materials: matte, and lifted out of the dark by feeding the base map back in as a
 // low emission, which is how he is authored in Blender. Emission lands after the toon
 // ramp and after shadows, so it is illumination without shine.
-const COLINM = { rough: .95, metal: 0, emis: .30 };
+// spec is HIS OWN specular scale, separate from the city's. The grey wash on his hair and
+// the sheen on his face are a 4% white reflection spread over the whole surface by a
+// near-1 roughness -- which is physically right for skin and hair and completely wrong for
+// this look, because on a dark texture a broad white lobe reads as the texture being
+// washed out rather than as a highlight. Roughness cannot remove it: a rougher surface
+// spreads the same energy wider, it does not reflect less of it. Only turning the specular
+// itself down does, and at 0 he is pure diffuse, which is what you described wanting.
+const COLINM = { rough: 1, metal: 0, emis: .30, spec: 0 };
 const LIGHT = { sun: 3.4, hemi: 1.6, fill: .9, sunDir: new THREE.Vector3(.55, 1, .35).normalize() };
 // BLOOM IS OFF. Not because it is proven guilty -- the rig, the normals, the weights and
 // the materials have all been read and are all clean, and c5 fixed a real aliasing fault
@@ -905,7 +912,14 @@ function buildColin(gltf) {
     if (m.emissive) m.emissive.setScalar(1);
     m.emissiveMap = m.map || null; m.emissiveIntensity = m.map ? COLINM.emis : 0;
     if (m.specularColor) m.specularColor.setScalar(1); m.specularIntensity = 1;
-    m.roughness = COLINM.rough; m.metalness = COLINM.metal; m.needsUpdate = true;
+    m.roughness = COLINM.rough; m.metalness = COLINM.metal;
+    // A PRIVATE uSpec, without a second shader program. The toon uniforms are shared
+    // objects handed to every material; replacing the entry after toonPatch has run gives
+    // this material its own value, because three keeps a uniform set per material while
+    // the compiled program is shared on identical source. So he can be matte while the
+    // cars keep their highlights.
+    m.onBeforeCompile = sh => { toonPatch(sh); sh.uniforms.uSpec = { value: COLINM.spec }; };
+    m.needsUpdate = true;
   }
   colin.model = model; colin.root.add(model);
   colin.mixer = new THREE.AnimationMixer(model);
