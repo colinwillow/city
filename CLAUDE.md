@@ -277,6 +277,23 @@ playwright unless he asks for it by name.
   rotation left, scrubs speed.
 - **`SK8.bailAng` already forgives a 180**: it folds the angle with `min(off, PI - off)`, so
   landing switch costs nothing. Do not "fix" that.
+- **FAKIE IS A DIRECTION OF TRAVEL, NOT A MISTAKE.** The ground controls used to be written
+  entirely against the NOSE — push only when the stick pointed along it, brake when the stick
+  opposed it, no steering at all past .72π. Land a 180 and every one of those is backwards:
+  the stick pointing where you are already rolling reads as a brake, the stick you would steer
+  with does nothing, and the board is welded facing the camera while you shove at the air.
+  The stick picks an END instead, and everything downstream works the same for either:
+  - `dir` — which end of the board the thumb is nearer to (+1 nose, −1 tail);
+  - `rel` — its angle off THAT end, which is what steering always actually wanted.
+  A push along the tail is a fakie push and accelerates him. **A brake is the stick against
+  his TRAVEL, never against his nose**, and it stops being a brake below `SK8.fakieAt` so the
+  same held stick turns into a push the other way — which is what dragging a foot to a stop
+  and then shoving off the other way is, done with one input.
+  **The `along < -.5` steering reversal had to GO with it.** It existed only to undo measuring
+  against the nose while travelling backwards; `rel` is already measured off the leading end,
+  so keeping both would have flipped it twice. Verified as a table before shipping, not argued.
+  No fakie clips exist yet — he rides and pushes on the forward ones, which reads correctly
+  for the stance and wrong for the push foot. `skate_push_fakie` is the clip to add.
 - **Locomotion is Plutopia's model. Read `plutopia/index.html` (`const MOVE`, and the
   integration in `stepPlayer`) before touching it — do not rebuild it, and do not look at
   Peggy, which is the least developed of these games.** Robits is the other good one.

@@ -82,7 +82,7 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
-<div class="chip" id="build"><b id="buildN">c46</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c47</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -94,7 +94,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c46';
+const BUILD = 'c47';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -193,6 +193,10 @@ const SK8 = {
   drag: .052,        // rolling resistance, per second
   air: .0016,        // quadratic air drag
   grip: 7,           // how fast sideways velocity dies (carve vs slide)
+  // Under this, the stick held against his travel stops being a brake and becomes a push in
+  // the new direction -- which is what dragging a foot to a stop and then shoving off the
+  // other way actually is, done with one input.
+  fakieAt: 2.2,
   // THE SCUFF OF BRUSHING SOMETHING. resolveBoxes already removes only the component going
   // INTO a surface, so a slide along a car keeps its speed on its own. This is the scrape
   // on top of that, and it used to be `vel *= .7` EVERY FRAME -- an exponential with a
@@ -2226,16 +2230,34 @@ function stepSkate(dt) {
   const fx = Math.sin(p.heading), fz = Math.cos(p.heading), rx = -fz, rz = fx;
   let along = p.vel.x * fx + p.vel.z * fz, lat = p.vel.x * rx + p.vel.z * rz;
   const speed = Math.abs(along);
-  // steering: the stick's angle off the nose, scaled by how fast we are going
+  // FAKIE IS A DIRECTION OF TRAVEL, NOT A MISTAKE. The whole control scheme used to be
+  // written against the NOSE: push only when the stick pointed along it, brake when the
+  // stick opposed it, no steering at all past .72pi. Land a 180 and every one of those is
+  // backwards -- the stick pointing where you are already rolling reads as a brake, the
+  // stick you would steer with does nothing, and the board is stuck facing the camera while
+  // you shove uselessly at the air.
+  // So the stick picks an END, and everything downstream works the same for either:
+  //   dir   which end of the board the thumb is nearer to (+1 nose, -1 tail)
+  //   rel   its angle off THAT end, which is what steering has always wanted
+  // A push along the tail is a fakie push, and it accelerates him; a brake is the stick
+  // against his TRAVEL, not against his nose, and it stops being a brake once he is slow
+  // enough for the same held stick to become a push the other way. That is what makes
+  // landing switch playable rather than a thing to be corrected.
   let steer = 0;
   if (s.mag > 0) {
     const ang = wrapAngle(Math.atan2(s.x, s.z) - p.heading);
     const fwdC = Math.cos(ang) * s.mag;
-    steer = clamp(ang / .9, -1, 1) * s.mag;
-    if (Math.abs(ang) > Math.PI * .72) steer = 0;     // pulling straight back is the brake, not a turn
+    const dir = fwdC >= 0 ? 1 : -1;
+    const rel = dir > 0 ? ang : wrapAngle(ang - Math.PI);
+    // No reversal downstream: `rel` is already measured off the end he is being asked to
+    // lead with, so pointing that end at the thumb is the turn, whichever end it is.
+    steer = clamp(rel / .9, -1, 1) * s.mag;
     if (p.grounded) {
       p.pushPeriod = lerp(SK8.pushFast, SK8.pushDur, clamp(speed / SK8.pushEase, 0, 1));
-      if (fwdC > .35 && speed < SK8.pushMax) {
+      // the stick fights the way he is actually rolling, and he is rolling fast enough for
+      // that to be a foot down rather than a push the other way
+      const braking = along * dir < -.01 && speed > SK8.fakieAt;
+      if (!braking && Math.abs(fwdC) > .35 && speed < SK8.pushMax) {
         // A PLAIN REPEATING TIMER, and the clip simply loops beside it. I had been
         // writing the action's time from my own phase counter every frame, which is one
         // more thing to get stuck -- and it did. The clip and the timer are both one
@@ -2247,12 +2269,12 @@ function stepSkate(dt) {
         // before. It compounds, which is exactly what you described. A push is a push
         // now: the angle decides WHETHER he pushes and which way he steers, never how
         // hard he pushes. Only his current speed tapers it.
-        const shove = () => { along += SK8.pushV * (1 - SK8.taper * speed / SK8.pushMax); p.pushK = 1; };
+        const shove = () => { along += dir * SK8.pushV * (1 - SK8.taper * speed / SK8.pushMax); p.pushK = 1; };
         if (!p.pushing) { p.pushing = true; p.pushT = 0; shove(); }   // the first one lands at once
         else { p.pushT += dt; if (p.pushT >= p.pushPeriod) { p.pushT -= p.pushPeriod; shove(); } }
       } else {
         p.pushing = false; p.pushT = 0;
-        if (fwdC < -.35) along = along > 0 ? Math.max(0, along - SK8.brake * dt * -fwdC) : Math.min(0, along + SK8.brake * dt * -fwdC);
+        if (braking) { const b = SK8.brake * dt * Math.abs(fwdC); along = along > 0 ? Math.max(0, along - b) : Math.min(0, along + b); }
       }
     } else { p.pushing = false; p.pushT = 0; }
   } else { p.pushing = false; p.pushT = 0; }
@@ -2267,7 +2289,7 @@ function stepSkate(dt) {
   // most of the old speed range. It would now be a rail for everything above half throttle.
   const rate = speed < .4 ? SK8.pivot : lerp(SK8.turnLo, SK8.turnHi, clamp(speed / 20, 0, 1));
   const airX = clamp(stick.L.x + ((keys.d || keys.arrowright) ? 1 : 0) - ((keys.a || keys.arrowleft) ? 1 : 0), -1, 1);
-  const turn = p.grounded ? steer * rate * (along < -.5 ? -1 : 1) * dt
+  const turn = p.grounded ? steer * rate * dt
     // NEGATED. Heading grows from +Z toward +X, which reads as anticlockwise from behind
     // him -- so a thumb pushed right was spinning him left. Checked on the device, not
     // derived: the handedness argument is the kind that comes out backwards half the time.
