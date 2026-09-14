@@ -17,7 +17,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--disp:'Fredoka',system-ui,sans-serif;--ink:#eaf6ff;--rim:rgba(157,247,255,.45)}
-  html,body{margin:0;height:100%;background:#0b1020;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:var(--disp);color:var(--ink)}
+  /* touch-action:manipulation is what actually kills iOS double-tap-to-zoom. The viewport
+     meta does not: Safari honours user-scalable=no for pinch and ignores it for the tap. */
+  html,body{touch-action:manipulation;margin:0;height:100%;background:#0b1020;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:var(--disp);color:var(--ink)}
   canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
   /* ---- boot card ---- */
   #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;
@@ -78,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c10</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c11</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -90,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c10';
+const BUILD = 'c11';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -133,7 +135,9 @@ const MOVE = {
   face0: 11, face1: 5.2,
   plantAt: 2.2, plantFull: 6.5,
   turnBrake: .42,
-  jump: 7.6, g: 22, dead: .12, curve: 1.4, step: .55, coyote: .12,
+  // Exaggerated on purpose: ~2.8 m of apex and a full second of air, so there is room for
+  // the going-up and coming-down clips to actually read as two different things.
+  jump: 10.6, g: 20, dead: .12, curve: 1.4, step: .55, coyote: .12,
 };
 // GAIT. Three clips at once, weighted by how fast he is ACTUALLY travelling, so the
 // blend is a consequence of the speed rather than a second decision about it. Each
@@ -148,7 +152,7 @@ const SK8 = {
   air: .0025,        // quadratic air drag
   grip: 7,           // how fast sideways velocity dies (carve vs slide)
   turnLo: 3.2, turnHi: 1.25,   // yaw rate at a crawl / at speed (rad/s)
-  ollie: 7.4, g: 22,
+  ollie: 9.9, g: 20,          // a hefty ollie: ~2.4 m, comparable hang time
   spin: 4.2,         // air yaw rate with the stick
   lean: .5,          // visual roll per unit steer
   step: .42,         // curb height the wheels roll up
@@ -167,8 +171,9 @@ const LIGHT = { sun: 3.4, hemi: 1.6, fill: .9, sunDir: new THREE.Vector3(.55, 1,
 // in the bright pass -- but because it has been blamed three times and never ruled out.
 // At 0 the pale specks either go with it or they do not, and either answer is worth more
 // than another guess. Put it back to .85 once we know.
-const POST = { bloom: .85, bloomTh: 1.45, bloomKnee: .6, outline: .55, outline0: .55, outlineW: 1, vig: .45, exposure: 1.05 };
+const POST = { bloom: .85, bloom0: .85, bloomTh: 1.45, bloomKnee: .6, outline: .55, outline0: .55, outlineW: 1, vig: .45, exposure: 1.05 };
 const Q = { dpr: Math.min(devicePixelRatio || 1, 2) * (MOBILE ? .8 : 1), present: Math.min(devicePixelRatio || 1, 2), bloomDiv: 3 };
+Q.dpr0 = Q.dpr;   // the world is drawn at this and upscaled to `present`; /5 turns the gap off
 const CAR_FWD = 1;        // +1: the car mesh's local +Y is its nose. Flip to -1 if they drive backwards.
 const COLIN_HEIGHT = 1.75;
 const HEAD_SHAPE = 'Colin_Head_MIX';   // the target that turns the base head into his
@@ -359,24 +364,28 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
 // draws the scene straight to the glass -- no bloom, no outline, no grade. 2 also strips
 // Colin back to a flat unlit material. Anything still there at 2 is geometry, and
 // anything gone at 1 was the post chain. One look answers what a build cannot.
-// EACH TAP ON THE BADGE TURNS OFF ONE SUSPECT, and the badge says which one is off. The
-// pale specks along his silhouette are not the bloom: that has been at zero since c6 and
-// they are still there. What is left is the toon rim, which adds near-white emissive
-// exactly where a surface turns away from the lens, and the depth outline, which is a
-// second derivative read from a NEAREST depth buffer at a different resolution from the
-// pass compositing it. One look at each names it.
+// ONE TAP, ONE THING OFF, AND NOTHING ELSE CHANGED. The last version was not an
+// isolation at all: "no post" also forced the rim and the outline off and rendered at a
+// different resolution, so a clean frame there ruled out nothing in particular. Each mode
+// below now moves exactly one variable, and 5 is the one that was hiding inside 6 -- the
+// world is drawn at eight tenths of the canvas and upscaled, and an upscale is its own
+// possible source of pale specks on a silhouette.
 let DBG = 0;
-const DBGN = ['', 'rim off', 'outline off', 'no post', 'flat colin'];
+const DBGN = ['', 'rim off', 'outline off', 'fxaa off', 'bloom off', 'full res', 'no post', 'flat colin'];
 const dbgMat = new THREE.MeshBasicMaterial({ color: 0x9fb0c4 });
 function applyDbg() {
   buildNEl.textContent = BUILD + (DBG ? ' /' + DBGN[DBG] : '');
-  TOON.rim = (DBG === 1 || DBG >= 3) ? 0 : TOON.rim0;
-  POST.outline = (DBG === 2 || DBG >= 3) ? 0 : POST.outline0;
-  renderer.outputColorSpace = DBG >= 3 ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace;
-  renderer.toneMapping = DBG >= 3 ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+  TOON.rim = DBG === 1 ? 0 : TOON.rim0;
+  POST.outline = DBG === 2 ? 0 : POST.outline0;
+  compMat.uniforms.uAA.value = DBG === 3 ? 0 : 1;
+  POST.bloom = DBG === 4 ? 0 : POST.bloom0;
+  const dpr = DBG === 5 ? Q.present : Q.dpr0;
+  if (dpr !== Q.dpr) { Q.dpr = dpr; resize(); }
+  renderer.outputColorSpace = DBG === 6 ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace;
+  renderer.toneMapping = DBG === 6 ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
   if (colin.model) colin.model.traverse(o => {
     if (!o.isMesh) return;
-    if (DBG === 4) { o.userData.m0 = o.userData.m0 || o.material; o.material = dbgMat; }
+    if (DBG === 7) { o.userData.m0 = o.userData.m0 || o.material; o.material = dbgMat; }
     else if (o.userData.m0) { o.material = o.userData.m0; o.userData.m0 = null; }
   });
 }
@@ -389,7 +398,7 @@ function renderBloomSkip() {
 }
 function renderPost() {
   renderer.info.reset();
-  if (DBG >= 3) { renderer.setRenderTarget(null); renderer.clear(); renderer.render(scene, camera); return; }
+  if (DBG === 6) { renderer.setRenderTarget(null); renderer.clear(); renderer.render(scene, camera); return; }
   compMat.uniforms.uOut.value = POST.outline;
   renderer.setRenderTarget(rtScene); renderer.clear(); renderer.render(scene, camera);
   if (POST.bloom <= 0) { compMat.uniforms.uStr.value = 0; renderBloomSkip(); return; }
@@ -791,14 +800,26 @@ function colinSet(t, dt) {
 }
 function colinAnim(dt) {
   const p = player, sp = p.speed, t = {};
+  const pushing = p.pushK > .08;
   if (p.board) {
-    if (!p.grounded) t[p.airT < .35 ? 'skate_ollie_init_air' : 'skate_ollie_air'] = 1;
-    else if (p.pushK > .08) t['skate_push_standing'] = 1;
-    else t['skate_idol_standing'] = 1;
+    // crouch -> pop -> rise -> land. The crouch is a blend rather than a state, so a thumb
+    // resting on the pad settles into it and a tap goes straight past it to the pop.
+    if (!p.grounded) t[p.airT < .28 ? 'skate_ollie_init_air' : 'skate_ollie_air'] = 1;
+    else if (p.landT > 0) t['skate_ollie_landing'] = 1;
+    else if (p.crouch > .04) {
+      const c = p.crouch;
+      t[pushing ? 'skate_push_crouch' : 'skate_idol_crouch'] = c;
+      t[pushing ? 'skate_push_standing' : 'skate_idol_standing'] = 1 - c;
+    } else t[pushing ? 'skate_push_standing' : 'skate_idol_standing'] = 1;
     colinScale('skate_push_standing', clamp(1 / Math.max(.25, SK8.pushPeriod), .8, 2));
+    colinScale('skate_push_crouch', clamp(1 / Math.max(.25, SK8.pushPeriod), .8, 2));
   } else if (!p.grounded) {
-    // his own arc decides which half of the jump he is in, so a clipped or a long one both read
-    t[p.vel.y > .4 ? 'jump_going_up' : 'jump_coming_down'] = 1;
+    // the wind-up he actually took off from, then his own arc: leaning back on the way up,
+    // forward on the way down, which is the only difference between those two clips.
+    if (p.airT < .19 && p.initClip) t[p.initClip] = 1;
+    else t[p.vel.y > .4 ? 'jump_going_up' : 'jump_coming_down'] = 1;
+  } else if (p.landT > 0) {
+    t['landing_roll'] = 1;
   } else {
     const w = clamp(sp / GAIT.walkAt, 0, 1);
     const r = clamp((sp - GAIT.walkAt) / (GAIT.runAt - GAIT.walkAt), 0, 1);
@@ -831,27 +852,31 @@ const keys = {};
 addEventListener('keydown', e => { keys[e.key.toLowerCase()] = 1; if (e.key === ' ') { player.jump = 1; e.preventDefault(); } if (e.key.toLowerCase() === 'b') toggleBoard(); if (e.key.toLowerCase() === 'r') respawn(); });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 const FLICK = { at: .72, within: .28 };
-function bindStick(el, out, onTap, onFlick, rel) {
+function bindStick(el, out, onTap, onFlick, rel, onRel) {
   const knob = el.querySelector('.knob');
   let id = null, t0 = 0, far = 0, lx = 0, ly = 0, ox = 0, oy = 0; const RAD = 52;
   const set = (cx, cy) => {
     let dx, dy;
     if (rel) { dx = cx - ox; dy = cy - oy; } else { const r = el.getBoundingClientRect(); dx = cx - (r.left + r.width / 2); dy = cy - (r.top + r.height / 2); }
     const d = Math.hypot(dx, dy); if (d > RAD) { dx *= RAD / d; dy *= RAD / d; }
-    out.x = lx = dx / RAD; out.y = ly = dy / RAD; knob.style.transform = `translate(${dx}px,${dy}px)`;
+    out.x = lx = dx / RAD; out.y = ly = dy / RAD; out.far = Math.max(out.far || 0, Math.hypot(out.x, out.y)); knob.style.transform = `translate(${dx}px,${dy}px)`;
   };
-  el.addEventListener('pointerdown', e => { id = e.pointerId; t0 = performance.now(); ox = e.clientX; oy = e.clientY; el.setPointerCapture(id); out.down = 1; el.classList.add('act'); set(e.clientX, e.clientY); far = Math.hypot(out.x, out.y); e.stopPropagation(); e.preventDefault(); });
+  el.addEventListener('pointerdown', e => { id = e.pointerId; t0 = performance.now(); ox = e.clientX; oy = e.clientY; el.setPointerCapture(id); out.down = 1; out.far = 0; el.classList.add('act'); set(e.clientX, e.clientY); far = Math.hypot(out.x, out.y); e.stopPropagation(); e.preventDefault(); });
   el.addEventListener('pointermove', e => { if (e.pointerId !== id) return; set(e.clientX, e.clientY); far = Math.max(far, Math.hypot(out.x, out.y)); e.stopPropagation(); });
   const end = e => {
     if (e.pointerId !== id) return; const held = performance.now() - t0;
     if (onFlick && far > FLICK.at && held < FLICK.within * 1000 && Math.hypot(lx, ly) > .35) onFlick(lx, ly);
     else if (onTap && far < .42 && held < 260) onTap();
-    id = null; out.down = 0; out.x = out.y = 0; knob.style.transform = 'translate(0,0)'; el.classList.remove('act'); e.stopPropagation();
+    if (onRel) onRel(far, held / 1000);
+    id = null; out.down = 0; out.x = out.y = 0; out.far = 0; knob.style.transform = 'translate(0,0)'; el.classList.remove('act'); e.stopPropagation();
   };
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
 }
 bindStick(document.getElementById('stkL'), stick.L, null, null, false);
-bindStick(document.getElementById('stkR'), stick.R, () => { player.jump = 1; }, null, true);
+// A TAP AND A HELD CROUCH ARE THE SAME GESTURE, released. The pad still orbits: push it
+// sideways past .42 and it is a look, so neither the crouch nor the jump ever fires. That
+// is the whole rule, and it leaves the pad's up and down completely unspent.
+bindStick(document.getElementById('stkR'), stick.R, null, null, true, far => { if (far < .42) player.jump = 1; });
 document.getElementById('boardB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleBoard(); });
 document.getElementById('resetB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); respawn(); });
 // mouse look on desktop
@@ -864,10 +889,11 @@ document.getElementById('resetB').addEventListener('pointerdown', e => { e.preve
 }
 document.addEventListener('selectstart', e => e.preventDefault());
 document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, initClip: '', safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) player.pushT = .1; }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; }
@@ -948,13 +974,17 @@ function stepFoot(dt) {
   const sp = Math.hypot(p.vel.x, p.vel.z);
   // jump
   p.coyote = p.grounded ? MOVE.coyote : p.coyote - dt;
-  if (p.jump && p.coyote > 0) { p.vel.y = MOVE.jump; p.grounded = false; p.coyote = 0; }
+  if (p.jump && p.coyote > 0) {
+    p.vel.y = MOVE.jump; p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0;
+    p.initClip = sp0 > 3 ? 'run_jump_init' : 'idle_jump_init';
+  }
   p.jump = 0;
   p.vel.y -= MOVE.g * dt;
   const px = p.pos.x, pz = p.pos.z;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
   const g = groundUnder(p.pos, MOVE.step, p.vel); p.wall = g.wall;
-  settle(p, g, MOVE.step, px, pz);
+  const vy0 = p.vel.y;
+  if (settle(p, g, MOVE.step, px, pz) === 'landed' && vy0 < -7) p.landT = .42;   // he rolls out of a real drop
   p.speed = Math.hypot(p.vel.x, p.vel.z); p.moving = damp(p.moving, sp > .3 ? 1 : 0, .1, dt);
 }
 function stepSkate(dt) {
@@ -988,7 +1018,7 @@ function stepSkate(dt) {
   if (p.grounded) { hmNormal(p.pos.x, p.pos.z, gN); p.vel.x += SK8.g * gN.y * gN.x * dt; p.vel.z += SK8.g * gN.y * gN.z * dt; }
   // ollie
   p.coyote = p.grounded ? MOVE.coyote : p.coyote - dt;
-  if (p.jump && p.coyote > 0) { p.vel.y = SK8.ollie; p.grounded = false; p.coyote = 0; p.airT = 0; }
+  if (p.jump && p.coyote > 0) { p.vel.y = SK8.ollie; p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0; }
   p.jump = 0;
   p.vel.y -= SK8.g * dt;
   const px = p.pos.x, pz = p.pos.z;
@@ -996,7 +1026,8 @@ function stepSkate(dt) {
   const g = groundUnder(p.pos, SK8.step, p.vel); p.wall = g.wall;
   if (g.wall) { p.vel.x *= .7; p.vel.z *= .7; }
   const how = settle(p, g, SK8.step, px, pz);
-  if (how === 'landed') { // landing sideways scrubs the roll
+  if (how === 'landed') {
+    p.landT = .34; // landing sideways scrubs the roll
     const sp = Math.hypot(p.vel.x, p.vel.z);
     if (sp > 2) { const va = Math.atan2(p.vel.x, p.vel.z); const off = Math.abs(wrapAngle(va - p.heading)); const off2 = Math.min(off, Math.PI - off); if (off2 > SK8.bailAng) { p.vel.x *= .35; p.vel.z *= .35; } }
   }
@@ -1006,6 +1037,11 @@ function stepSkate(dt) {
 
 }
 function stepPlayer(dt) {
+  // the crouch: a thumb resting on the right pad that has not turned into a look
+  const wantC = stick.R.down && (stick.R.far || 0) < .35;
+  player.crouch = clamp(player.crouch + (wantC ? dt * 9 : -dt * 11), 0, 1);
+  player.landT = Math.max(0, player.landT - dt);
+  player.airT = player.grounded ? 0 : player.airT + dt;
   if (player.board) stepSkate(dt); else stepFoot(dt);
   if (colin.ready) colinAnim(dt);
   // fell in the water / off the world
@@ -1057,7 +1093,7 @@ const buildEl = document.getElementById('build'), buildNEl = document.getElement
 let fpsT = 0, fpsN = 0, fps = 0;
 buildNEl.textContent = BUILD; buildEl.classList.add('fresh');
 buildEl.style.cursor = 'pointer';
-buildEl.addEventListener('click', () => { DBG = (DBG + 1) % 5; applyDbg(); });
+buildEl.addEventListener('click', () => { DBG = (DBG + 1) % 8; applyDbg(); });
 
 // WHICH BUILD IS ON THE GLASS, and whether it is the newest one.
 // Pages puts a ten-minute cache on index.html and an iOS home-screen app holds it
