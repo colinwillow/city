@@ -51,6 +51,17 @@ playwright unless he asks for it by name.
 
 ## Landmines
 
+- **NOTHING IN THIS GAME CUTS. EVERY CLIP CHANGE IS A BLEND.** `colinSet` used to hard-SET
+  the weights on a hit stage change, on the argument that an impact is not something to ease
+  into. That argument only ever applied to landing, and it made the mid-air pinball flip a
+  jump cut from `flying_backwards` to `flying_forwards`. A stage change is a fast blend
+  (`HIT.snapHL`, .038) — never an instant set.
+- **THE SAME .284 RAD HID THE PANORAMA AS HID THE CLOUDS.** Sampling the equirect by true
+  elevation put only the dim strip just above its equator on screen and never the band the
+  image is about, so turning `SKY.envK` up changed nothing anyone could point at. The dome
+  remaps the visible window onto the panorama's whole upper half (`SKY.envSpan`): a
+  wide-angle view of it, not a geometrically exact one, because a 16 degree window cannot
+  show a sky any other way.
 - **A CLOUD IS PLACED IN ANGLE, NEVER IN METRES.** Twice the deck was invisible because its
   height and distance were picked in metres and the elevation was left to fall out of them.
   It never did. `CAM.el` is a constant .17 rad of downward pitch and the vertical fov is 52,
@@ -62,7 +73,10 @@ playwright unless he asks for it by name.
 - **The census chip answers "did that asset arrive".** `cloud<n>/vis<n> env<0|1>` in the
   debug chip: `cloud0` means the GLBs never loaded, `cloud28/vis0` means they loaded and are
   off the edge of the frame, `env0` means the panorama never arrived. Those are three
-  different bugs and they are one glance apart on the phone.
+  different bugs and they are one glance apart on the phone. **`· NO CLOUD GLB` / `· NO SKY
+  JPG` also appear in the fps chip unasked**, because a `console.warn` is invisible on a
+  phone and "you never put it in" and "it is in and it did not load" are the same picture
+  from where he is standing.
 - **Names are sanitised by GLTFLoader**: `road_a_02.001` arrives as `road_a_02001`,
   `travel agency` as `travel_agency`. Every category test in `buildCity` is a prefix regex.
 - **Cars**: local −Z is up, local Y is the length; `CAR_FWD` says which end is the nose.
