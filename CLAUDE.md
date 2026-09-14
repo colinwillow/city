@@ -56,12 +56,21 @@ playwright unless he asks for it by name.
   into. That argument only ever applied to landing, and it made the mid-air pinball flip a
   jump cut from `flying_backwards` to `flying_forwards`. A stage change is a fast blend
   (`HIT.snapHL`, .038) — never an instant set.
-- **THE SAME .284 RAD HID THE PANORAMA AS HID THE CLOUDS.** Sampling the equirect by true
-  elevation put only the dim strip just above its equator on screen and never the band the
-  image is about, so turning `SKY.envK` up changed nothing anyone could point at. The dome
-  remaps the visible window onto the panorama's whole upper half (`SKY.envSpan`): a
-  wide-angle view of it, not a geometrically exact one, because a 16 degree window cannot
-  show a sky any other way.
+- **`images/HDRI_02_galaxy_2K.jpg` IS THE SKY.** Not a tint on a gradient, not the
+  environment map only — `SKY.envK` is 1 and at 1 the panorama replaces the dome's colour
+  entirely above the horizon. Three rounds were lost to shipping it at .55 and .62 mixed
+  into a blue gradient and reporting that as "put in"; from the phone that is
+  indistinguishable from never having added it, and he said so three times.
+  **`SKY.envB` (6) is the part that is easy to miss.** The image is a night galaxy: sRGB →
+  linear puts its mean near .03 against a gradient sky sitting near .8, so at exposure 1 it
+  renders near-black and looks like nothing happened. At 6 the mean lands near .19 and the
+  stars reach 6, which is over the bloom threshold, so they flare.
+  The sampling is honest equirect by true elevation — measured, not assumed: the image's
+  brightest band is 5–23° above the horizon, which is exactly the window this camera sees
+  (`scratchpad` decode with `jpeg-js`, 20 bands of mean luminance). An earlier build
+  remapped the elevation to compensate for a problem that did not exist.
+  The procedural noise cloud layer fades out as `envK` comes up — two skies stacked is
+  neither — but the cloud MODELS are geometry and still drift across it.
 - **A CLOUD IS PLACED IN ANGLE, NEVER IN METRES.** Twice the deck was invisible because its
   height and distance were picked in metres and the elevation was left to fall out of them.
   It never did. `CAM.el` is a constant .17 rad of downward pitch and the vertical fov is 52,
