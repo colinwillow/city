@@ -78,7 +78,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c7</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c8</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -90,7 +90,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c7';
+const BUILD = 'c8';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -160,14 +160,14 @@ const SK8 = {
 // comes after it. So the elevation is a constant: a shallow look-down that keeps him
 // and the street he is on both in frame, and the pad's whole travel means yaw.
 const CAM = { dist: 6.4, distV: .11, el: .17, look: 1.3, yawRate: 2.4, follow: 1.8, idle: .55, half: .07, fov: 52, fovRush: 9 };
-const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rimP: 3.4, rimCol: new THREE.Color('#dcefff') };
+const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rim0: .26, rimP: 3.4, rimCol: new THREE.Color('#dcefff') };
 const LIGHT = { sun: 3.4, hemi: 1.6, fill: .9, sunDir: new THREE.Vector3(.55, 1, .35).normalize() };
 // BLOOM IS OFF. Not because it is proven guilty -- the rig, the normals, the weights and
 // the materials have all been read and are all clean, and c5 fixed a real aliasing fault
 // in the bright pass -- but because it has been blamed three times and never ruled out.
 // At 0 the pale specks either go with it or they do not, and either answer is worth more
 // than another guess. Put it back to .85 once we know.
-const POST = { bloom: 0, bloomTh: 1.45, bloomKnee: .6, outline: .55, outlineW: 1, vig: .45, exposure: 1.05 };
+const POST = { bloom: 0, bloomTh: 1.45, bloomKnee: .6, outline: .55, outline0: .55, outlineW: 1, vig: .45, exposure: 1.05 };
 const Q = { dpr: Math.min(devicePixelRatio || 1, 2) * (MOBILE ? .8 : 1), present: Math.min(devicePixelRatio || 1, 2), bloomDiv: 3 };
 const CAR_FWD = 1;        // +1: the car mesh's local +Y is its nose. Flip to -1 if they drive backwards.
 const COLIN_HEIGHT = 1.75;
@@ -199,10 +199,19 @@ sun.shadow.mapSize.set(2048, 2048);
 // 96 m across 2048 texels is 4.7 cm -- about 37 texels up a person, which is the least
 // that reads as a shadow rather than as a handful of squares. The cost of the smaller box
 // is that a building further than 48 m stops casting; the crispness is worth it.
-const sc = sun.shadow.camera; sc.left = sc.bottom = -48; sc.right = sc.top = 48; sc.near = 10; sc.far = 420;
+// Plutopia wraps near/far tightly round the receivers and calls that "most of the cure
+// for the striping on flat ground". Mine spent 410 units of depth range on a scene about
+// a hundred deep, which is precision thrown away for nothing.
+const SHADOW = { span: 48, dist: 160 };
+const sc = sun.shadow.camera;
+sc.left = sc.bottom = -SHADOW.span; sc.right = sc.top = SHADOW.span;
+sc.near = SHADOW.dist - SHADOW.span * 1.6; sc.far = SHADOW.dist + SHADOW.span * 2.2;
 // normalBias is in WORLD UNITS along the surface normal. At .5 it moved the lookup half a
 // metre -- a third of the way through the body it was meant to bias by one texel.
-sun.shadow.bias = -.0008; sun.shadow.normalBias = .085;   // ~2 texels at 4.7 cm: enough to keep a curved back off its own shadow
+// And the normal offset is counted in TEXELS, not in metres -- it is the box divided by
+// the map, so it cannot be a constant. Plutopia uses two and a half.
+sun.shadow.bias = -.0004;
+sun.shadow.normalBias = SHADOW.span * 2 / 2048 * 2.5;
 scene.add(sun); scene.add(sun.target);
 const hemi = new THREE.HemisphereLight(0x9bc5ee, 0x4b5a48, LIGHT.hemi); scene.add(hemi);
 const fill = new THREE.DirectionalLight(0x9fd4e8, LIGHT.fill); fill.position.set(-1, .4, -.6); scene.add(fill);
@@ -334,15 +343,24 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
 // draws the scene straight to the glass -- no bloom, no outline, no grade. 2 also strips
 // Colin back to a flat unlit material. Anything still there at 2 is geometry, and
 // anything gone at 1 was the post chain. One look answers what a build cannot.
+// EACH TAP ON THE BADGE TURNS OFF ONE SUSPECT, and the badge says which one is off. The
+// pale specks along his silhouette are not the bloom: that has been at zero since c6 and
+// they are still there. What is left is the toon rim, which adds near-white emissive
+// exactly where a surface turns away from the lens, and the depth outline, which is a
+// second derivative read from a NEAREST depth buffer at a different resolution from the
+// pass compositing it. One look at each names it.
 let DBG = 0;
+const DBGN = ['', 'rim off', 'outline off', 'no post', 'flat colin'];
 const dbgMat = new THREE.MeshBasicMaterial({ color: 0x9fb0c4 });
 function applyDbg() {
-  buildNEl.textContent = BUILD + (DBG ? ' /' + DBG : '');
-  renderer.outputColorSpace = DBG ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace;
-  renderer.toneMapping = DBG ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+  buildNEl.textContent = BUILD + (DBG ? ' /' + DBGN[DBG] : '');
+  TOON.rim = (DBG === 1 || DBG >= 3) ? 0 : TOON.rim0;
+  POST.outline = (DBG === 2 || DBG >= 3) ? 0 : POST.outline0;
+  renderer.outputColorSpace = DBG >= 3 ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace;
+  renderer.toneMapping = DBG >= 3 ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
   if (colin.model) colin.model.traverse(o => {
     if (!o.isMesh) return;
-    if (DBG === 2) { o.userData.m0 = o.userData.m0 || o.material; o.material = dbgMat; }
+    if (DBG === 4) { o.userData.m0 = o.userData.m0 || o.material; o.material = dbgMat; }
     else if (o.userData.m0) { o.material = o.userData.m0; o.userData.m0 = null; }
   });
 }
@@ -355,7 +373,8 @@ function renderBloomSkip() {
 }
 function renderPost() {
   renderer.info.reset();
-  if (DBG) { renderer.setRenderTarget(null); renderer.clear(); renderer.render(scene, camera); return; }
+  if (DBG >= 3) { renderer.setRenderTarget(null); renderer.clear(); renderer.render(scene, camera); return; }
+  compMat.uniforms.uOut.value = POST.outline;
   renderer.setRenderTarget(rtScene); renderer.clear(); renderer.render(scene, camera);
   if (POST.bloom <= 0) { compMat.uniforms.uStr.value = 0; renderBloomSkip(); return; }
   quad.material = brightMat; brightMat.uniforms.tD.value = rtScene.texture;
@@ -671,9 +690,20 @@ const colin = { root: new THREE.Group(), model: null, mixer: null, actions: {}, 
 scene.add(colin.root);
 function buildColin(gltf) {
   const model = gltf.scene; model.updateMatrixWorld(true);
-  const bb = new THREE.Box3().setFromObject(model); const h = bb.getSize(new THREE.Vector3()).y || 1;
-  model.scale.multiplyScalar(COLIN_HEIGHT / h); model.updateMatrixWorld(true);
-  const bb2 = new THREE.Box3().setFromObject(model); model.position.y -= bb2.min.y;
+  // HIS FEET WERE THROUGH THE FLOOR BECAUSE THIS WAS MEASURED WRONG. Box3.setFromObject
+  // multiplies a mesh's bounds by its world matrix, and his sit under an Armature scaled
+  // by 0.01 and turned a quarter turn -- but a SKINNED mesh IGNORES its node transform,
+  // its vertices are already in metres. So the box came back a hundredth of his size and
+  // on its side, and both the fit and the floor offset were derived from it.
+  // The geometry's own bounds are the space the vertices actually live in: 0.003 to 1.312.
+  let lo = Infinity, hi = -Infinity;
+  model.traverse(o => {
+    if (!o.isMesh || !o.geometry) return;
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    lo = Math.min(lo, o.geometry.boundingBox.min.y); hi = Math.max(hi, o.geometry.boundingBox.max.y);
+  });
+  const k = (hi > lo) ? COLIN_HEIGHT / (hi - lo) : 1;
+  model.scale.multiplyScalar(k); model.position.y = -lo * k; model.updateMatrixWorld(true);
   // He is authored for the kitchen: every material carries an emissive map at .1-.4 (his
   // Blender look feeds the diffuse back in as emission) and KHR_materials_specular at 2x.
   // Under a baked room that is his shading; under a 3.4 sun it is a surface that starts
@@ -818,7 +848,11 @@ function groundUnder(p, step, vel) {
   gridQuery(p.x, p.z, 1.2, _boxes);
   for (const c of carsNear(p.x, p.z, 8, _cars)) _boxes.push(c.box);
   const r = resolveBoxes(p, .38, 1.7, step, _boxes, vel);
-  const hm = hmAt(p.x, p.z);
+  // A single bilinear sample at a kerb averages the road and the pavement, and he sinks
+  // into the difference. Five samples across his own footprint take the highest, so he
+  // stands ON an edge rather than halfway through it.
+  const q = .22;
+  const hm = Math.max(hmAt(p.x, p.z), hmAt(p.x + q, p.z), hmAt(p.x - q, p.z), hmAt(p.x, p.z + q), hmAt(p.x, p.z - q));
   return { floor: Math.max(hm, r.floor), hm, wall: r.hitWall };
 }
 function stepFoot(dt) {
@@ -972,7 +1006,7 @@ const buildEl = document.getElementById('build'), buildNEl = document.getElement
 let fpsT = 0, fpsN = 0, fps = 0;
 buildNEl.textContent = BUILD; buildEl.classList.add('fresh');
 buildEl.style.cursor = 'pointer';
-buildEl.addEventListener('click', () => { DBG = (DBG + 1) % 3; applyDbg(); });
+buildEl.addEventListener('click', () => { DBG = (DBG + 1) % 5; applyDbg(); });
 
 // WHICH BUILD IS ON THE GLASS, and whether it is the newest one.
 // Pages puts a ten-minute cache on index.html and an iOS home-screen app holds it
