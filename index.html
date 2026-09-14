@@ -78,7 +78,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c8</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c9</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -90,7 +90,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c8';
+const BUILD = 'c9';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -167,7 +167,7 @@ const LIGHT = { sun: 3.4, hemi: 1.6, fill: .9, sunDir: new THREE.Vector3(.55, 1,
 // in the bright pass -- but because it has been blamed three times and never ruled out.
 // At 0 the pale specks either go with it or they do not, and either answer is worth more
 // than another guess. Put it back to .85 once we know.
-const POST = { bloom: 0, bloomTh: 1.45, bloomKnee: .6, outline: .55, outline0: .55, outlineW: 1, vig: .45, exposure: 1.05 };
+const POST = { bloom: .85, bloomTh: 1.45, bloomKnee: .6, outline: .55, outline0: .55, outlineW: 1, vig: .45, exposure: 1.05 };
 const Q = { dpr: Math.min(devicePixelRatio || 1, 2) * (MOBILE ? .8 : 1), present: Math.min(devicePixelRatio || 1, 2), bloomDiv: 3 };
 const CAR_FWD = 1;        // +1: the car mesh's local +Y is its nose. Flip to -1 if they drive backwards.
 const COLIN_HEIGHT = 1.75;
@@ -296,22 +296,38 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
   uniform sampler2D tD,tB,tZ; uniform float uStr,uVig,uExp,uAA,uRush,uOut,uOutW,uNear,uFar,uOutLo,uOutHi;
   uniform vec3 uOutC; uniform vec2 uPx; varying vec2 vUv;
   float lz(vec2 uv){ float d = texture2D(tZ,uv).x; return (2.0*uNear*uFar)/(uFar+uNear-(2.0*d-1.0)*(uFar-uNear)); }
+  // TONE-MAPPED LUMINANCE, AND THIS IS THE WHOLE BUG. FXAA is a DISPLAY-SPACE algorithm.
+  // Its thresholds -- 0.030 absolute, 0.125 relative -- are calibrated for values in [0,1],
+  // and this buffer is linear HDR where the sky is 4 and his jacket is 0.2. Every edge
+  // against the sky or the road therefore read as an infinite contrast, the direction
+  // vector came out of that comparison, and the blend reached up to eight texels along it
+  // and brought the road back with it. Squashing each tap through x/(1+x) first puts the
+  // comparison back in the range the constants were written for.
+  float lum(vec3 c){ float l = dot(c, vec3(0.299,0.587,0.114)); return l/(1.0+l); }
   vec3 aa(vec2 uv){
-    vec3 L = vec3(0.299,0.587,0.114);
     vec3 m  = texture2D(tD,uv).rgb;
     vec3 nw = texture2D(tD,uv+vec2(-1.0,-1.0)*uPx).rgb, ne = texture2D(tD,uv+vec2( 1.0,-1.0)*uPx).rgb;
     vec3 sw = texture2D(tD,uv+vec2(-1.0, 1.0)*uPx).rgb, se = texture2D(tD,uv+vec2( 1.0, 1.0)*uPx).rgb;
-    float lm=dot(m,L), lnw=dot(nw,L), lne=dot(ne,L), lsw=dot(sw,L), lse=dot(se,L);
+    float lm=lum(m), lnw=lum(nw), lne=lum(ne), lsw=lum(sw), lse=lum(se);
     float lo=min(lm,min(min(lnw,lne),min(lsw,lse))), hi=max(lm,max(max(lnw,lne),max(lsw,lse)));
     if (hi-lo < max(0.030, hi*0.125)) return m;
     vec2 dir = vec2(-((lnw+lne)-(lsw+lse)), ((lnw+lsw)-(lne+lse)));
     float red = max((lnw+lne+lsw+lse)*0.0625, 0.0078);
     float rd = 1.0/(min(abs(dir.x),abs(dir.y))+red);
-    dir = clamp(dir*rd, -8.0, 8.0)*uPx;
+    // Four texels, not eight. The world is drawn at .8 of the canvas, so eight texels of
+    // this buffer is ten screen pixels of reach for a pass that is meant to soften one.
+    dir = clamp(dir*rd, -4.0, 4.0)*uPx;
     vec3 a = 0.5*(texture2D(tD,uv+dir*(1.0/3.0-0.5)).rgb + texture2D(tD,uv+dir*(2.0/3.0-0.5)).rgb);
     vec3 b = a*0.5 + 0.25*(texture2D(tD,uv-dir*0.5).rgb + texture2D(tD,uv+dir*0.5).rgb);
-    float lb = dot(b,L);
-    return (lb < lo || lb > hi) ? a : b;
+    float lb = lum(b);
+    vec3 r = (lb < lo || lb > hi) ? a : b;
+    // AND IT MAY NOT INVENT LIGHT. Clamped per channel to the neighbourhood it actually
+    // sampled, so no blend can return brighter than everything around it. That is what the
+    // pale specks were: an edge blend reaching off his silhouette onto the road and
+    // handing the road's brightness back as a pixel of him.
+    vec3 cmin = min(m, min(min(nw,ne), min(sw,se)));
+    vec3 cmax = max(m, max(max(nw,ne), max(sw,se)));
+    return clamp(r, cmin, cmax);
   }
   vec3 aces(vec3 x){ // Narkowicz fit
     return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0); }
@@ -377,6 +393,7 @@ function renderPost() {
   compMat.uniforms.uOut.value = POST.outline;
   renderer.setRenderTarget(rtScene); renderer.clear(); renderer.render(scene, camera);
   if (POST.bloom <= 0) { compMat.uniforms.uStr.value = 0; renderBloomSkip(); return; }
+  compMat.uniforms.uStr.value = POST.bloom;
   quad.material = brightMat; brightMat.uniforms.tD.value = rtScene.texture;
   brightMat.uniforms.uSrc.value.set(Q.bloomDiv * .5 / rtScene.width, Q.bloomDiv * .5 / rtScene.height);
   renderer.setRenderTarget(rtA); renderer.clear(); renderer.render(quadScene, quadCam);

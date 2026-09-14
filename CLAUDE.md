@@ -77,9 +77,22 @@ playwright unless he asks for it by name.
 - **`Colin_Head_MIX` rides at weight 1.** It is the blend shape that turns the generic
   base head into his; the other 41 targets are visemes and stay at zero.
 - **Downsampling needs more than one tap.** The bloom bright pass writes a buffer a third
-  the width of its source; one bilinear tap at that ratio is nearly a point sample, which
-  turned every bright speck into a hard-edged slab. It boxes five taps now, and the blur
-  runs twice.
+  the width of its source; one bilinear tap at that ratio is nearly a point sample. It
+  boxes five taps now, and the blur runs twice.
+- **FXAA IS A DISPLAY-SPACE ALGORITHM AND `rtScene` IS LINEAR HDR.** This caused the pale
+  specks along Colin's silhouette that survived eight builds. Its thresholds assume [0,1];
+  against a sky at 4.0 every edge read as infinite contrast, and the blend reached eight
+  texels and handed back the road's brightness as a pixel of him. Each tap is now squashed
+  through `x/(1+x)` before the comparison, the reach is four texels, and the result is
+  clamped per channel to the neighbourhood it sampled. Plutopia gets away with the raw
+  version and says so in its own comment: *"this art is flat-shaded with almost no texture
+  detail, so the one thing FXAA is usually criticised for costs nothing here."* Colin is
+  exactly the case that sentence excludes. **Any detailed asset dropped into this scene
+  will hit the same wall.**
+- **Diagnose the post chain by elimination, not by theory.** The badge toggle did in one
+  round what four builds of guessing did not: no post was clean, rim off and outline off
+  both still showed it, so it had to be a neighbourhood operation and the bloom was
+  already at zero. That left exactly one pass.
 - **Tap the build badge to cycle the render**: 0 game, 1 no post chain at all, 2 also
   strips Colin to a flat unlit material. Use it before theorising about what draws what.
 - **`tools/probe.mjs` rebuilds the heightmap offline** and prints profiles and pinholes.
