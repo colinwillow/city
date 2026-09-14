@@ -80,7 +80,7 @@
 </div>
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
-<div class="chip" id="build"><b id="buildN">c26</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c27</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -92,7 +92,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c26';
+const BUILD = 'c27';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -151,20 +151,27 @@ const MOVE = {
 const ROLL = { at: -7, carry: 4.6 };   // how hard a landing starts one, and its speed at impact
 const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7 };
 const SK8 = {
-  pushV: 3.6,        // m/s added by one shove
+  pushV: 3.8,        // m/s added by one shove
   // THE PUSH CLIP IS THE CLOCK. It is not a pose to blend in and out of -- it is a whole
   // cycle, ride to push to ride, and holding the stick forward should simply loop it. The
   // shove fires at the point in that cycle where his foot is actually on the road, so the
   // physics answers to the animation rather than the other way round.
   pushDur: 1.55,     // one cycle, matching skate_push_standing
   pushPlant: .42,    // where in the cycle the foot shoves
-  pushMax: 10.5,     // pushing stops adding above this; hills can
+  // PUSHING KEEPS PAYING, JUST LESS. Each shove gives less the faster he is already going
+  // while drag takes more, so speed BUILDS over a long stretch and settles near 20 m/s
+  // instead of being cut off at a number. A short street will not get him there.
+  pushMax: 22,
   brake: 9,          // m/s^2 with the stick pulled back
-  drag: .09,         // rolling resistance, per second
+  drag: .07,         // rolling resistance, per second
   air: .0025,        // quadratic air drag
   grip: 7,           // how fast sideways velocity dies (carve vs slide)
   turnLo: 3.2, turnHi: 1.25,   // yaw rate at a crawl / at speed (rad/s)
-  ollie: 9.9, g: 20,          // a hefty ollie: ~2.4 m, comparable hang time
+  ollie: 12.6, g: 20,   // a big ollie: about 4 m
+  // THE POP. He was launching on the frame your thumb came up, so there was nothing to
+  // see: no crouch, no load, just a man suddenly higher. This is the wind-up. It is brief,
+  // and the crouch clip runs fast through it so it reads as a compression, then he goes.
+  pop: .13,
   spin: 4.2,         // air yaw rate with the stick
   lean: .5,          // visual roll per unit steer
   step: .42,         // curb height the wheels roll up
@@ -916,7 +923,7 @@ function carHit(c) {
   if (again) p.hitFwd = !p.hitFwd;
   else { const toCar = Math.atan2(-dx, -dz); p.hitFwd = Math.cos(wrapAngle(toCar - p.faceH)) < 0; }
   p.hit = 'fly'; p.hitSnap = true; p.hitCool = HIT.cool;
-  p.airT = 0; p.landT = 0; p.rollT = 0; p.grounded = false;
+  p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.pushing = false; p.pushT = 0; p.grounded = false;
   const k = clamp(c.speed / HIT.ref, .6, 1.8) * (again ? HIT.again : 1);
   p.vel.x = fx * HIT.out * k; p.vel.z = fz * HIT.out * k; p.vel.y = HIT.up * k;
   if (p.board) { p.board = false; board.visible = false; document.getElementById('boardB').classList.remove('on'); }
@@ -926,9 +933,9 @@ function hitMove(dt, gk, half) {
   const p = player;
   if (half) { p.vel.x = damp(p.vel.x, 0, half, dt); p.vel.z = damp(p.vel.z, 0, half, dt); }
   p.vel.y -= MOVE.g * gk * dt;
-  const px = p.pos.x, pz = p.pos.z;
+  const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
-  const g = groundUnder(p.pos, MOVE.step, p.vel); p.wall = g.wall;
+  const g = groundUnder(p.pos, MOVE.step, p.vel, py); p.wall = g.wall;
   return settle(p, g, MOVE.step, px, pz);
 }
 function stepHit(dt) {
@@ -955,7 +962,9 @@ function stepHit(dt) {
   } else {
     hitMove(dt, 1, .07);
     p.hitT -= dt;
-    if (p.hitT <= 0) { p.hit = ''; p.hitSnap = true; p.goT = 0; }   // and up into a walk
+    // everything the hit interrupted goes back to a known state, or the next push plays
+    // the standing clip while he moves -- which is what happened to you after the truck
+    if (p.hitT <= 0) { p.hit = ''; p.hitSnap = true; p.goT = 0; p.pushing = false; p.pushT = 0; p.popT = 0; p.crouch = 0; p.landT = 0; p.rollT = 0; }
   }
   p.speed = Math.hypot(p.vel.x, p.vel.z);
   if (colin.ready) colinAnim(dt);
@@ -1221,6 +1230,14 @@ function colinSet(t, dt) {
   // A SNAP, NOT A FADE, on the frame a hit stage changes. Easing out of the flying clip
   // while he is already face down on the road is exactly the thing that looked wrong.
   const snap = player.hitSnap; player.hitSnap = false;
+  // THE T-POSE. If nothing in the table names a clip that actually exists, every bone ends
+  // the frame with a total weight of zero -- and a zero-weight bone is blended back to its
+  // BIND value by the mixer, which is the T-pose exactly. One missing clip is enough. So
+  // the table is checked against the clips he really has, falls back to the idle rather
+  // than to nothing, and says so in the console instead of failing silently.
+  let tot = 0;
+  for (const k in t) if (colin.actions[k]) tot += t[k];
+  if (tot < .01) { console.warn('[colin] no live clip in', Object.keys(t).join(',') || '(empty)'); t = { idle_neutral: 1 }; }
   for (const nm in colin.actions) {
     const a = colin.actions[nm], want = t[nm] || 0, cur = CW[nm] || 0;
     if (cur < .01 && want > .01) { a.reset(); a.play(); }
@@ -1243,13 +1260,14 @@ function colinAnim(dt) {
     // crouch -> pop -> rise -> land. The crouch is a blend rather than a state, so a thumb
     // resting on the pad settles into it and a tap goes straight past it to the pop.
     if (!p.grounded) t[p.airT < .28 ? 'skate_ollie_init_air' : 'skate_ollie_air'] = 1;
+    else if (p.popT > 0) { colinScale('skate_idol_crouch', 2.8); t['skate_idol_crouch'] = 1; }   // the compression
     else if (p.landT > 0) t['skate_ollie_landing'] = 1;
     // A PUSH IS A WHOLE CYCLE, PLAYED WHOLE. It had been treated as a pose faded in on a
     // decaying impulse and back out again, which cut the shove off partway through and is
     // the twitch you saw. Held forward it simply loops -- and its clock is the very phase
     // the shove is fired from, so the foot and the push cannot drift apart.
     else if (p.pushing) t[p.crouch > .5 ? 'skate_push_crouch' : 'skate_push_standing'] = 1;
-    else if (p.crouch > .04) { t['skate_idol_crouch'] = p.crouch; t['skate_idol_standing'] = 1 - p.crouch; }
+    else if (p.crouch > .04) { colinScale('skate_idol_crouch', 1); t['skate_idol_crouch'] = p.crouch; t['skate_idol_standing'] = 1 - p.crouch; }
     else t['skate_idol_standing'] = 1;
   } else if (!p.grounded) {
     // the wind-up he took off from, then the rising clip for the WHOLE flight. Swapping
@@ -1332,7 +1350,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, initClip: '', hit: '', hitT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, initClip: '', hit: '', hitT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -1359,7 +1377,11 @@ function settle(p, g, step, px, pz) {
   if (p.vel.y <= 0 && p.pos.y <= g.floor + .02) { p.pos.y = g.floor; p.vel.y = 0; p.grounded = true; return 'landed'; }
   return 'air';
 }
-function groundUnder(p, step, vel) {
+// fromY is where he was BEFORE this frame's move. A fast fall can put him under the road
+// between two frames, and a query at his NEW position then finds that road above him,
+// reports no floor at all, and lets him carry on down. Sweeping from the higher of the two
+// is what stops it -- and it is why this only ever bit at speed.
+function groundUnder(p, step, vel, fromY) {
   // heightmap + roofs + cars; walls push the position out
   gridQuery(p.x, p.z, 1.2, _boxes);
   for (const c of carsNear(p.x, p.z, 8, _cars)) _boxes.push(c.box);
@@ -1368,7 +1390,7 @@ function groundUnder(p, step, vel) {
   // combined: taking the max of an exact surface and a smeared one just puts the smear
   // back. Where the collider has no triangle (park furniture) the old five-sample trick
   // still earns its keep, because a bilinear kerb is exactly what it is compensating for.
-  const g = groundAt(p.x, p.z, p.y, step);
+  const g = groundAt(p.x, p.z, fromY != null && fromY > p.y ? fromY : p.y, step);
   const q = .22;
   const hm = g.hit ? g.floor
     : Math.max(hmAt(p.x, p.z), hmAt(p.x + q, p.z), hmAt(p.x - q, p.z), hmAt(p.x, p.z + q), hmAt(p.x, p.z - q));
@@ -1380,9 +1402,9 @@ function stepRoll(dt) {
   const sp = ROLL.carry * k * k;                       // most of the carry is in the first half
   p.vel.x = Math.sin(p.faceH) * sp; p.vel.z = Math.cos(p.faceH) * sp;
   p.vel.y -= MOVE.g * dt;
-  const px = p.pos.x, pz = p.pos.z;
+  const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
-  const g = groundUnder(p.pos, MOVE.step, p.vel); p.wall = g.wall;
+  const g = groundUnder(p.pos, MOVE.step, p.vel, py); p.wall = g.wall;
   settle(p, g, MOVE.step, px, pz);
   if (!p.grounded) p.rollT = 0;                        // rolled off an edge: hand him back
   p.speed = Math.hypot(p.vel.x, p.vel.z);
@@ -1437,9 +1459,9 @@ function stepFoot(dt) {
   }
   p.jump = 0;
   p.vel.y -= MOVE.g * dt;
-  const px = p.pos.x, pz = p.pos.z;
+  const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
-  const g = groundUnder(p.pos, MOVE.step, p.vel); p.wall = g.wall;
+  const g = groundUnder(p.pos, MOVE.step, p.vel, py); p.wall = g.wall;
   const vy0 = p.vel.y;
   if (settle(p, g, MOVE.step, px, pz) === 'landed' && vy0 < ROLL.at) {
     const a = colin.actions['landing_roll'];
@@ -1488,12 +1510,15 @@ function stepSkate(dt) {
   if (p.grounded) { groundNormal(p.pos.x, p.pos.z, p.pos.y, gN); p.vel.x += SK8.g * gN.y * gN.x * dt; p.vel.z += SK8.g * gN.y * gN.z * dt; }
   // ollie
   p.coyote = p.grounded ? MOVE.coyote : p.coyote - dt;
-  if (p.jump && p.coyote > 0) { p.vel.y = SK8.ollie; p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0; }
+  if (p.popT > 0) {
+    p.popT -= dt;
+    if (p.popT <= 0) { p.vel.y = SK8.ollie; p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0; }
+  } else if (p.jump && p.coyote > 0) { p.popT = SK8.pop; p.pushing = false; }
   p.jump = 0;
   p.vel.y -= SK8.g * dt;
-  const px = p.pos.x, pz = p.pos.z;
+  const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
-  const g = groundUnder(p.pos, SK8.step, p.vel); p.wall = g.wall;
+  const g = groundUnder(p.pos, SK8.step, p.vel, py); p.wall = g.wall;
   if (g.wall) { p.vel.x *= .7; p.vel.z *= .7; }
   const how = settle(p, g, SK8.step, px, pz);
   if (how === 'landed') {
