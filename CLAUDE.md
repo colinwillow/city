@@ -432,7 +432,11 @@ playwright unless he asks for it by name.
   material name**: the c9 re-export renamed every material to `Material.00N` and a
   name-keyed lookup failed silently, putting the white teeth straight back.
 - **`TRIM` trims clips in code** for frames the owner has already cut locally but not
-  re-exported. A tail shortens `clip.duration`; a head sets `TRIM_IN[name]`, the second the
+  re-exported. **`back_flip` loses its first 12 frames** — the clip is authored as a STANDING
+  back flip, so it opens with a crouch and a push off the floor, and played on a double jump
+  that reads as him jumping off nothing a second time. Everything downstream measures off
+  `clipLen`, which subtracts `TRIM_IN`, so `airStart`'s time-scaling and the board trick both
+  stretch what is LEFT (1.77 → 1.37) and nothing else needed touching. A tail shortens `clip.duration`; a head sets `TRIM_IN[name]`, the second the
   action starts at. **Delete an entry the moment an export lands with the cut baked in**, or
   it is taken twice. Clips are 30 fps — measured, not assumed: every one has exactly
   `duration × 30` keyframes.
@@ -586,6 +590,17 @@ playwright unless he asks for it by name.
       charge  50%   top 13.3       jump 4.11 m       1.28 s, 20.2 m
       charge 100%   top 17.6       jump 5.66 m       1.51 s, 33.8 m
   On the board that thumb is still the ollie, so the wind-up is on foot only.
+  **THE SPRINT RIDES ON `p.rHold`, NOT ON `p.charge`, AND ON `charge` IT NEVER ONCE FIRED.**
+  `p.charge` only builds while `stick.R.far < .35` — a thumb RESTING on the pad, because past
+  that the pad is a camera look and a look must not also be a wind-up. That gate is right for
+  the JUMP, which is a wind-up and a release. It is wrong for the sprint, because holding the
+  pad *and pushing it* is exactly what a thumb does while you are running somewhere — and
+  **`far` is a HIGH-WATER MARK for the whole touch**, so one look anywhere in the hold kills
+  the charge for the rest of it and the ceiling never leaves 9 m/s. Raising `MOVE.sprint`
+  could not have fixed that and did not: c79 went 1.55 → 1.95 and he reported no change at
+  all, which is the tell — a number that moves nothing is not the number. `p.rHold` was
+  already sitting there as "how long the right pad has been down", with no `far` test on it.
+  The jump charge keeps its own gate; only the ceiling moved.
   **`MOVE.sprint` AND `GAIT.tsHi` MOVE TOGETHER OR THE FEET SLIDE.** The run clip is scaled by
   `speed / GAIT.runRef`, so a ceiling of 17.6 m/s wants **3.7x** and the cap is what he
   actually gets. 1.7 was already under the OLD ceiling of 14 — he had been sliding at full
@@ -1026,12 +1041,20 @@ playwright unless he asks for it by name.
   look. That does not port whole — its ground is procedural terrain with a shader we own to
   paint into, and this city's ground is an imported GLB. **What ports is the verdict.**
   So the shadow stays and stops being a hole: `sun.shadow.intensity` is three's own per-light
-  dial for how much of the light a shadow may remove, so at `SHADE.k` (.46) a shadow is a soft
+  dial for how much of the light a shadow may remove, so at `SHADE.k` (.38) a shadow is a soft
   tinted darkening and a shadowed wall still shows its own shading underneath. No shader patch
-  — r180 already carries `shadowIntensity` as a uniform. It is re-applied every frame from the
-  console value, so `city.SHADE.k = 1` is the old look and `= 0` is no shadows at all with the
-  blobs still there. **That pair is also the diagnosis**: if the ramp lifts, it was a shadow;
-  if it stays black at 0, it is shading, and they are different bugs.
+  — r180 already carries `shadowIntensity` as a uniform.
+  **ONE OR THE OTHER, NEVER BOTH — c79 SHIPPED BOTH AND THAT WAS A MISREADING.** Plutopia's
+  arrangement was: real shadows OFF, static things on a baked map, moving things on discs
+  INSTEAD. c79 added the disc alongside a live shadow map, which gives every character two
+  shadows and looks exactly like what it is. `SHADE.mode` picks one — `'map'` (the default,
+  and the one he kept), `'blob'` (turns `sun.castShadow` off and draws the discs), `'off'`
+  (neither). `blobStep` is gated on it as well, so nothing can draw both again.
+  **`applyShade()` IS SEPARATE FROM `applyDbg` BECAUSE `applyDbg` ONLY RUNS ON A BADGE TAP.**
+  These two lines lived in `applyDbg`, so moving `SHADE.k` from the console or a slider did
+  nothing at all until you also tapped the build number — which is indistinguishable from the
+  setting not existing. **The `'map'`/`'off'` pair is also the diagnosis**: if the black ramp
+  lifts it was a shadow; if it stays black it is shading, and they are different bugs.
 - **THE CONTACT BLOB (`BLOB`, `blobStep`), the half of Plutopia's answer that DOES port.**
   What grounds a thing is the dark under it, and the contact under his feet is the one thing
   a projected shadow map is genuinely bad at. Four things are load-bearing:
@@ -1053,11 +1076,33 @@ playwright unless he asks for it by name.
      hole must never dither it, and it must never write depth over the ground it lies on.
   It walks `CHARS.skins` rather than `colin.root`, because during a `PARADE` there are two
   characters on the street and one blob would follow neither.
+  **IT IS OFF BY DEFAULT AND IT IS AN ALTERNATIVE TO THE SHADOW MAP, NOT AN ADDITION TO IT** —
+  see `SHADE.mode` above. Two shadows on one character is what shipping both looks like.
 - **Tap the build badge to cycle the render**, one variable each: 1 rim off, 2 outline off,
   3 fxaa off, 4 bloom off, 5 full res (no upscale), 6 no post, 7 flat Colin, 8 sun only,
   9 nan map, **10 no shadow, 11 no hole**. A big dark region is either a shadow or it is
   shading, and those are different bugs — one tap on 10 says which, which is worth more than
-  any amount of reading.
+  any amount of reading. **THE CYCLE WAS `% 10` WHILE `DBGN` HAD TWELVE ENTRIES**, so the two
+  modes written up here as the answer to that very question could not be reached by tapping.
+  It is `% DBGN.length`; add a mode and it is reachable.
+- **THE SETTINGS PANEL (`OPT`, the gear beside the mute key).** Everything worth arguing about
+  is a number at the top of this file, and until c81 the only way to move one was a push — a
+  ten-minute Pages cache and a reload for a value he could have decided in three seconds by
+  looking at it. Half of these ARE look-at-it decisions ("a little lighter", "one or the
+  other"). The badge cycle is the diagnostic half of this; the panel is the taste half.
+  **It writes the LIVE objects, not a copy** (`SHADE`, `BLOB`, `TOON`, `POST`, `HOLE`, `MAP`,
+  `SKY`, `MOVE`), so there is no second source of truth and the console still works alongside
+  it. Remembered in `localStorage`, because a setting you re-pick after every reload is one
+  nobody uses twice.
+  **THE ROWS FOR `rim`, `outline` AND `bloom` WRITE THE `*0` BASELINE, NOT THE LIVE VALUE** —
+  `applyDbg` restores all three from `TOON.rim0` / `POST.outline0` / `POST.bloom0`, so a panel
+  that wrote the live value would be silently undone by the next tap on the build badge.
+  **AND `POST.bloomTh` NEEDED A PER-FRAME PUSH.** `brightMat` took it once at construction, so
+  the threshold was the one `POST` value that could never be moved at runtime by anything.
+  **`optStart()` IS CALLED AT THE BOTTOM OF THE FILE, NOT WHERE THE PANEL IS DEFINED.**
+  `optLoad` runs the setters and two of them call `applyDbg`, which reads `buildNEl` — a
+  `const` declared a thousand lines further down and therefore in its temporal dead zone up
+  there. A throw is a blank page. (Plutopia's own first landmine, one repo over.)
 - **`tools/probe.mjs` rebuilds the heightmap offline** and prints profiles and pinholes.
   The bridge deck is continuous at ~6.3 over its whole span — it has been checked, so a
   fall-through there is not the heightmap. The deck is only ~21 m wide with water either

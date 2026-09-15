@@ -101,6 +101,28 @@
   #map{position:fixed;top:calc(62px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));
     width:116px;height:116px;border-radius:14px;z-index:4;pointer-events:none;
     border:1.5px solid rgba(157,247,255,.30);box-shadow:0 4px 16px rgba(0,0,0,.45)}
+  /* ---- the settings panel ---- */
+  #gearB{top:calc(14px + env(safe-area-inset-top));right:calc(110px + env(safe-area-inset-right));width:40px;height:40px;font-size:17px}
+  #opt{position:fixed;z-index:9;top:calc(62px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));
+    width:min(280px,calc(100vw - 28px));max-height:calc(100vh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;
+    padding:12px 14px 14px;border-radius:16px;border:1.5px solid rgba(157,247,255,.34);
+    background:rgba(8,12,34,.93);box-shadow:0 10px 34px rgba(0,0,0,.6);
+    font:600 11px/1.3 var(--disp);letter-spacing:.1em;color:var(--ink);-webkit-tap-highlight-color:transparent}
+  #opt[hidden]{display:none}
+  #opt h4{margin:10px 0 6px;font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;opacity:.5;font-weight:700}
+  #opt h4:first-child{margin-top:0}
+  #opt .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:7px 0}
+  #opt .row span{flex:1;text-transform:uppercase;font-size:10px;letter-spacing:.14em;opacity:.85}
+  #opt .row b{min-width:34px;text-align:right;font-size:10px;color:#8ef0ff;font-weight:700}
+  #opt input[type=range]{flex:0 0 108px;width:108px;height:26px;accent-color:#8ef0ff;background:transparent}
+  #opt .seg{display:flex;gap:6px}
+  #opt .seg i{font-style:normal;padding:5px 9px;border-radius:9px;border:1px solid rgba(157,247,255,.28);
+    font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;opacity:.6}
+  #opt .seg i.on{border-color:rgba(157,247,255,.95);background:rgba(120,238,255,.16);color:#fff;opacity:1}
+  #opt .tog{padding:5px 11px;border-radius:9px;border:1px solid rgba(157,247,255,.28);font-size:9.5px;
+    letter-spacing:.14em;text-transform:uppercase;cursor:pointer;opacity:.6}
+  #opt .tog.on{border-color:rgba(157,247,255,.95);background:rgba(120,238,255,.16);color:#fff;opacity:1}
   /* ---- chips ---- */
   .chip{position:fixed;z-index:4;font:600 11px/1 var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--ink);opacity:.7;
     padding:7px 10px;border-radius:999px;border:1px solid rgba(157,247,255,.22);background:rgba(10,14,40,.45);backdrop-filter:blur(6px)}
@@ -134,8 +156,10 @@
 <div class="key" id="boardB">Board</div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
+<div class="key" id="gearB">&#9881;</div>
+<div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c80</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c81</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +171,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c80';
+const BUILD = 'c81';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -580,6 +604,12 @@ const TRIM = {
   get_up_from_face:  { start: 9, end: 24 },    // 0.300 off the head, 0.800 off the tail: 2.70 -> 1.60 usable
   fall_to_back:      { end: 10 },              // 0.333 s off the tail: 1.133 -> 0.800
   fall_to_face_down: { end: 14 },              // 0.467 s off the tail: 1.100 -> 0.633
+  // THE BACK FLIP OPENS WITH A CROUCH AND A LEAP, AND HE IS ALREADY IN THE AIR. The clip is
+  // authored as a standing back flip, so its first twelve frames are the wind-up and the push
+  // off the floor -- played on a double jump that reads as him jumping off nothing a second
+  // time. Everything downstream is measured off `clipLen`, which subtracts `TRIM_IN`, so the
+  // time-scaling in `airStart` and the board trick both stretch what is LEFT: 1.77 -> 1.37.
+  back_flip:         { start: 12 },            // 0.400 s off the head: the launch he already did
 };
 const TRIM_IN = {};                  // name -> the second the clip should START at
 const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
@@ -877,8 +907,14 @@ const SHADOW = { span: 48, dist: 160 };
 // the light a shadow may remove, so at `SHADE.k` the shadow is a soft tinted darkening and a
 // shadowed wall still shows its own shading underneath. And the part Plutopia was right about
 // that a shadow map is genuinely bad at -- the contact under his feet -- is a blob (`BLOB`).
-// `city.SHADE.k = 1` is the old look, `= 0` is no shadows at all with the blobs still there.
-const SHADE = { k: .46 };
+// `city.SHADE.k = 1` is the old look.
+// **ONE OR THE OTHER, NEVER BOTH.** c79 added the blob ALONGSIDE the shadow map, which is not
+// what Plutopia does and looks wrong for an obvious reason once you see it: a character with a
+// projected shadow AND a disc under him has two shadows. Plutopia's arrangement was that the
+// real shadows came OFF, static things kept a baked map, and the moving things got the discs
+// instead. So `mode` picks one: 'map' is the shadow map alone (the default, and the one he
+// kept), 'blob' turns `sun.castShadow` off and draws the discs instead. Nothing draws both.
+const SHADE = { k: .38, mode: 'map' };
 const sc = sun.shadow.camera;
 sc.left = sc.bottom = -SHADOW.span; sc.right = sc.top = SHADOW.span;
 sc.near = SHADOW.dist - SHADOW.span * 1.6; sc.far = SHADOW.dist + SHADOW.span * 2.2;
@@ -1174,7 +1210,9 @@ function blobFloor(x, z, y) {
 }
 function blobStep() {
   const w = _blob.want; w.length = 0;
-  if (BLOB.k > 0) {
+  // ONE OR THE OTHER. A projected shadow AND a disc is two shadows on one character, which is
+  // exactly what it looks like. See SHADE.mode.
+  if (BLOB.k > 0 && SHADE.mode === 'blob') {
     // EVERY SKIN THAT IS ON SCREEN, not just the current one -- during a parade there are two
     // of them walking past each other and one blob would follow neither.
     for (const k in CHARS.skins) {
@@ -1656,6 +1694,13 @@ function albedoFor(m) {
   if (!_albedo.has(m)) _albedo.set(m, new THREE.MeshBasicMaterial({ map: m.map || null, color: m.map ? 0xffffff : 0xb0b6bd }));
   return _albedo.get(m);
 }
+// SEPARATE FROM `applyDbg`, BECAUSE `applyDbg` ONLY RUNS ON A BADGE TAP. Putting the shadow
+// settings in there meant a slider (or a console write) did nothing until you also tapped the
+// build number, which is indistinguishable from the setting not existing.
+function applyShade() {
+  sun.castShadow = DBG !== 10 && SHADE.mode === 'map';
+  sun.shadow.intensity = SHADE.k;
+}
 function applyDbg() {
   buildNEl.textContent = BUILD + (DBG ? ' /' + DBGN[DBG] : '');
   TOON.rim = DBG === 1 ? 0 : TOON.rim0;
@@ -1677,8 +1722,7 @@ function applyDbg() {
   fill.intensity = DBG === 8 ? 0 : LIGHT.fill;
   // A BIG DARK REGION IS EITHER A SHADOW OR IT IS SHADING, AND THOSE ARE DIFFERENT BUGS.
   // One tap on each of these says which, which is worth more than any amount of reading.
-  sun.castShadow = DBG !== 10;
-  sun.shadow.intensity = SHADE.k;    // live off the console, so the look can be dialled on the phone
+  applyShade();
   HOLE.on = DBG === 11 ? 0 : 1;
   if (DBG === 8) TOON.rim = 0;
   if (DBG) census(); else dbgInfo = '';
@@ -1697,6 +1741,7 @@ function renderPost() {
   renderer.setRenderTarget(rtScene); renderer.clear(); renderer.render(scene, camera);
   if (POST.bloom <= 0) { compMat.uniforms.uStr.value = 0; renderBloomSkip(); return; }
   compMat.uniforms.uStr.value = POST.bloom;
+  brightMat.uniforms.uTh.value = POST.bloomTh; brightMat.uniforms.uKnee.value = POST.bloomKnee;
   quad.material = brightMat; brightMat.uniforms.tD.value = rtScene.texture;
   brightMat.uniforms.uSrc.value.set(Q.bloomDiv * .5 / rtScene.width, Q.bloomDiv * .5 / rtScene.height);
   renderer.setRenderTarget(rtA); renderer.clear(); renderer.render(quadScene, quadCam);
@@ -3333,6 +3378,99 @@ document.getElementById('resetB').addEventListener('pointerdown', e => { e.preve
 // One switch for all of it. The master gain is where it lands, so the music and the wheel
 // loop -- which are not `play` calls and would otherwise carry on underneath -- go with it.
 document.getElementById('soundB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleSound(); });
+// ---------- the settings panel ----------
+// EVERYTHING WORTH ARGUING ABOUT IS A NUMBER AT THE TOP OF THIS FILE, AND UNTIL NOW THE ONLY
+// WAY TO MOVE ONE WAS A PUSH. That is a ten-minute Pages cache and a reload for a value he
+// could have decided in three seconds by looking at it -- and half of these ARE look-at-it
+// decisions ("a little lighter", "one or the other"). The badge already cycles the render
+// one variable at a time, which is the diagnostic half of this; the panel is the taste half.
+// Two rules it must keep:
+//  1. NOTHING HERE MAY EAT A THUMB. The sticks are `position: fixed` and so is this, so the
+//     panel sits in the top-right gutter and is `hidden` (display:none) when closed -- not
+//     merely transparent, which is the mistake `#startB` made over the boot card.
+//  2. IT WRITES THE LIVE OBJECTS, NOT A COPY. Every row reads and writes the same constant
+//     the game reads each frame (`SHADE.k`, `BLOB.k`, `POST.*`, `HOLE.on`), so there is no
+//     second source of truth to fall out of step -- and the console still works alongside it.
+// It remembers in localStorage under `OPT.key`, because a setting you have to re-pick after
+// every reload is a setting nobody uses twice.
+const OPT = { key: 'city.opt', on: false, el: null };
+const OPT_ROWS = [
+  ['h', 'Shading'],
+  ['seg', 'Shadows', () => SHADE.mode, v => { SHADE.mode = v; applyShade(); }, [['map', 'Map'], ['blob', 'Blobs'], ['off', 'None']]],
+  ['num', 'Shadow dark', () => SHADE.k, v => { SHADE.k = v; applyShade(); }, 0, 1, .02],
+  ['num', 'Blob dark', () => BLOB.k, v => { BLOB.k = v; }, 0, 1, .02],
+  ['num', 'Toon bands', () => TOON.bands, v => { TOON.bands = v; }, 1, 5, 1],
+  ['num', 'Toon floor', () => TOON.floor, v => { TOON.floor = v; }, 0, 1, .02],
+  // THE BASELINE, NOT THE LIVE VALUE. `applyDbg` restores `TOON.rim` from `TOON.rim0` and
+  // `POST.outline`/`POST.bloom` from their own `*0`, so a panel that wrote the live value
+  // would be silently undone by the next tap on the build badge.
+  ['num', 'Rim', () => TOON.rim0, v => { TOON.rim0 = v; applyDbg(); }, 0, 1, .02],
+  ['h', 'Post'],
+  ['num', 'Bloom', () => POST.bloom0, v => { POST.bloom0 = v; applyDbg(); }, 0, 2, .05],
+  ['num', 'Bloom thresh', () => POST.bloomTh, v => { POST.bloomTh = v; }, 0, 3, .05],
+  ['num', 'Outline', () => POST.outline0, v => { POST.outline0 = v; applyDbg(); }, 0, 2, .05],
+  ['tog', 'See-through hole', () => HOLE.on, v => { HOLE.on = v; }],
+  ['h', 'World'],
+  ['tog', 'Map', () => MAP.on, v => { MAP.on = v; }],
+  ['num', 'Sky exposure', () => SKY.envB, v => { SKY.envB = v; }, 0, 8, .1],
+  ['num', 'Sprint x', () => MOVE.sprint, v => { MOVE.sprint = v; }, 1, 3, .05],
+];
+function optSave() {
+  const o = {};
+  for (const r of OPT_ROWS) if (r[0] !== 'h') o[r[1]] = r[2]();
+  try { localStorage.setItem(OPT.key, JSON.stringify(o)); } catch (e) {}
+}
+function optLoad() {
+  let o = null; try { o = JSON.parse(localStorage.getItem(OPT.key) || 'null'); } catch (e) {}
+  if (!o) return;
+  for (const r of OPT_ROWS) if (r[0] !== 'h' && o[r[1]] !== undefined) r[3](o[r[1]]);
+}
+function optBuild() {
+  const el = OPT.el = document.getElementById('opt');
+  el.innerHTML = '';
+  for (const r of OPT_ROWS) {
+    if (r[0] === 'h') { const h = document.createElement('h4'); h.textContent = r[1]; el.appendChild(h); continue; }
+    const row = document.createElement('div'); row.className = 'row';
+    const lab = document.createElement('span'); lab.textContent = r[1]; row.appendChild(lab);
+    if (r[0] === 'num') {
+      const [, , get, set, lo, hi, st] = r;
+      const i = document.createElement('input'); i.type = 'range'; i.min = lo; i.max = hi; i.step = st; i.value = get();
+      const b = document.createElement('b'); b.textContent = (+get()).toFixed(st < 1 ? 2 : 0);
+      i.addEventListener('input', () => { set(+i.value); b.textContent = (+i.value).toFixed(st < 1 ? 2 : 0); optSave(); });
+      row.appendChild(i); row.appendChild(b);
+    } else if (r[0] === 'tog') {
+      const [, , get, set] = r;
+      const t = document.createElement('div'); t.className = 'tog' + (get() ? ' on' : ''); t.textContent = get() ? 'on' : 'off';
+      t.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation();
+        const v = get() ? 0 : 1; set(v); t.className = 'tog' + (v ? ' on' : ''); t.textContent = v ? 'on' : 'off'; optSave(); });
+      row.appendChild(t);
+    } else if (r[0] === 'seg') {
+      const [, , get, set, opts] = r;
+      const g = document.createElement('div'); g.className = 'seg';
+      for (const [val, txt] of opts) {
+        const i = document.createElement('i'); i.textContent = txt; i.className = get() === val ? 'on' : '';
+        i.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation();
+          set(val); for (const q of g.children) q.className = ''; i.className = 'on'; optSave(); });
+        g.appendChild(i);
+      }
+      row.appendChild(g);
+    }
+    el.appendChild(row);
+  }
+  // A drag inside the panel is a slider, never the camera or a stick.
+  el.addEventListener('pointerdown', e => e.stopPropagation());
+}
+function optToggle() {
+  OPT.on = !OPT.on;
+  if (OPT.on && OPT.el) optBuild();     // rebuilt on open, so the console's own edits show
+  document.getElementById('opt').hidden = !OPT.on;
+  document.getElementById('gearB').classList.toggle('on', OPT.on);
+}
+document.getElementById('gearB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); optToggle(); });
+// NOT CALLED HERE. `optLoad` runs the setters, and two of them call `applyDbg`, which reads
+// `buildNEl` -- a `const` declared a thousand lines further down and therefore in its temporal
+// dead zone at this point. A throw there takes the whole module with it and the page is blank.
+// `optStart()` is called once the HUD consts exist, at the bottom of the file.
 function toggleSound() {
   SFX.wake(); SFX.on = !SFX.on;
   if (SFX.master) SFX.master.gain.value = SFX.on ? SFX.vol : 0;
@@ -3664,8 +3802,16 @@ function stepFoot(dt) {
     const er = wrapAngle(p.heading - p.faceH);
     brake = 1 - MOVE.turnBrake * plant * Math.min(1, Math.abs(er) / (Math.PI * .55));
   }
-  // the sprint: the wind-up raises his ceiling while it is held
-  const chg = clamp(p.charge / MOVE.chargeMax, 0, 1);
+  // THE SPRINT RIDES ON `rHold`, NOT ON `charge`, AND THAT IS WHY IT NEVER ONCE FIRED.
+  // `p.charge` only builds while `stick.R.far < .35` -- a thumb RESTING on the pad, because
+  // past that the pad is a camera look and a look must not also be a wind-up. That gate is
+  // right for the JUMP, which is a wind-up and a release. It is completely wrong for the
+  // sprint, because holding the pad and pushing it is exactly what a thumb does while you are
+  // running somewhere: `far` is a HIGH-WATER MARK for the whole touch, so one look anywhere
+  // in the hold kills the charge for the rest of it and the ceiling never leaves 9 m/s.
+  // Raising `MOVE.sprint` could never have fixed that, and did not.
+  // `p.rHold` is already "how long the right pad has been down", with no `far` test on it.
+  const chg = clamp(p.rHold / MOVE.chargeMax, 0, 1);
   const want = s.mag > .1 ? MOVE.max * lerp(1, MOVE.sprint, chg) * s.mag * brake : 0;
   const tvx = dvx * want, tvz = dvz * want;
   // how long he has been asking, and how much of his legs that has bought him
@@ -4327,10 +4473,15 @@ function stepCam(dt) {
 // ---------- HUD ----------
 const speedEl = document.getElementById('speed').querySelector('b');
 const buildEl = document.getElementById('build'), buildNEl = document.getElementById('buildN'), perfEl = document.getElementById('perf');
+function optStart() { try { optLoad(); } catch (e) { console.warn('[opt] stored settings ignored', e); } optBuild(); }
+optStart();
 let fpsT = 0, fpsN = 0, fps = 0;
 buildNEl.textContent = BUILD; buildEl.classList.add('fresh');
 buildEl.style.cursor = 'pointer';
-buildEl.addEventListener('click', () => { DBG = (DBG + 1) % 10; applyDbg(); });
+// DBGN HAS TWELVE ENTRIES AND THIS CYCLED TEN. `no shadow` (10) and `no hole` (11) were
+// added, written up in CLAUDE.md as the answer to "is that dark patch a shadow or is it
+// shading", and could not be reached by tapping -- the one place that question gets asked.
+buildEl.addEventListener('click', () => { DBG = (DBG + 1) % DBGN.length; applyDbg(); });
 
 // WHICH BUILD IS ON THE GLASS, and whether it is the newest one.
 // Pages puts a ten-minute cache on index.html and an iOS home-screen app holds it
@@ -4424,7 +4575,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, JAM, TRAF, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
