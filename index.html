@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c117</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c118</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c117';
+const BUILD = 'c118';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -704,6 +704,15 @@ const WEAP = {
   // `range` is Plutopia's 70 x .625, the borrowed-length rule; every other number here is a
   // fraction or a rate and comes over raw.
   lock: { cone: .38, range: 44, pull: 5.0, grab: .58, taper: .55, keep: .55 },
+  // RIDING, THE WHOLE LOOP IS LIVELIER AND IT READS AS THE AIMER ZIPPING ABOUT. Two things
+  // feed it and both are speed: the camera sweeps in behind the aim while he is ALSO being
+  // carried across the ground at twenty metres a second, so a target's bearing changes on its
+  // own before the thumb has moved -- and the assist then chases that moving bearing.
+  // So the same loop runs slower on the board. Multipliers rather than a second set of
+  // numbers, so the day `camEase` or `grab` is retuned this follows instead of drifting out of
+  // agreement with it. `grab` is the one to take toward 0 if he decides he wants a plain
+  // standing reticle that does not lead at all -- the lock stays, it just stops pulling.
+  ride: { camEase: .55, aimTurn: .55, grab: .55, pull: .6 },
   len: .30,             // the blaster's length in his hand, measured to, not typed
   // Where it sits in his hand. NOT derived: Colin has no weapon bone (his rig is 66 joints and
   // every one of them mixamorig), so nothing in either file says where the grip goes. The
@@ -2049,15 +2058,17 @@ function stepAim(dt) {
       const b = Math.atan2(p.lock.x - p.pos.x, p.lock.z - p.pos.z);
       const err = wrapAngle(b - raw);
       const off = Math.min(1, Math.abs(err) / WEAP.lock.cone);   // full help when nearly on it
-      e = err * WEAP.lock.grab * (1 - off * WEAP.lock.taper);    // tailing off at the cone edge
+      e = err * WEAP.lock.grab * (p.board ? WEAP.ride.grab : 1) * (1 - off * WEAP.lock.taper);
     }
-    p.aimAdj = lerp(p.aimAdj || 0, e, Math.min(1, dt * WEAP.lock.pull));
+    p.aimAdj = lerp(p.aimAdj || 0, e, Math.min(1, dt * WEAP.lock.pull * (p.board ? WEAP.ride.pull : 1)));
     p.aimH = raw + p.aimAdj;
     // AND THE CAMERA SWINGS IN BEHIND IT. `cam.az` here IS the forward the player looks along,
     // so the target is `aimH` itself. Capped, because uncapped this feedback runs at four
     // radians a second and is unsteerable.
+    const R = p.board ? WEAP.ride : null;
     const cd = wrapAngle(p.aimH - cam.az);
-    cam.az += clamp(cd * WEAP.camEase, -WEAP.aimTurn, WEAP.aimTurn) * dt;
+    cam.az += clamp(cd * WEAP.camEase * (R ? R.camEase : 1),
+      -WEAP.aimTurn * (R ? R.aimTurn : 1), WEAP.aimTurn * (R ? R.aimTurn : 1)) * dt;
     cam.idle = 0;
     // ARMED HE DOES NOT TURN TO WALK: he faces where he is aiming and travels wherever the
     // LEFT stick says, which is what makes the strafe clips mean something.
@@ -4660,7 +4671,9 @@ function buildColin(gltf, extra) {
       c2.tracks = c2.tracks.filter(t => UPPER.test(boneOf(t)) === keep);
       if (c2.tracks.length) colin.clips.push(c2);
     };
-    for (const nm of [WEAP.aimPose, WEAP.idle, WEAP.clip]) carve(nm, '__up', true);
+    // ...and every strike, because a punch thrown from a moving board is the same trick: the
+    // swing on the spine-up tracks, the ride on the legs.
+    for (const nm of [WEAP.aimPose, WEAP.idle, WEAP.clip, MELEE.slide, MELEE.roll, ...MELEE.chain]) carve(nm, '__up', true);
     // every board clip, so this holds through a push and in the air as well as standing still
     for (const c of colin.clips.slice()) if (/^skate_/.test(c.name)) carve(c.name, '__legs', false);
     const fr = colin.clips.find(c => c.name === WEAP.aimRun);
@@ -4862,8 +4875,11 @@ function colinAnim(dt) {
   // weight and every time scale it worked out is preserved -- the push clip is the CLOCK for
   // the shove (see SK8), and a leg clone that did not inherit its scale would put his foot on
   // the road on the wrong frame.
-  if (p.board && KIT.out.blaster && !p.hit) {
-    const up = (p.aim ? WEAP.aimPose : p.fireT > 0 ? WEAP.clip : WEAP.idle) + '__up';
+  // WHAT HIS ARMS ARE DOING WHILE HE RIDES, in order of who has the better claim: a strike is
+  // happening NOW and outranks a pose being held, and the gun's own three follow.
+  if (p.board && !p.hit && (p.mel || KIT.out.blaster)) {
+    const up = (p.mel ? p.mel
+      : p.aim ? WEAP.aimPose : p.fireT > 0 ? WEAP.clip : WEAP.idle) + '__up';
     if (colin.actions[up]) {
       for (const k of Object.keys(t)) {
         const lg = k + '__legs', a0 = colin.actions[k], a1 = colin.actions[lg];
@@ -4875,6 +4891,9 @@ function colinAnim(dt) {
       // the recoil is compressed to the same beat it gets on foot -- a 1.13 s clip against a
       // .42 s window would otherwise show the first third of a shot and stop
       if (up.indexOf(WEAP.clip) === 0) colinScale(up, clipLen(WEAP.clip, 1.13) / Math.max(.05, WEAP.fireHold));
+      // a strike takes a FIXED time and the clip is compressed to it (see MELEE) -- the clone
+      // has to be told the same thing or the swing runs at 1x inside a .58 s beat
+      else if (p.mel) colinScale(up, clipLen(p.mel, p.melDur) / Math.max(.05, p.melDur));
     }
   }
   colinSet(t, dt);
@@ -5737,7 +5756,13 @@ bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
   // It is the same gesture that flips him on the board, which is the point: the pad means
   // "the body" either way.
   if (!p.board) { if (p.grounded && !p.hit) meleeGo('roll', flickH(dx, dy)); return; }
-  if (p.grounded || p.hit || p.trick) return;
+  // ON THE BOARD, ON THE GROUND, A FLICK IS A STRIKE. Board tricks are AIR-only -- a kickflip
+  // is something you do off the ground -- so the grounded flick on this pad was doing nothing
+  // at all, which makes it the one free gesture left on a pad that is otherwise full.
+  // It costs no trick and it works with the blaster out, because the melee gate is `p.aim`
+  // alone and a flick is over long before a trigger arms.
+  if (p.grounded) { if (!p.hit) meleeGo('hit', flickH(dx, dy)); return; }
+  if (p.hit || p.trick) return;
   // SIDEWAYS IS A BARREL ROLL. It used to bail out here -- left and right were the held spin
   // and nothing else -- but a fast sweep and a hold are two different gestures on the same
   // axis, and the pad has always been able to tell them apart.
@@ -6224,7 +6249,10 @@ function airStart(kind) {
 // them is the same, which is why they share a timer.
 function meleeGo(kind, h) {
   const p = player;
-  if (p.board || p.hit || !p.grounded || p.mel || p.rollT > 0) return;
+  // RIDING COUNTS. On the board a strike is UPPER BODY ONLY -- he swings and keeps rolling,
+  // because a skater does not stop to punch -- so `stepMelee` is called with `ride` set and
+  // never touches the velocity. See `stepPlayer`.
+  if (p.hit || !p.grounded || p.mel || p.rollT > 0) return;
   let nm;
   if (kind === 'roll') { nm = MELEE.roll; p.melI = 1; }
   else {
@@ -6246,8 +6274,12 @@ function meleeGo(kind, h) {
   // the way the left stick is, and he snaps onto it before the clip starts.
   // The fallbacks stay for the cases with no direction in them -- a roll has no flick of its
   // own worth steering by, and a lapsed thumb has none at all -- so travel first, then facing.
-  p.melH = h !== undefined ? h : (p.speed > .4 ? Math.atan2(p.vel.x, p.vel.z) : p.faceH);
-  p.heading = p.faceH = p.melH;
+  // ON THE BOARD HE CANNOT TURN TO IT. `stepSkate` owns the heading -- the wheels are what
+  // steer -- so the strike goes where he is RIDING and the flick only says "now". Writing the
+  // heading there would carve the board sideways on every punch.
+  p.melH = p.board ? p.faceH
+    : h !== undefined ? h : (p.speed > .4 ? Math.atan2(p.vel.x, p.vel.z) : p.faceH);
+  if (!p.board) p.heading = p.faceH = p.melH;
   p.melV = kind === 'roll' ? MELEE.rollV
     : nm === MELEE.slide ? Math.max(p.speed * MELEE.slideV, MELEE.runAt) : MELEE.lunge;
   p.pushing = false; p.goT = 0; p.melFx = p.melI ? 1 : 0;   // a dodge leaves no mark
@@ -6256,19 +6288,27 @@ function meleeGo(kind, h) {
 // A MELEE IS A ROLL WITH A DIFFERENT CLIP, so it is driven the same way `stepRoll` is: the
 // speed bleeds off evenly across the clip, gravity and the ground collider still run, and
 // leaving the ground hands him straight back to the ordinary air code.
-function stepMelee(dt) {
+// `ride` IS A STRIKE THROWN FROM A MOVING BOARD: the clock and the contact, none of the
+// movement. On foot a strike OWNS the body -- it lunges, bleeds its speed off and runs its own
+// gravity, which is `stepRoll`'s shape and why it needed no new physics. Riding, all of that
+// is `stepSkate`'s, and a lunge would stop the deck dead under him. A skater does not stop to
+// punch, so the only thing that happens is the swing, and it comes out of the c115 override:
+// the strike's spine-up tracks over the board's legs.
+function stepMelee(dt, ride) {
   const p = player;
   p.melT = Math.max(0, p.melT - dt);
   // hold, then scrub -- see MELEE.carry. `u` is progress through the move, 0 at the launch.
   const u = 1 - clamp(p.melT / Math.max(.01, p.melDur), 0, 1);
-  const sp = p.melV * (u < MELEE.carry ? 1 : Math.max(0, 1 - u) / (1 - MELEE.carry));
-  p.vel.x = Math.sin(p.melH) * sp; p.vel.z = Math.cos(p.melH) * sp;
-  p.vel.y -= MOVE.g * dt;
-  const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
-  p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
-  const g = groundUnder(p.pos, MOVE.step, p.vel, py); p.wall = g.wall;
-  settle(p, g, MOVE.step, px, pz);
-  p.speed = Math.hypot(p.vel.x, p.vel.z);
+  if (!ride) {
+    const sp = p.melV * (u < MELEE.carry ? 1 : Math.max(0, 1 - u) / (1 - MELEE.carry));
+    p.vel.x = Math.sin(p.melH) * sp; p.vel.z = Math.cos(p.melH) * sp;
+    p.vel.y -= MOVE.g * dt;
+    const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
+    p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
+    const g = groundUnder(p.pos, MOVE.step, p.vel, py); p.wall = g.wall;
+    settle(p, g, MOVE.step, px, pz);
+    p.speed = Math.hypot(p.vel.x, p.vel.z);
+  }
   // THE MARK, ON THE CONTACT FRAME. See MELEE.at: the swing and its consequence have to be
   // one event, so this fires off the move's own progress rather than off the input.
   if (!p.melFx && u >= (MELEE.at[p.mel] !== undefined ? MELEE.at[p.mel] : .38)) {
@@ -6292,7 +6332,7 @@ function stepMelee(dt) {
   // THE TAIL IS HIS AGAIN. Holding the whole clip makes a three-punch chain feel like three
   // seconds of watching, so past `hold` a thumb on the pad cancels out of the recovery -- the
   // same escape `stepRoll` gives him, and what makes the chain feel like a decision each time.
-  if (!p.grounded || p.melT <= 0 || (p.melT < p.melDur * (1 - MELEE.hold) && stickWorld().mag > .25)) {
+  if ((!p.grounded && !ride) || p.melT <= 0 || (p.melT < p.melDur * (1 - MELEE.hold) && stickWorld().mag > .25)) {
     p.melWin = p.melI ? 0 : MELEE.window;   // a dodge does not open the chain
     p.mel = ''; p.melT = 0; p.melI = 0; p.goT = 0;
   }
@@ -6733,6 +6773,10 @@ function stepPlayer(dt) {
   player.airT = player.grounded ? 0 : player.airT + dt;
   if (player.hit) { player.hang = 0; player.climbT = 0; player.lad = 0; stepHit(dt); return; }
   if (player.board) stepSkate(dt); else stepFoot(dt);
+  // A STRIKE THROWN WHILE RIDING, after the skate step so his position is the one the mark and
+  // the punch cone are measured from. `stepFoot` already hands over to `stepMelee` itself; the
+  // board cannot, because the board still has to be driving.
+  if (player.board && player.mel) stepMelee(dt, 1);
   if (colin.ready) colinAnim(dt);
   // fell in the water / off the world
   if (player.pos.y < -2.5) respawn();

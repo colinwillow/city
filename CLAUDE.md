@@ -914,6 +914,32 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   (`.42 + c*.22` gain, `1.10 - c*.26` rate). The pitch is the half that does the work — it is
   what makes a big shot read as heavy rather than as merely a bigger noise, and dropping it is
   the whole difference between a second sound and the same gun working harder.
+- **A STRIKE THROWN FROM A MOVING BOARD IS UPPER BODY ONLY (c118).** On foot a strike OWNS the
+  body — it lunges, bleeds its speed off and runs its own gravity, which is `stepRoll`'s shape
+  and why it needed no new physics. Riding, all of that belongs to `stepSkate`, and **a lunge
+  would stop the deck dead under him**. A skater does not stop to punch. So `stepMelee` takes a
+  `ride` flag: the clock and the contact frame, none of the movement — and the swing itself
+  comes out of c115's override, the strike's spine-up tracks over the board's legs. The whole
+  feature is a flag and a clip clone because that machinery already existed.
+  **IT IS CALLED FROM `stepPlayer`, AFTER THE BOARD STEP**, so his position is the one the mark
+  and the punch cone are measured from. `stepFoot` hands over to `stepMelee` and returns; the
+  board cannot, because the board still has to be driving.
+  **THE GESTURE COST NOTHING, AND THAT IS WHY IT FITS.** Board tricks are AIR-only — a kickflip
+  is something you do off the ground — so a grounded flick on the right pad was doing nothing
+  at all, which made it the one free gesture left on a pad that is otherwise full. It works
+  with the blaster out for the same reason melee does on foot: the gate is `p.aim` alone and a
+  flick is over long before a trigger arms.
+  **AND HE CANNOT TURN TO IT.** `stepSkate` owns the heading, so the strike goes where he is
+  RIDING and the flick only says *now*. Writing `p.heading` there would carve the board
+  sideways on every punch — the same rule that stops the aim steering him while riding.
+- **THE AIM LOOP RUNS SLOWER ON THE BOARD (`WEAP.ride`).** *"The aimer zips around."* Two things
+  feed that and both are speed: the camera sweeps in behind the aim while he is ALSO being
+  carried across the ground at twenty metres a second, so a target's bearing changes on its own
+  before the thumb has moved — and the assist then chases that moving bearing. Same loop,
+  gentler gains. **Multipliers rather than a second set of numbers**, so the day `camEase` or
+  `grab` is retuned this follows instead of quietly drifting out of agreement with it.
+  **`ride.grab` toward 0 is the dial for "a standing reticle that does not lock so much"** — it
+  leaves the lock and the mark exactly where they are and just stops the shot being led.
 - **THE SLASH MARK IS DRAWN ON THE PICTURE, NOT PLACED IN THE WORLD (`SLASH`, `slashArc`).**
   Ported whole from Plutopia, and its first version's mistake is the entire lesson: a ring in
   the world is the obvious build and it is wrong. A `RingGeometry` lies in its own XY plane,
