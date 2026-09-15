@@ -249,7 +249,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c110</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c111</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -262,7 +262,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c110';
+const BUILD = 'c111';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -2263,9 +2263,15 @@ class PBolt {
     for (const c of cops) {
       const dx = c.x - this.x, dy = c.y + COLIN_HEIGHT * .5 - this.y, dz = c.z - this.z;
       if (dx * dx + dy * dy + dz * dz > (R + COP.r * 1.6) * (R + COP.r * 1.6)) continue;
-      // THE BOLT SENDS HIM FLYING rather than folding him where he stood. `-dx,-dz` is the way
-      // the shot was going, which is the way he goes.
-      copFly(c, Math.atan2(-dx, -dz), this.c);
+      // THE BOLT SENDS HIM FLYING rather than folding him where he stood -- AWAY, which took
+      // one more look than it should have. `dx,dz` runs bolt->cop, so `-dx,-dz` runs cop->BOLT
+      // and launched him back down the barrel at whoever fired it. The comment above it even
+      // claimed it was "the way the shot was going"; it was the exact opposite.
+      // ITS OWN VELOCITY IS THE ANSWER AND DOES NOT NEED DERIVING. At the moment of impact the
+      // bolt is on top of him, so `dx,dz` is a small noisy vector and its bearing is whatever
+      // rounding says; `this.vx,this.vz` is the way the shot was ACTUALLY travelling, which is
+      // the thing the sentence was reaching for.
+      copFly(c, Math.atan2(this.vx, this.vz), this.c);
       heatAdd(HEAT.bolt - HEAT.down);
       this.pop('#ff9adf', 7, .95); return true;
     }
@@ -4761,6 +4767,16 @@ const COP = {
   // stars are what say he is unconscious rather than merely prone -- the oldest shorthand in
   // animation, and the one thing that makes the pause read as a STATE instead of a delay.
   out: 2.4,
+  // ONE OF THE FOUR COMBINATIONS IS AUTHORED THE OTHER WAY ROUND, AND `npm run cop` SAYS WHICH.
+  // It poses the real rig and reads the horizontal hips->head bearing where the knock-down ENDS
+  // against where the matching get-up STARTS:
+  //     knock_down_front -> get_up_front    174.0 deg out   *** reversed ***
+  //     knock_down_back  -> get_up_back      14.6 deg out   agrees
+  // So he spun a half turn on the floor between the two, and only on that pair. Turning HIM by
+  // pi as the get-up begins is the whole fix -- the clip's own orientation then takes over from
+  // a body that is already lying the way it expects. Measured rather than guessed, because
+  // "one of them is flipped" is four possibilities and three of them make it worse.
+  flip: { get_up_front: 1 },
   stars: { n: 3, r: .34, y: .40, size: .27, spin: 3.1 },
   stun: .62,        // of a hit clip he is held for; the tail blends back into whatever is next
   fire: 1.7,        // seconds between shots
@@ -5057,17 +5073,20 @@ function copsLearnFlight() {
 // LAUNCHED. `fromH` is the way the shot was travelling, so he goes the way it was going --
 // and which clip plays is which way he is FACING when it lands, the same test `copHit` uses to
 // pick a knock-down: hit in the chest he goes over backwards, hit from behind he goes forward.
-function copFly(c, fromH, k) {
+// `blowH` IS THE WAY THE BLOW TRAVELS, not where it came from -- the same convention
+// `copHit` takes from `copsPunched`, which hands it the direction of the swing. He goes THAT
+// way, and the clip is picked by whether that direction is running into his front or his back.
+function copFly(c, blowH, k) {
   if (c.st === 'down' || c.st === 'up') return false;
   const F = COP.fly, p = Math.max(F.min, k === undefined ? 1 : k);
   c.hp = 0; c.alert = 1;
   heatAdd(HEAT.down);                                     // the knock-down half; the bolt adds its own
-  const face = Math.cos(wrapAngle(fromH - c.h)) < 0;      // true = it hit him from the front
+  const face = Math.cos(wrapAngle(blowH - c.h)) < 0;      // true = it caught him in the front
   c.clip = (face ? COP.clips.flyB : COP.clips.flyF);
   if (!c.actions[c.clip]) {                               // no borrowed clip: the old fold
     c.clip = face ? COP.clips.downB : COP.clips.downF; copSet(c, 'down'); return true;
   }
-  c.vx = Math.sin(fromH) * F.back * p; c.vz = Math.cos(fromH) * F.back * p;
+  c.vx = Math.sin(blowH) * F.back * p; c.vz = Math.cos(blowH) * F.back * p;
   c.vy = F.up * p; c.spin = (Math.random() < .5 ? -1 : 1) * F.spin * p;
   c.speed = 0;                                            // the walk lets go of him
   copSet(c, 'fly');
@@ -5230,7 +5249,11 @@ function stepCops(dt) {
         t[c.clip] = 1;
         if (c.gun) c.gun.visible = false;
         c.armed = 0;
-        if (c.t > clipLen2(c, c.clip) + COP.out) { c.clip = c.clip === COP.clips.downB ? COP.clips.upB : COP.clips.upF; copSet(c, 'up'); }
+        if (c.t > clipLen2(c, c.clip) + COP.out) {
+          c.clip = c.clip === COP.clips.downB ? COP.clips.upB : COP.clips.upF;
+          if (COP.flip[c.clip]) c.h = wrapAngle(c.h + Math.PI);
+          copSet(c, 'up');
+        }
         break;
       case 'up':
         t[c.clip] = 1;

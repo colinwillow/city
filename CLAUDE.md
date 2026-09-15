@@ -1055,6 +1055,28 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   **Placed by `npm run spots 4`**, not by eye — same rule as the ramps.
   **The chip says `· NO COP GLB` / `· NO PISTOL GLB` unasked**, because a console warning is
   invisible on a phone.
+- **HE FLEW BACK DOWN THE BARREL, AND THE COMMENT ABOVE IT SAID OTHERWISE.** `dx,dz` runs
+  bolt->cop, so `-dx,-dz` runs cop->BOLT — the launch sent him at whoever fired it. The line
+  above it claimed `-dx,-dz` was "the way the shot was going"; it was the exact opposite, and
+  writing the claim down did not make it true.
+  **THE BOLT'S OWN VELOCITY IS THE ANSWER AND NEEDS NO DERIVING.** At the moment of impact the
+  bolt is on top of him, so `dx,dz` is a small noisy vector whose bearing is whatever rounding
+  says — `this.vx,this.vz` is the way the shot was ACTUALLY travelling, which is the thing that
+  sentence was reaching for all along. **When a direction is already stored, do not recover it
+  from geometry.**
+  `copFly(c, blowH)` takes the way the blow TRAVELS, the same convention `copHit` already takes
+  from `copsPunched` — which is why the punch was right and only the bolt was wrong.
+- **ONE OF THE FOUR KNOCK-DOWN COMBINATIONS IS AUTHORED THE OTHER WAY ROUND, AND `npm run cop`
+  SAYS WHICH (`COP.flip`).** *"He does a 180 on the ground between getting up."* He did, on one
+  pair. The tool poses the real rig and reads the horizontal hips->head bearing where the
+  knock-down ENDS against where the matching get-up STARTS:
+      knock_down_front -> get_up_front    174.0 deg out   *** reversed ***
+      knock_down_back  -> get_up_back      14.6 deg out   agrees
+  Turning HIM by pi as the get-up begins is the whole fix: the clip's own orientation then
+  takes over from a body already lying the way it expects.
+  **MEASURED RATHER THAN GUESSED, and that is not pedantry here** — "one of them is flipped" is
+  four possibilities, three of which make it worse, and every one of them looks equally
+  plausible from the code. The same tool answers it again after any re-export.
 - **OUT COLD, WITH STARS (`COP.out`, `COP.stars`, `copStars`).** He was back on his feet half a
   second after the knock-down clip finished, which reads as a man TRIPPING rather than a man
   being knocked out. `out` is the beat he lies there — and the stars are what make that pause

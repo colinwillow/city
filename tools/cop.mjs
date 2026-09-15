@@ -137,3 +137,49 @@ else {
     a.stop();
   }
 }
+
+// ---------------------------------------------------------------------------------------
+// WHICH WAY IS HE LYING? "One of those combos is reversed so he does a 180 on the ground
+// between getting up" -- a question about where the BODY points at one instant of a clip, and
+// the only honest way to answer it is to pose the real rig and look at the real vertices.
+//
+// The bearing is the horizontal hips->head vector: face down or face up, that is the way the
+// body is laid out on the floor. A knock-down ENDS somewhere and the matching get-up STARTS
+// somewhere, and if those two disagree by about 180 degrees he snaps round between them.
+{
+  const mixer = new THREE.AnimationMixer(cop.scene);
+  const byName = {}; for (const c of cop.animations) byName[c.name] = c;
+  const bone = n => { let b = null; cop.scene.traverse(o => { if (!b && o.isBone && new RegExp(n + '$', 'i').test(o.name)) b = o; }); return b; };
+  const hips = bone('Hips'), head = bone('Head');
+  const pose = (clip, t) => {
+    mixer.stopAllAction();
+    const a = mixer.clipAction(clip); a.reset(); a.play(); a.paused = true; a.time = t;
+    mixer.update(0); cop.scene.updateMatrixWorld(true);
+    const h = new THREE.Vector3(), p = new THREE.Vector3();
+    hips.getWorldPosition(p); head.getWorldPosition(h);
+    const dx = h.x - p.x, dz = h.z - p.z;
+    return { deg: Math.atan2(dx, dz) * 180 / Math.PI, flat: Math.hypot(dx, dz), rise: h.y - p.y };
+  };
+  const wrap = d => { while (d > 180) d -= 360; while (d < -180) d += 360; return d; };
+  console.log('\n=== which way is he lying? (horizontal hips->head bearing) ===');
+  const rows = [];
+  for (const [nm, where] of [['knock_down_front', 'end'], ['knock_down_back', 'end'],
+                             ['get_up_front', 'start'], ['get_up_back', 'start']]) {
+    const c = byName[nm];
+    if (!c) { console.log('  ' + nm.padEnd(20) + 'MISSING'); continue; }
+    const t = where === 'end' ? Math.max(0, c.duration - 1 / 30) : 0;
+    const r = pose(c, t);
+    rows.push([nm, r]);
+    console.log('  ' + nm.padEnd(20) + where.padEnd(6) + 'bearing ' + r.deg.toFixed(1).padStart(7) + ' deg   ' +
+      'flat ' + r.flat.toFixed(3) + '  rise ' + r.rise.toFixed(3) + (r.rise > .25 ? '  (still upright)' : ''));
+  }
+  const get = n => (rows.find(r => r[0] === n) || [])[1];
+  console.log('\n  the two pairings the game uses:');
+  for (const [d, u] of [['knock_down_front', 'get_up_front'], ['knock_down_back', 'get_up_back']]) {
+    const a = get(d), b = get(u);
+    if (!a || !b) continue;
+    const off = Math.abs(wrap(b.deg - a.deg));
+    console.log('    ' + d + ' -> ' + u + '   off by ' + off.toFixed(1).padStart(6) + ' deg   ' +
+      (off > 120 ? '*** REVERSED -- he spins 180 on the floor ***' : off > 45 ? '(noticeably off)' : 'agrees'));
+  }
+}
