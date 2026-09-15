@@ -576,6 +576,18 @@ playwright unless he asks for it by name.
   11 of 66 work for each robits rig, and **every hand-rolled candidate was a rotation about X**,
   so none of them could ever have found one. Drop a new character in `models/chars/`, run the
   tool, paste the line into `HIPFIX`.
+  **STANDING HIM UP LEAVES HIM FREE TO FACE ANY OF FOUR WAYS (`SPIN`).** The rotation above
+  settles which way is up and nothing else, and the two robits rigs came up quarter-turned in
+  OPPOSITE directions. A yaw on the model wrapper is the whole fix: a rigid turn about his own
+  axis, composing with `colin.root`'s `faceH` by simple addition since both are Y rotations,
+  and unable to disturb either the retarget or the lift (a Y turn moves nothing in Y).
+  `npm run wear` measures it — it finds the vertex each HAND bone dominates, skins both, and
+  reports the left-to-right shoulder line as a yaw **relative to Colin**, so his own file's
+  convention cancels. Measured +83° and −88° rather than exactly ±90 because an idle does not
+  hold the arms symmetrically; the true value is plainly the quarter turn.
+  **The probe needs a fallback chain.** The robot's hands are not the heaviest weight on any
+  vertex — his forearms carry them — so the first version found nothing and reported no yaw at
+  all, which reads exactly like "he is facing the right way". Hand → forearm → arm → upper leg.
   **AND THE RESIDUAL IS A CONSTANT LIFT, WHICH IS WHY ONE NUMBER IS ENOUGH.** Rotating about
   an origin the mesh does not share leaves a vertical offset; that it is CONSTANT is the
   measured part (0.001 m of drift), so `sitSkin` skins three hundred vertices of the pose he

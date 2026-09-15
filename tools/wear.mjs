@@ -62,7 +62,7 @@ const colin = { clips: gl.colin.animations };
 const fn = new Function('THREE', 'CHARS', 'COLIN_HEIGHT', 'colin', 'TITLE',
   shipped + '\n; return { measureSkin, skinClips, sitSkin };')(THREE, CHARS, COLIN_HEIGHT, colin, { hand: 'mixamorig_RightHand' });
 
-const ANKLE = { v: 0 };
+const ANKLE = { v: 0 }, YAW = { v: 0 };
 const root = new THREE.Group();
 function check(key, gltf) {
   const skin = fn.measureSkin(gltf.scene, key);
@@ -93,6 +93,38 @@ function check(key, gltf) {
       pts.push({ bindY, y: v.y, x: v.x, z: v.z });
     }
   });
+  // WHICH WAY IS HE POINTING? Not from the bones -- they sit in an armature frame the mesh
+  // does not share -- and not from a bind-space axis either, since nothing promises two rigs
+  // were authored down the same one. His HANDS are unambiguous: find the vertex each hand
+  // bone dominates, skin it, and the left-to-right vector between them is his shoulder line.
+  // Facing is that turned a quarter, and the answer is a yaw RELATIVE TO COLIN, so whatever
+  // convention his file uses cancels.
+  function bonePoint(boneName) {
+    let best = null, bw = 0;
+    skin.model.traverse(o => {
+      if (!o.isSkinnedMesh || !o.skeleton) return;
+      const bi = o.skeleton.bones.findIndex(b => b.name === boneName); if (bi < 0) return;
+      const si = o.geometry.attributes.skinIndex, sw = o.geometry.attributes.skinWeight;
+      for (let i = 0; i < si.count; i++) {
+        const idx = [si.getX(i), si.getY(i), si.getZ(i), si.getW(i)], wt = [sw.getX(i), sw.getY(i), sw.getZ(i), sw.getW(i)];
+        for (let j = 0; j < 4; j++) if (idx[j] === bi && wt[j] > bw) { bw = wt[j]; best = { o, i }; }
+      }
+    });
+    if (!best) return null;
+    const v = new THREE.Vector3();
+    best.o.applyBoneTransform(best.i, v.fromBufferAttribute(best.o.geometry.attributes.position, best.i));
+    return best.o.localToWorld(v);
+  }
+  // A fallback chain, because the robot's HANDS are not the dominant weight on any vertex --
+  // his forearms carry them -- and a probe that silently finds nothing reports no yaw at all.
+  let lh = null, rh = null, via = '';
+  for (const pair of [['LeftHand', 'RightHand'], ['LeftForeArm', 'RightForeArm'], ['LeftArm', 'RightArm'], ['LeftUpLeg', 'RightUpLeg']]) {
+    lh = bonePoint('mixamorig_' + pair[0]); rh = bonePoint('mixamorig_' + pair[1]);
+    if (lh && rh && lh.distanceTo(rh) > .05) { via = pair[0].replace('Left', ''); break; }
+    lh = rh = null;
+  }
+  let yaw = null;
+  if (lh && rh) yaw = Math.atan2(lh.x - rh.x, lh.z - rh.z);
   pts.sort((a, b) => a.bindY - b.bindY);
   const n = pts.length, lowQ = pts.slice(0, Math.max(1, n * .05 | 0)), hiQ = pts.slice(n - Math.max(1, n * .05 | 0));
   const mean = a => a.reduce((s, p) => s + p.y, 0) / a.length;
@@ -104,6 +136,13 @@ function check(key, gltf) {
   console.log('   rendered y ' + yLo.toFixed(2) + ' .. ' + yHi.toFixed(2) + '  (' + (yHi - yLo).toFixed(2) + ' m tall)');
   console.log('   his SOLES render at ' + sole.toFixed(2) + ' and his CROWN at ' + crown.toFixed(2) +
               '  -> ' + (crown > sole ? 'UPRIGHT' : '*** UPSIDE DOWN ***'));
+  if (yaw !== null) {
+    if (key === 'colin') YAW.v = yaw;
+    let d = (yaw - YAW.v) * 180 / Math.PI; while (d > 180) d -= 360; while (d < -180) d += 360;
+    console.log('   left-right axis via ' + via + ': ' + (yaw * 180 / Math.PI).toFixed(0) + ' deg' +
+      (key === 'colin' ? '  (the reference)' : '   -> he is turned ' + d.toFixed(0) + ' deg from Colin' +
+        (Math.abs(d) > 20 ? '   *** needs spin ' + (-d).toFixed(0) + ' deg ***' : '   facing right')));
+  }
   if (Math.abs(yLo) > .12) console.log('   *** ' + (yLo > 0 ? 'FLOATING ' + yLo.toFixed(2) + ' m ABOVE' : 'SUNK ' + (-yLo).toFixed(2) + ' m BELOW') + ' THE GROUND ***');
   root.remove(skin.model);
 }

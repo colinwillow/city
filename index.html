@@ -135,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c70</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c71</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c70';
+const BUILD = 'c71';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -2410,6 +2410,21 @@ const HIPFIX = {
   robot:  [-0.5, 0.5, 0.5, -0.5],
   moussa: [0.5, 0.5, 0.5, 0.5],
 };
+// AND WHICH WAY HE FACES, which the rotation above does not settle: standing a rig up leaves
+// it free to be stood up facing any of four ways, and the robits pair came up quarter-turned
+// in OPPOSITE directions. A yaw on the model wrapper is the whole fix -- it is a rigid turn
+// about his own axis, it composes with `colin.root`'s faceH by simple addition since both are
+// Y rotations, and it cannot disturb the retarget or the lift (a Y turn moves nothing in Y).
+// `npm run wear` measures it: it finds the vertex each hand bone dominates, skins both, and
+// reports the left-to-right shoulder line as a yaw RELATIVE TO COLIN, so his file's own
+// convention cancels. Measured +83 and -88 rather than exactly +-90 because an idle pose does
+// not hold the arms symmetrically -- and the robot falls back to his FOREARMS, since his
+// hands are not the heaviest weight on any vertex and a probe that finds nothing silently
+// reports no yaw at all.
+const SPIN = {
+  robot:  Math.PI / 2,     // came up a quarter turn to his right: +Y is a turn to the LEFT
+  moussa: -Math.PI / 2,    // and this one the other way
+};
 // THE MEASURING HALF, deliberately apart from the dressing half: `npm run wear` runs THIS
 // TEXT against the real GLBs, the real GLTFLoader and a real AnimationMixer. Everything here
 // is arithmetic on the file and needs nothing from the game.
@@ -2438,7 +2453,9 @@ function measureSkin(model, key) {
     lo = Math.min(lo, o.geometry.boundingBox.min.y); hi = Math.max(hi, o.geometry.boundingBox.max.y);
   });
   const k = (hi > lo) ? COLIN_HEIGHT * (CHARS.h[key] || 1) / (hi - lo) : 1;
-  model.scale.multiplyScalar(k); model.position.y = -lo * k; model.updateMatrixWorld(true);
+  model.scale.multiplyScalar(k); model.position.y = -lo * k;
+  model.rotation.y = SPIN[key] || 0;
+  model.updateMatrixWorld(true);
   console.log('[skin] ' + key + ' geometry ' + lo.toFixed(3) + '..' + hi.toFixed(3) + ' -> x' + k.toFixed(3));
   // the title card hangs his deck off this. Named, not guessed: the rig is Mixamo's.
   const hand = model.getObjectByName(TITLE.hand) || model.getObjectByName('mixamorig_LeftHand') || null;
