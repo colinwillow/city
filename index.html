@@ -135,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c78</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c79</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c78';
+const BUILD = 'c79';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -190,7 +190,7 @@ const MOVE = {
   // a sprint AND a charge, and letting go is a jump scaled by how long you held it. One input
   // doing two things that belong together -- you run at something and leap it.
   chargeMax: .9,     // seconds to a full wind-up
-  sprint: 1.55,      // top speed multiplier at full charge
+  sprint: 1.95,      // top speed multiplier at full charge: 9 -> 17.6 m/s, 63 km/h
   chargeUp: .42,     // extra jump SPEED at full charge, as a fraction
   chargeOut: 5.0,    // and how much he is thrown along his travel, m/s
   turn: 26, airTurn: 9,
@@ -218,16 +218,24 @@ const MOVE = {
 // he is past this much of it the stick takes over and he runs out of it, instead of
 // standing about finishing a last half second nobody is watching.
 // `rate` speeds the landing roll up. The clip is 1.60 s at 1x, which reads as a beat too long
-// on the way out of a jump; at 1.25 it is 1.28. It has to move as a PAIR with rollDur -- the
+// on the way out of a jump; at 1.25 it was 1.28 and STILL read long, so it is 1.70 -- 0.94 s,
+// which is about what a real tuck-and-up takes. It has to move as a PAIR with rollDur -- the
 // roll's speed bleed is `rollT / rollDur`, so a clip played faster than the timer it is
-// measured against comes to a stop and then slides.
-const ROLL = { at: -7, min: 4, max: 10, free: .42, rate: 1.25 };
+// measured against comes to a stop and then slides. `rollDur` is derived from `rate` two
+// hundred lines down, which is what makes that pairing automatic rather than remembered.
+const ROLL = { at: -7, min: 4, max: 10, free: .42, rate: 1.70 };
 // `windUp` is the on-foot crouch, and it is EMPTY until there is a clip for it. Name one here
 // and colinAnim blends it in on the GROUND, by how loaded `p.charge` is, while he is holding
 // the right pad. That is where the two `*_jump_init` clips were always trying to be: they are
 // crouches, and they were being played in the AIR for the first .19 s of the flight, which is
 // two poses that do not follow one another. They are gone; this replaces them properly.
-const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 1.7, windUp: '' };
+// `tsHi` HAS TO MOVE WITH `MOVE.sprint` OR THE FEET SLIDE. The run clip is scaled by
+// `speed / runRef`, so a sprint ceiling of 9 x 1.95 = 17.6 m/s wants 3.7x and the cap decides
+// what he actually gets. 1.7 was already under the OLD ceiling of 14 -- he has been sliding at
+// full charge for a while -- and 2.4 covers 11.5 m/s honestly and keeps the rest readable.
+// There is no sprint clip; that is the real fix, and `run_fwd` at 3.7x is a cartoon scramble,
+// so this is deliberately short of keeping up rather than absurdly past it.
+const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 2.4, windUp: '' };
 const SK8 = {
   pushV: 5.4,        // m/s added by one shove
   // THE PUSH CLIP IS THE CLOCK. It is not a pose to blend in and out of -- it is a whole
@@ -847,6 +855,23 @@ sun.shadow.mapSize.set(2048, 2048);
 // for the striping on flat ground". Mine spent 410 units of depth range on a scene about
 // a hundred deep, which is precision thrown away for nothing.
 const SHADOW = { span: 48, dist: 160 };
+// HOW DARK A SHADOW IS ALLOWED TO GET, AND IT IS NOT 1. A projected shadow map removes the
+// WHOLE of the sun, which against `LIGHT.sun` 3.4 and `hemi` 1.6 leaves a surface at under a
+// third of its lit value -- and on a toon ramp with a hard band edge that reads as a hole cut
+// in the picture rather than as shade. It is also indistinguishable, from the phone, from a
+// mesh whose normals are wrong: "the up ramp to the bridge is just black and I cannot tell if
+// it is shading or shadow" is that, and it is a fair complaint about the picture as well as
+// about the diagnosis.
+// PLUTOPIA THREW THE SHADOW MAP AWAY ENTIRELY and used painted pools plus a blob under each
+// character, on exactly this reasoning -- harsh projected shadows kill a painterly look. That
+// does not port whole: its ground is procedural terrain with a shader we own to paint into,
+// and this city's ground is an imported GLB. What ports is the VERDICT. So the shadow stays
+// but stops being a hole: `shadow.intensity` is three's own per-light dial for how much of
+// the light a shadow may remove, so at `SHADE.k` the shadow is a soft tinted darkening and a
+// shadowed wall still shows its own shading underneath. And the part Plutopia was right about
+// that a shadow map is genuinely bad at -- the contact under his feet -- is a blob (`BLOB`).
+// `city.SHADE.k = 1` is the old look, `= 0` is no shadows at all with the blobs still there.
+const SHADE = { k: .46 };
 const sc = sun.shadow.camera;
 sc.left = sc.bottom = -SHADOW.span; sc.right = sc.top = SHADOW.span;
 sc.near = SHADOW.dist - SHADOW.span * 1.6; sc.far = SHADOW.dist + SHADOW.span * 2.2;
@@ -856,6 +881,7 @@ sc.near = SHADOW.dist - SHADOW.span * 1.6; sc.far = SHADOW.dist + SHADOW.span * 
 // the map, so it cannot be a constant. Plutopia uses two and a half.
 sun.shadow.bias = -.0004;
 sun.shadow.normalBias = SHADOW.span * 2 / 2048 * 2.5;
+sun.shadow.intensity = SHADE.k;
 scene.add(sun); scene.add(sun.target);
 const hemi = new THREE.HemisphereLight(0x9bc5ee, 0x4b5a48, LIGHT.hemi); scene.add(hemi);
 const fill = new THREE.DirectionalLight(0x9fd4e8, LIGHT.fill); fill.position.set(-1, .4, -.6); scene.add(fill);
@@ -992,6 +1018,86 @@ function holePatch(sh) {
 }
 // Follows his chest on screen. Everything here is in rtScene pixels, because that is the
 // buffer the scene pass writes and gl_FragCoord is measured in.
+// ---------- contact blobs ----------
+// THE PART A SHADOW MAP IS GENUINELY BAD AT IS THE CONTACT UNDER HIS FEET, and it is the part
+// that does the most work: what grounds a thing is the dark under it. Plutopia stopped
+// projecting altogether and drew a soft disc under every character, and it looked BETTER --
+// painterly rather than muddy, and it survives with the shadow map turned down or off.
+// This is that, ported. Four things about it are load-bearing:
+//  1. GREYSCALE, NOT ALPHA. three's `alphamap_fragment` reads the GREEN channel of the map,
+//     not its alpha -- so a white disc that fades out in ALPHA is, to that shader, a white
+//     disc: fully opaque everywhere, and the blob comes out a hard square. The falloff has to
+//     live in the colour. (Plutopia paid for this one; it is written down there too.)
+//  2. THE FLOOR HE IS OVER, NOT THE GROUND. Standing on a car roof or a balcony has to put
+//     the blob on the roof, not on the road four metres under it -- which is also the only
+//     place the blob is doing real work, because up there nothing else tells you where you
+//     are. So it takes the triangle collider AND the solid boxes, exactly like `groundUnder`,
+//     but READ-ONLY: `resolveBoxes` moves the thing it is handed and this must not.
+//  3. IT SPREADS AND THINS WITH HEIGHT. How big and how faint IS the answer to "how high am
+//     I", which is the question a jump asks and the one a projected shadow answers worst.
+//     `fade` has to clear the highest jump -- a charge into a double reaches 8.0 m -- or the
+//     mark goes out at exactly the moment he is highest and has least idea where he is.
+//  4. `noHole` and `depthWrite: false`. It is under his feet, so the see-through hole must
+//     never dither it, and it must never write depth over the ground it is lying on.
+const BLOB = { n: 4, k: .46, fade: 12, spread: .085, lift: .045, r: .6, col: '#101a26' };
+const _blob = { list: [], geo: null, tex: null, want: [] };
+function blobTex() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+  const g = cv.getContext('2d');
+  const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, '#fff'); gr.addColorStop(.40, '#bdbdbd'); gr.addColorStop(1, '#000');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(cv); t.needsUpdate = true; return t;
+}
+function blobMake() {
+  if (!_blob.geo) { _blob.geo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2); _blob.tex = blobTex(); }
+  const m = new THREE.Mesh(_blob.geo, new THREE.MeshBasicMaterial({
+    color: new THREE.Color(BLOB.col), alphaMap: _blob.tex, transparent: true, opacity: 0,
+    depthWrite: false, fog: true,
+  }));
+  m.renderOrder = 2; m.visible = false; m.userData.noHole = true; m.frustumCulled = false;
+  scene.add(m); _blob.list.push(m); return m;
+}
+// READ-ONLY. `groundUnder` is the other way to ask this and it cannot be used: it calls
+// `resolveBoxes`, which PUSHES the position it is given out of the walls.
+const _blobBox = [];
+function blobFloor(x, z, y) {
+  const g = groundAt(x, z, y, .1);
+  let f = g.hit ? g.floor : hmAt(x, z);
+  gridQuery(x, z, .5, _blobBox);
+  for (const b of _blobBox) {
+    if (b.maxy > y + .1 || b.maxy <= f) continue;
+    if (x < b.minx - .25 || x > b.maxx + .25 || z < b.minz - .25 || z > b.maxz + .25) continue;
+    f = b.maxy;
+  }
+  return f;
+}
+function blobStep() {
+  const w = _blob.want; w.length = 0;
+  if (BLOB.k > 0) {
+    // EVERY SKIN THAT IS ON SCREEN, not just the current one -- during a parade there are two
+    // of them walking past each other and one blob would follow neither.
+    for (const k in CHARS.skins) {
+      const sk = CHARS.skins[k]; if (!sk || !sk.root || !sk.root.visible) continue;
+      w.push(sk.root.position);
+    }
+    if (!w.length) w.push(player.pos);
+  }
+  for (let i = 0; i < BLOB.n; i++) {
+    const p = w[i], m = _blob.list[i] || (p ? blobMake() : null);
+    if (!m) break;
+    if (!p) { m.visible = false; continue; }
+    const gy = blobFloor(p.x, p.z, p.y + .2);
+    const h = Math.max(0, p.y - gy);
+    const kk = 1 - clamp(h / BLOB.fade, 0, 1);
+    if (kk < .03) { m.visible = false; continue; }
+    m.visible = true;
+    m.position.set(p.x, gy + BLOB.lift, p.z);
+    const sc = BLOB.r * 2 * (1 + h * BLOB.spread);
+    m.scale.set(sc, 1, sc);
+    m.material.opacity = BLOB.k * kk;
+  }
+}
 function stepHole() {
   const p = player;
   if (!HOLE.on || !colin.ready) { holeUni.uHoleR.value = 0; compMat.uniforms.uHoleRU.value = 0; return; }
@@ -1440,6 +1546,7 @@ function applyDbg() {
   // A BIG DARK REGION IS EITHER A SHADOW OR IT IS SHADING, AND THOSE ARE DIFFERENT BUGS.
   // One tap on each of these says which, which is worth more than any amount of reading.
   sun.castShadow = DBG !== 10;
+  sun.shadow.intensity = SHADE.k;    // live off the console, so the look can be dialled on the phone
   HOLE.on = DBG === 11 ? 0 : 1;
   if (DBG === 8) TOON.rim = 0;
   if (DBG) census(); else dbgInfo = '';
@@ -4123,6 +4230,7 @@ function frame() {
   WHEELS.set(player.speed, !TITLE.on && player.board && player.grounded && !player.hit, !!player.rail && SFX.on);
   if (TITLE.dive > 0) diveFrame(dt); else if (!TITLE.on) stepCam(dt);
   stepHole();
+  blobStep();
   drawMap(dt);
   if (colin.mixer) colin.mixer.update(dt);
   renderPost();
@@ -4171,7 +4279,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

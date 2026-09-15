@@ -557,10 +557,17 @@ playwright unless he asks for it by name.
   a sprint AND a charge, and letting go is a jump scaled by how long it was held. One input
   doing two things that belong together — you run at something and leap it. The forward part of
   the launch goes along his TRAVEL, not his facing, so a wind-up on the spot just goes up.
-      charge   0%   top 9.0 m/s   jump 2.81 m high, 1.06 s,  9.5 m far
-      charge  50%   top 11.5      jump 4.11 m       1.28 s, 17.9 m
-      charge 100%   top 14.0      jump 5.66 m       1.51 s, 28.5 m
+      charge   0%   top  9.0 m/s   jump 2.81 m high, 1.06 s,  9.5 m far
+      charge  50%   top 13.3       jump 4.11 m       1.28 s, 20.2 m
+      charge 100%   top 17.6       jump 5.66 m       1.51 s, 33.8 m
   On the board that thumb is still the ollie, so the wind-up is on foot only.
+  **`MOVE.sprint` AND `GAIT.tsHi` MOVE TOGETHER OR THE FEET SLIDE.** The run clip is scaled by
+  `speed / GAIT.runRef`, so a ceiling of 17.6 m/s wants **3.7x** and the cap is what he
+  actually gets. 1.7 was already under the OLD ceiling of 14 — he had been sliding at full
+  charge for several builds — and it went to 2.4 with the sprint, which covers 11.5 m/s
+  honestly and keeps the rest readable. **There is no sprint clip, and that is the real fix**;
+  `run_fwd` played at 3.7x is a cartoon scramble, so the cap is deliberately short of keeping
+  up rather than absurdly past it.
 - **BORROWED CHARACTERS: THE RETARGET IS ROTATION-ONLY, AND THE CLEVERER ONE IS A TRAP.**
   Every candidate in `robits/` and `plutopia/` is rigged to a Mixamo skeleton, so Colin's 40
   clips can be worn by them without re-exporting anything. `npm run rigs [glb ...]` measures
@@ -960,6 +967,45 @@ playwright unless he asks for it by name.
 - **`COLINM`** holds his material intent: roughness .95, metalness 0, and the base map fed
   back as a .30 emission (his Blender look). Emission lands after the toon ramp and after
   shadows, so it lifts his dark side without making him shiny.
+- **A SHADOW IS NOT ALLOWED TO BE A HOLE (`SHADE.k`), AND PLUTOPIA'S VERDICT IS WHY.**
+  A projected shadow map removes the WHOLE of the sun. Against `LIGHT.sun` 3.4 with `hemi`
+  1.6 that leaves a surface under a third of its lit value, and on a toon ramp with a hard
+  band edge it reads as a hole cut in the picture rather than as shade. It is also
+  indistinguishable from the phone from a mesh whose normals are wrong — *"the up ramp to the
+  bridge is just black and I can't tell if it's shading or shadow"* is exactly that, and it is
+  a fair complaint about the picture as much as about the diagnosis.
+  **Plutopia threw the shadow map away entirely** and used painted ground pools plus a blob
+  under each character, on precisely this reasoning: harsh projected shadows kill a painterly
+  look. That does not port whole — its ground is procedural terrain with a shader we own to
+  paint into, and this city's ground is an imported GLB. **What ports is the verdict.**
+  So the shadow stays and stops being a hole: `sun.shadow.intensity` is three's own per-light
+  dial for how much of the light a shadow may remove, so at `SHADE.k` (.46) a shadow is a soft
+  tinted darkening and a shadowed wall still shows its own shading underneath. No shader patch
+  — r180 already carries `shadowIntensity` as a uniform. It is re-applied every frame from the
+  console value, so `city.SHADE.k = 1` is the old look and `= 0` is no shadows at all with the
+  blobs still there. **That pair is also the diagnosis**: if the ramp lifts, it was a shadow;
+  if it stays black at 0, it is shading, and they are different bugs.
+- **THE CONTACT BLOB (`BLOB`, `blobStep`), the half of Plutopia's answer that DOES port.**
+  What grounds a thing is the dark under it, and the contact under his feet is the one thing
+  a projected shadow map is genuinely bad at. Four things are load-bearing:
+  1. **GREYSCALE, NOT ALPHA.** three's `alphamap_fragment` reads the GREEN channel of the map,
+     not its alpha — so a white disc that fades out in ALPHA is, to that shader, a white disc:
+     opaque everywhere, and the blob comes out a hard square. The falloff lives in the colour.
+     Plutopia paid for this one too and it is written down there.
+  2. **THE FLOOR HE IS OVER, NOT THE GROUND.** On a car roof or a balcony the blob belongs on
+     the roof, not on the road four metres under it — and up there is exactly where it is
+     doing the most work, because nothing else tells you where you are. `blobFloor` takes the
+     triangle collider AND the solid boxes, like `groundUnder`, but **read-only**:
+     `groundUnder` cannot be reused because `resolveBoxes` PUSHES the position it is handed.
+  3. **It spreads and thins with height.** How big and how faint IS the answer to "how high am
+     I", which is the question a jump asks and the one a projected shadow answers worst.
+     `fade` (12) has to clear the highest jump — a charge into a double reaches 8.0 m — or the
+     mark goes out at the moment he is highest and has least idea where he is. Plutopia's
+     first `fade` was 9 against a 9.8 m jump, for the same reason.
+  4. **`userData.noHole` and `depthWrite: false`.** It is under his feet, so the see-through
+     hole must never dither it, and it must never write depth over the ground it lies on.
+  It walks `CHARS.skins` rather than `colin.root`, because during a `PARADE` there are two
+  characters on the street and one blob would follow neither.
 - **Tap the build badge to cycle the render**, one variable each: 1 rim off, 2 outline off,
   3 fxaa off, 4 bloom off, 5 full res (no upscale), 6 no post, 7 flat Colin, 8 sun only,
   9 nan map, **10 no shadow, 11 no hole**. A big dark region is either a shadow or it is
