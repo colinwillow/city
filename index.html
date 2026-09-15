@@ -126,7 +126,7 @@
 </head>
 <body class="title">
 <div id="boot"><h1>City</h1><div class="bar"><i id="bootBar"></i></div><div class="msg" id="bootMsg">loading the city</div><div class="err" id="bootErr"></div></div>
-<div id="title"><h1 class="word">Skate<i>City</i></h1><div id="chars"></div><div class="sub">low poly &middot; two thumbs</div><button id="startB">Start</button></div>
+<div id="title"><h1 class="word">Skate<i>City</i></h1><div id="chars"></div><div class="sub">swipe to change &middot; two thumbs</div><button id="startB">Start</button></div>
 <div id="sticks">
   <div class="stick" id="stkL"><div class="knob"></div><div class="lbl">MOVE</div></div>
   <div class="stick" id="stkR"><div class="knob"></div><div class="lbl">LOOK</div></div>
@@ -135,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c71</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c72</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c71';
+const BUILD = 'c72';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -379,6 +379,23 @@ const TITLE = {
   yaw: Math.PI / 2,        // which way the grip tape faces. One sign is against his leg, the other out
 };
 TITLE.face = TITLE.az + Math.PI + TITLE.turn;   // facing back down the barrel, turned off square
+// CHANGING CHARACTER IS A CHANGING OF THE GUARD, not a swap. The one you have walks out of
+// frame and the one you picked walks in from the other side, which is the whole reason each
+// skin owns its own root: for a second and a half there are two of them on the street.
+const PARADE = {
+  // A FIXED DURATION, NOT A FIXED SPEED, and the gait falls out of it. The frame is four times
+  // wider in landscape than in portrait, so the walk-off is 3.7 m one way up and 10.9 m the
+  // other -- at one speed that is 1.3 s against 3.8 s, and a menu that takes four seconds to
+  // answer is a menu you stop using. Pick the time and derive the speed instead, then blend
+  // walk into run by that speed on `GAIT`'s own thresholds: a stroll in portrait, a jog in
+  // landscape, and the clips time-scaled either way so nobody's feet slide.
+  dur: 1.5,
+  speed: 2.9,      // derived in paradeAim; this is only the value before the first one
+  set: .42,        // the turn to face the camera once he arrives
+  walk: [],        // every character currently on the move; independent, so spamming the chips
+                   // never has to teleport anybody to make room
+  ex: 0, rx: 0, rz: 0, mx: 0, my: 0, mz: 0,
+};
 // WHO HE IS. Every one of these is rigged to a Mixamo skeleton, so Colin's clips are worn by
 // all of them and nothing is re-exported. `npm run rigs` is the measurement behind that:
 // every bone a candidate lacks is a FINGER, and the body bones are all there.
@@ -2387,7 +2404,7 @@ function drawMap(dt) {
 const pendingCars = [];
 
 // ---------- Colin ----------
-const colin = { root: new THREE.Group(), model: null, mixer: null, actions: {}, clips: [], hand: null, cur: null, ready: false };
+const colin = { root: new THREE.Group(), model: null, mixer: null, actions: {}, cw: {}, clips: [], hand: null, cur: null, ready: false };
 scene.add(colin.root);
 // A SKIN IS A MODEL PLUS THE ACTIONS THAT DRIVE IT. Colin is one skin among several; what
 // makes him special is only that the CLIPS come from his file. buildSkin measures, dresses
@@ -2461,7 +2478,7 @@ function measureSkin(model, key) {
   const hand = model.getObjectByName(TITLE.hand) || model.getObjectByName('mixamorig_LeftHand') || null;
   if (!hand) console.warn('[skin] ' + key + ': no hand bone ' + TITLE.hand + ' -- the title board will stand beside him');
   const names = new Set(); model.traverse(o => { if (o.name) names.add(o.name); });
-  return { key, model, hand, armQ, restQ, names, mixer: null, actions: null };
+  return { key, model, hand, armQ, restQ, names, mixer: null, actions: null, cw: {} };
 }
 function dressSkin(model, key) {
   const isColin = key === 'colin';
@@ -2527,6 +2544,13 @@ function dressSkin(model, key) {
 function buildSkin(gltf, key) {
   const skin = measureSkin(gltf.scene, key);
   dressSkin(skin.model, key);
+  // HIS OWN ROOT, ALWAYS IN THE SCENE. One shared root can only ever hold one character, and
+  // the title card's swap needs two of them walking at once. `colin.root` becomes an alias for
+  // whichever root is current, so `poseColin` never learns any of this happened.
+  skin.root = new THREE.Group();
+  skin.root.add(skin.model);
+  skin.root.visible = false;
+  scene.add(skin.root);
   CHARS.skins[key] = skin;
   return skin;
 }
@@ -2564,9 +2588,9 @@ function skinClips(skin, clips) {
   }
   return out;
 }
-// PUT A SKIN ON. The previous one keeps its mixer and actions and simply leaves the root, so
-// switching back is instant. CW is emptied because the new actions all start at weight 0 and
-// stopped: a stale 1.0 in it would tell colinSet the idle was already playing.
+// PUT A SKIN ON. Each skin keeps its own mixer, actions AND clip weights, so switching back is
+// instant and nothing has to be reset -- a shared weight table would tell the new skin's idle
+// it was already playing at 1.0 when its action is stopped at 0.
 // STAND HIM ON THE ROAD. The bind-pose bounds put his feet at zero, but the moment the
 // retargeted clip is applied the body is rigidly rotated about the hips -- and a rotation
 // about an origin the mesh does not share leaves a CONSTANT vertical offset (constant is the
@@ -2589,38 +2613,64 @@ function sitSkin(skin) {
   return lo;
 }
 /* SKIN:END */
+// Build the mixer and stand him on the road -- everything a skin needs before it can be SEEN,
+// which the parade needs done for a character that is only walking on, not yet worn.
+function readySkin(skin) {
+  if (skin.mixer) return skin;
+  skin.mixer = new THREE.AnimationMixer(skin.model); skin.actions = {};
+  for (const clip of skinClips(skin)) {
+    const a = skin.mixer.clipAction(clip); a.enabled = true; a.setEffectiveWeight(0);
+    if (ONCE.indexOf(clip.name) >= 0) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+    skin.actions[clip.name] = a;
+  }
+  const a0 = skin.actions['idle_neutral'];
+  if (a0) { a0.reset(); a0.play(); a0.setEffectiveWeight(1); skin.cw['idle_neutral'] = 1; }
+  // the mixer has to have written a pose before it can be measured
+  skin.mixer.update(0); const d = sitSkin(skin);
+  console.log('[skin] ' + skin.key + ' soles measured at ' + d.toFixed(3) + ', lifted to 0');
+  return skin;
+}
+const chipHL = key => document.querySelectorAll('#chars button').forEach(b => b.classList.toggle('on', b.dataset.key === key));
 function wear(key) {
   const skin = CHARS.skins[key]; if (!skin) return false;
-  if (colin.model && colin.model !== skin.model) { colin.root.remove(colin.model); if (colin.mixer) colin.mixer.stopAllAction(); }
-  if (!skin.mixer) {
-    skin.mixer = new THREE.AnimationMixer(skin.model); skin.actions = {};
-    for (const clip of skinClips(skin)) {
-      const a = skin.mixer.clipAction(clip); a.enabled = true; a.setEffectiveWeight(0);
-      if (ONCE.indexOf(clip.name) >= 0) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
-      skin.actions[clip.name] = a;
-    }
-  }
-  colin.model = skin.model; colin.mixer = skin.mixer; colin.actions = skin.actions; colin.hand = skin.hand;
-  if (skin.model.parent !== colin.root) colin.root.add(skin.model);
-  for (const k in CW) delete CW[k];
-  const a0 = colin.actions['idle_neutral']; if (a0) { a0.reset(); a0.play(); a0.setEffectiveWeight(1); CW['idle_neutral'] = 1; }
-  // once, on the first wearing: the mixer has to have written a pose before it can be measured
-  if (!skin.sat) { skin.mixer.update(0); const d = sitSkin(skin); skin.sat = 1; console.log('[skin] ' + key + ' soles measured at ' + d.toFixed(3) + ', lifted to 0'); }
+  readySkin(skin);
+  colin.model = skin.model; colin.mixer = skin.mixer; colin.actions = skin.actions;
+  colin.hand = skin.hand; colin.root = skin.root; colin.cw = skin.cw;
+  // everybody who is not him and not mid-walk goes away
+  for (const k in CHARS.skins) { const o = CHARS.skins[k]; o.root.visible = (o === skin) || PARADE.walk.some(w => w.skin === o); }
   CHARS.cur = key; try { localStorage.setItem(CHARS.key, key); } catch (e) {}
-  document.querySelectorAll('#chars button').forEach(b => b.classList.toggle('on', b.dataset.key === key));
+  chipHL(key);
   return true;
 }
-// Ask for a skin by key: loads it the first time, wears it when it arrives. The title card's
-// chips call this; so does boot, for whatever was worn last time.
-function wearWhenReady(key) {
-  CHARS.want = key;
-  if (CHARS.skins[key]) { wear(key); return; }
-  const ch = CHARS.list.find(c => c.key === key); if (!ch || CHARS.loading[key]) return;
+// ASK FOR A CHARACTER. The one entry point: the chips, a swipe and the arrow keys all come
+// through here, and so does boot with whoever was worn last time. It loads the skin the first
+// time it is asked for, and the chip lights up straight away rather than when the bytes land --
+// `want` is what you asked for, `cur` is who is actually standing there.
+const charIdx = k => CHARS.list.findIndex(c => c.key === k);
+function pickChar(key, dir, snap) {
+  if (!key || key === CHARS.want) return;
+  // no direction given (a chip, not a swipe): take it from where the chip sits in the row, so
+  // picking one to the right always slides the row left
+  if (!dir) dir = charIdx(key) > charIdx(CHARS.want) ? 1 : -1;
+  CHARS.want = key; chipHL(key);
+  const ch = CHARS.list.find(c => c.key === key); if (!ch) return;
+  if (CHARS.skins[key]) { enterChar(key, dir, snap); return; }
+  if (CHARS.loading[key]) return;
   CHARS.loading[key] = true;
   document.querySelectorAll('#chars button').forEach(b => b.classList.toggle('busy', b.dataset.key === key));
-  loadGLB(ch.url, 'loading ' + ch.name).then(g => { buildSkin(g, key); if (CHARS.want === key) wear(key); })
+  loadGLB(ch.url, 'loading ' + ch.name).then(g => { buildSkin(g, key); if (CHARS.want === key) enterChar(key, dir, snap); })
     .catch(e => { console.warn('[skin] ' + key + ' failed', e); CHARS.miss = (CHARS.miss || 0) + 1; })
     .finally(() => { CHARS.loading[key] = false; document.querySelectorAll('#chars button').forEach(b => b.classList.remove('busy')); });
+}
+// A walk-on only means anything while the card is up and somebody is there to walk off. Boot
+// and the game itself just put him on.
+function enterChar(key, dir, snap) {
+  if (!snap && TITLE.on && colin.ready && CHARS.cur && CHARS.cur !== key) startParade(key, dir);
+  else wear(key);
+}
+function cycleChar(dir) {
+  const n = CHARS.list.length, i = charIdx(CHARS.want);
+  pickChar(CHARS.list[((i + dir) % n + n) % n].key, dir);
 }
 function buildColin(gltf) {
   colin.clips = gltf.animations;
@@ -2649,24 +2699,26 @@ const ONCE = ['jump_going_up', 'jump_coming_down', 'landing_roll', 'idle_jump_in
   'skate_ollie_init_air', 'skate_ollie_air', 'skate_ollie_landing', 'back_flip', 'front_flip',
   'flying_backwards', 'flying_forwards', 'fall_to_back', 'fall_to_face_down',
   'get_up_from_back', 'get_up_from_face'];
-const CW = {};
-function colinSet(t, dt) {
-  // A FAST BLEND on the frame a hit stage changes, never a cut -- see HIT.snapHL.
-  const snap = player.hitSnap; player.hitSnap = false;
+function colinSet(t, dt) { skinWeights(colin, t, dt, player.hitSnap); player.hitSnap = false; }
+function skinScale(skin, name, s) { const a = skin.actions && skin.actions[name]; if (a) a.setEffectiveTimeScale(s); }
+// The same easing, against whichever skin is asked for -- the card walks two at once.
+function skinWeights(skin, t, dt, snap) {
+  const acts = skin.actions, cw = skin.cw || (skin.cw = {});
+  if (!acts) return;
   // THE T-POSE. If nothing in the table names a clip that actually exists, every bone ends
   // the frame with a total weight of zero -- and a zero-weight bone is blended back to its
   // BIND value by the mixer, which is the T-pose exactly. One missing clip is enough. So
   // the table is checked against the clips he really has, falls back to the idle rather
   // than to nothing, and says so in the console instead of failing silently.
   let tot = 0;
-  for (const k in t) if (colin.actions[k]) tot += t[k];
-  if (tot < .01) { console.warn('[colin] no live clip in', Object.keys(t).join(',') || '(empty)'); t = { idle_neutral: 1 }; }
-  for (const nm in colin.actions) {
-    const a = colin.actions[nm], want = t[nm] || 0, cur = CW[nm] || 0;
+  for (const k in t) if (acts[k]) tot += t[k];
+  if (tot < .01) { console.warn('[skin] no live clip in', Object.keys(t).join(',') || '(empty)'); t = { idle_neutral: 1 }; }
+  for (const nm in acts) {
+    const a = acts[nm], want = t[nm] || 0, cur = cw[nm] || 0;
     if (cur < .01 && want > .01) { a.reset(); a.play(); if (TRIM_IN[nm]) a.time = TRIM_IN[nm]; }
     // .085 was a quarter of a second to cross, which on anything sharp reads as mush.
     // .055 is about a sixth and still hides the seam between two clips.
-    const w = CW[nm] = damp(cur, want, snap ? HIT.snapHL : .055, dt);
+    const w = cw[nm] = damp(cur, want, snap ? HIT.snapHL : .055, dt);
     if (w > .002) { if (!a.isRunning()) a.play(); a.setEffectiveWeight(w); }
     // A FINISHED `ONCE` CLIP IS PAUSED, AND `isRunning()` IS FALSE FOR A PAUSED ACTION.
     // Gating the shutdown on it therefore skipped it for exactly the clips that need it:
@@ -3419,6 +3471,82 @@ function titleBoard() {
   // with him, which is the order that keeps it hanging vertically whichever way he faces.
   board.rotation.set(-Math.PI / 2, player.faceH + TITLE.yaw, 0, 'YXZ');
 }
+// HOW FAR IS OFF SCREEN? Measured, not picked: the half-width of the frame AT HIS DISTANCE is
+// tan(fov/2) * aspect * dist, and that is a different number in portrait and landscape by a
+// factor of four. A typed 6 m would have him stroll to the middle distance and stop there on
+// a phone held sideways.
+function paradeAim() {
+  const P = PARADE;
+  P.ex = Math.max(3.5, Math.tan(camera.fov * Math.PI / 360) * camera.aspect * TITLE.dist + 1.8);
+  P.rx = -Math.cos(TITLE.az); P.rz = Math.sin(TITLE.az);     // camera-right: forward is (sin,cos), right is (-fz,fx)
+  P.speed = P.ex / P.dur;
+  P.mx = player.pos.x; P.my = player.pos.y; P.mz = player.pos.z;
+}
+// `dir` is +1 for "the next one along", which slides the row left: the one you have leaves by
+// the LEFT and the one you asked for arrives from the RIGHT.
+function startParade(key, dir) {
+  const P = PARADE, next = CHARS.skins[key];
+  if (!next) return;
+  readySkin(next);
+  paradeAim();
+  // whoever was walking IN is now walking OUT, from wherever he has got to -- no teleport, so
+  // tapping through four characters is four people crossing rather than four hard cuts
+  for (const w of P.walk) if (w.lead) {
+    w.lead = 0; w.from = w.s; w.to = -dir * P.ex;
+    w.e = 0; w.dur = Math.max(.25, Math.abs(w.to - w.from) / P.speed);
+  }
+  const cur = CHARS.skins[CHARS.cur];
+  if (cur && cur !== next && !P.walk.some(w => w.skin === cur))
+    P.walk.push({ skin: cur, from: 0, to: -dir * P.ex, s: 0, e: 0, dur: P.dur, lead: 0, settle: 0 });
+  P.walk.push({ skin: next, from: dir * P.ex, to: 0, s: dir * P.ex, e: 0, dur: P.dur, lead: 1, settle: 0 });
+}
+const _bt = new THREE.Vector3();
+function stepParade(dt) {
+  const P = PARADE; if (!P.walk.length) return false;
+  // the gait for the speed this orientation needs, on GAIT's own thresholds
+  const run = clamp((P.speed - GAIT.walkAt) / Math.max(.01, GAIT.runAt - GAIT.walkAt), 0, 1);
+  const tsW = clamp(P.speed / GAIT.walkRef, GAIT.tsLo, GAIT.tsHi);
+  const tsR = clamp(P.speed / GAIT.runRef, GAIT.tsLo, GAIT.tsHi);
+  for (let i = P.walk.length - 1; i >= 0; i--) {
+    const w = P.walk[i];
+    w.e += dt;
+    const k = Math.min(1, w.e / w.dur);
+    w.s = lerp(w.from, w.to, k);
+    const x = P.mx + P.rx * w.s, z = P.mz + P.rz * w.s;
+    const g = groundAt(x, z, P.my + 2, 1.5);
+    w.skin.root.visible = true;
+    w.skin.root.position.set(x, g.hit ? g.floor : hmAt(x, z), z);
+    w.skin.root.rotation.z = 0;
+    // LINEAR, not eased. The clip is time-scaled to this speed, so any easing at the ends is
+    // the feet sliding on the road; the arrival is sold by the turn and the blend instead.
+    const sg = (w.to > w.from ? 1 : -1);
+    const head = Math.atan2(P.rx * sg, P.rz * sg);
+    if (k >= 1 && w.lead) {
+      w.settle += dt;
+      const f = Math.min(1, w.settle / P.set), e = f * f * (3 - 2 * f);
+      w.skin.root.rotation.y = head + wrapAngle(TITLE.face - head) * e;
+      skinWeights(w.skin, { idle_neutral: e, walk_fwd_neutral: (1 - e) * (1 - run), run_fwd: (1 - e) * run }, dt);
+      if (f >= 1) { P.walk.splice(i, 1); wear(w.skin.key); }
+    } else {
+      w.skin.root.rotation.y = head;
+      skinScale(w.skin, 'walk_fwd_neutral', tsW); skinScale(w.skin, 'run_fwd', tsR);
+      skinWeights(w.skin, { walk_fwd_neutral: 1 - run, run_fwd: run }, dt);
+      if (k >= 1) { w.skin.root.visible = false; P.walk.splice(i, 1); }
+    }
+    // the current skin's mixer is already advanced by the frame loop; everybody else's is not
+    if (w.skin.mixer !== colin.mixer) w.skin.mixer.update(dt);
+  }
+  // THE DECK STAYS ON THE MARK. It belongs to whoever is standing there, and there is only one
+  // of it -- handing it between two people who are ten metres apart is a teleport. It stands
+  // itself up on the road instead and waits, which is what a board does.
+  board.visible = true;
+  _bt.set(P.mx + P.rx * .5, P.my + BOARD.len * .5, P.mz + P.rz * .5);
+  board.position.x = damp(board.position.x, _bt.x, .1, dt);
+  board.position.y = damp(board.position.y, _bt.y, .1, dt);
+  board.position.z = damp(board.position.z, _bt.z, .1, dt);
+  board.rotation.set(-Math.PI / 2, TITLE.face + TITLE.yaw, 0, 'YXZ');
+  return true;
+}
 function titleFrame(dt) {
   TITLE.t += dt;
   // NO SEE-THROUGH HOLE ON THE CARD. It exists so a building between the play camera and him
@@ -3428,7 +3556,7 @@ function titleFrame(dt) {
   // He stands where he SPAWNS. That is the point of doing the card in the live scene: START
   // is a camera move and not a teleport, so the street on the card is the street he starts in.
   player.vel.set(0, 0, 0); player.speed = 0; player.heading = player.faceH = TITLE.face;
-  if (colin.ready) { colinSet({ idle_neutral: 1 }, dt); poseColin(dt); titleBoard(); }
+  if (colin.ready && !stepParade(dt)) { colinSet({ idle_neutral: 1 }, dt); poseColin(dt); titleBoard(); }
   camAim(TITLE.az + Math.sin(TITLE.t * TITLE.rate * Math.PI * 2) * TITLE.sweep, TITLE.el,
          TITLE.dist * (1 + Math.sin(TITLE.t / TITLE.breatheT * Math.PI * 2) * TITLE.breathe), TITLE.look);
 }
@@ -3464,12 +3592,35 @@ function startGame() {
   document.body.classList.remove('title');
 }
 document.getElementById('startB').addEventListener('click', startGame);
+// SWIPE THE CARD TO CHANGE HIM. On `window` with capture, because `#title` is pointer-events
+// none by design -- it must never eat a thumb -- and the sticks underneath are off while the
+// card is up, so there is nothing else here to argue with. A swipe LEFT pulls the next one in
+// from the right, which is the way every row of things on a phone works.
+{
+  let sx = 0, sy = 0, sid = null;
+  addEventListener('pointerdown', e => {
+    if (!TITLE.on || (e.target && e.target.closest && e.target.closest('button'))) return;
+    sid = e.pointerId; sx = e.clientX; sy = e.clientY;
+  }, true);
+  addEventListener('pointerup', e => {
+    if (sid !== e.pointerId) return; sid = null;
+    if (!TITLE.on) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.4) return;   // a drag down the screen is not a swipe across it
+    cycleChar(dx < 0 ? 1 : -1);
+  }, true);
+  addEventListener('keydown', e => {
+    if (!TITLE.on) return;
+    if (e.key === 'ArrowRight') cycleChar(1);
+    else if (e.key === 'ArrowLeft') cycleChar(-1);
+  });
+}
 {
   const row = document.getElementById('chars');
   for (const ch of CHARS.list) {
     const b = document.createElement('button'); b.textContent = ch.name; b.dataset.key = ch.key;
     if (ch.key === CHARS.cur) b.classList.add('on');
-    b.addEventListener('click', e => { e.preventDefault(); wearWhenReady(ch.key); });
+    b.addEventListener('click', e => { e.preventDefault(); pickChar(ch.key); });
     row.appendChild(b);
   }
 }
@@ -3592,10 +3743,10 @@ frame();
     titleEl.classList.add('on');
     // whoever he was last time, fetched now rather than on the boot path: the card shows
     // Colin until it arrives, and the chip stays lit for the one it is waiting on.
-    try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) wearWhenReady(k); } catch (e) {}
+    try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, startGame, CHARS, wearWhenReady, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, PARADE, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

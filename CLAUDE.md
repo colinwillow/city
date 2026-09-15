@@ -647,6 +647,35 @@ playwright unless he asks for it by name.
     It stays in his hand THROUGH the descent and goes away when the camera arrives; dropping
     it on the press pops it out of frame dead centre, the one moment he is looking at it.
     **The hook for "he starts on the board" is one line in `startGame`.**
+  - **CHANGING CHARACTER IS A CHANGING OF THE GUARD (`PARADE`).** The one you have walks out of
+    frame and the one you picked walks in from the other side. That is why **every skin owns
+    its own root group, always in the scene** — one shared root can only hold one character,
+    and for a second and a half there are two of them on the street. `colin.root` is an alias
+    for whichever root is current, so `poseColin` never learns any of this happened, and each
+    skin keeps its own mixer, actions AND clip weights (`skin.cw`) so switching back is
+    instant; a shared weight table would tell the new skin's idle it was already at 1.0 while
+    its action sat stopped at zero.
+    **A FIXED DURATION, NOT A FIXED SPEED, AND THE GAIT FALLS OUT OF IT.** How far off screen
+    is a MEASUREMENT — `tan(fov/2)·aspect·dist` — and it is four times bigger in landscape
+    than in portrait: **3.7 m against 10.9 m**, which at one speed is 1.3 s against 3.8 s, and
+    a menu that takes four seconds to answer is a menu you stop using. Pick the time, derive
+    the speed, and blend walk into run on `GAIT`'s own thresholds: 2.5 m/s and a brisk walk in
+    portrait, 7.3 m/s and a full run in landscape, both clips time-scaled so nobody's feet
+    slide. A typed 6 m would have him stroll to the middle distance and stop there.
+    **The motion is LINEAR**, for the same reason — the clip is scaled to the speed, so easing
+    the ends is the feet sliding. The arrival is sold by the turn to camera and the blend.
+    **Every walker is independent**, with its own from/to and clock, so tapping through four
+    characters is four people crossing rather than four hard cuts: a new pick turns whoever is
+    walking IN into somebody walking OUT *from where he has got to*, and never teleports.
+    **The deck stays on the mark.** There is one board and handing it between two people ten
+    metres apart is a teleport, so it stands itself up on the road and waits for its rider.
+    **Swipe listens on `window` with capture**, because `#title` is `pointer-events: none` by
+    design and must stay that way — it can never be allowed to eat a thumb. A swipe LEFT pulls
+    the next one in from the right, the way every row of things on a phone works; the chips
+    take their direction from where they sit in the row, so picking one to the right always
+    slides the row left. Arrow keys do the same. `pickChar` is the one entry point and lights
+    the chip on the press rather than when the bytes land — `want` is what you asked for,
+    `cur` is who is actually standing there.
   - **THE START BUTTON IS THE AUDIO GESTURE, and that is worth more than the button.** A
     browser will not build an `AudioContext` outside one, so until c65 his first ollie was
     also the thing that started the decode. Now the fetch, the decode and the theme all land
