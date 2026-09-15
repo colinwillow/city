@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c92</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c93</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c92';
+const BUILD = 'c93';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -5046,8 +5046,16 @@ function kitBuild() {
   key.addEventListener('pointercancel', e => { e.stopPropagation(); clear(); close(); });
   addEventListener('pointerdown', e => { if (!ring.hidden && e.target !== key) close(); });
   try { const k = localStorage.getItem(KIT.key); if (k && KIT.slots.some(s => s.k === k)) KIT.cur = k; } catch (e) {}
-  kitPaint();
+  // NOT `kitPaint()` HERE, AND THAT ONE LINE WAS A BLANK PAGE. `kitPaint` asks `kitOut()`
+  // whether the current thing is deployed, and for the board that is `player.board` -- a
+  // `const` declared hundreds of lines further down and therefore in its temporal dead zone at
+  // this point in the module. The throw takes the whole file with it, `init()` never runs, and
+  // the boot card sits for ever at the text it was BORN with: "loading the city". Nothing on
+  // screen and nothing in a phone's console says why.
+  // Same trap as `optStart()` and, one repo over, Plutopia's first landmine. `kitStart()` is
+  // called at the bottom of the file, where the player exists.
 }
+function kitStart() { kitPaint(); }
 
 // One switch for all of it. The master gain is where it lands, so the music and the wheel
 // loop -- which are not `play` calls and would otherwise carry on underneath -- go with it.
@@ -6187,7 +6195,7 @@ function stepCam(dt) {
 const speedEl = document.getElementById('speed').querySelector('b');
 const buildEl = document.getElementById('build'), buildNEl = document.getElementById('buildN'), perfEl = document.getElementById('perf');
 function optStart() { try { optLoad(); } catch (e) { console.warn('[opt] stored settings ignored', e); } optBuild(); }
-optStart();
+optStart(); kitStart();
 let fpsT = 0, fpsN = 0, fps = 0;
 buildNEl.textContent = BUILD; buildEl.classList.add('fresh');
 buildEl.style.cursor = 'pointer';

@@ -12,10 +12,26 @@ screen when the server has moved on, so he never has to guess whether a reload t
 
 ## Verification budget
 
-**The owner tests the game. You do not.** Make the change, `npm run bump`, run the ~1s
-syntax gate (`npm run check:syntax`), push, and say "shipped unverified" **with the build
-number** so he knows what to look for on the badge. No screenshots, no headless runs, no
+**The owner tests the game. You do not.** Make the change, `npm run bump`, run **`npm run
+check`** (the ~1s syntax gate plus the ~3s boot gate), push, and say "shipped unverified"
+**with the build number** so he knows what to look for on the badge. No screenshots, no
 playwright unless he asks for it by name.
+
+**`npm run check:boot` EXISTS BECAUSE `check:syntax` ONLY PARSES.** It cannot see a `const`
+read above its own declaration, a throw at module top level, or a missing identifier — and all
+three of those are a BLANK PAGE: the boot card sits for ever at the text it was BORN with
+("loading the city"), `init()` never runs, and **nothing on screen or in a phone's console says
+why**. c92 shipped exactly that and cost a round. Plutopia lost a whole build to the same class
+of fault and wrote `check:intro` for it; this is City's, and it is not optional.
+It runs the REAL module: `three` resolves to the VENDORED build through a shim that swaps
+`WebGLRenderer`, `WebGLRenderTarget` and `PMREMGenerator` for fakes, because a headless node has
+no GL context and those are the only things in the file that need one. The DOM, the canvases,
+the audio and `localStorage` are stubbed to the surface the file actually touches.
+**The asset failures are the environment, not the code** — node has no relative-URL base, so
+every `loadGLB` rejects with `ERR_INVALID_URL`. Those are filtered; anything else that rejects
+is a real fault, which is how a throw inside `init()` reaches the boot card in the real game.
+**And it exits hard**, because once the module is up `init()` waits on fetches that will never
+resolve, and a gate whose pass looks like a hang is a gate nobody runs.
 
 ## Layout
 
@@ -1472,6 +1488,12 @@ playwright unless he asks for it by name.
   that wrote the live value would be silently undone by the next tap on the build badge.
   **AND `POST.bloomTh` NEEDED A PER-FRAME PUSH.** `brightMat` took it once at construction, so
   the threshold was the one `POST` value that could never be moved at runtime by anything.
+  **AND `kitStart()` IS THE SAME, FOR THE SAME REASON — c92 FORGOT AND IT WAS A BLANK PAGE.**
+  `kitPaint` asks `kitOut()` whether the current thing is deployed, and for the board that is
+  `player.board` — a `const` declared hundreds of lines further down, so calling it at module
+  top level reads it inside its temporal dead zone. **That is the third time in this file and
+  the second this week**, which is why `npm run check:boot` now exists: every one of them is
+  invisible to the syntax gate and indistinguishable from a dead game.
   **`optStart()` IS CALLED AT THE BOTTOM OF THE FILE, NOT WHERE THE PANEL IS DEFINED.**
   `optLoad` runs the setters and two of them call `applyDbg`, which reads `buildNEl` — a
   `const` declared a thousand lines further down and therefore in its temporal dead zone up

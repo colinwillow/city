@@ -23,7 +23,9 @@
     "melee": "node tools/melee.mjs",
     "ladders": "node tools/ladders.mjs",
     "dens": "node tools/dens.mjs",
-    "cop": "node tools/cop.mjs"
+    "cop": "node tools/cop.mjs",
+    "check:boot": "node tools/boot.mjs",
+    "check": "npm run check:syntax && npm run check:boot"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",
