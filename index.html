@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c96</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c97</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c96';
+const BUILD = 'c97';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -802,7 +802,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"75088889","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"9d86b14e","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -4131,7 +4131,21 @@ function cycleChar(dir) {
   pickChar(CHARS.list[((i + dir) % n + n) % n].key, dir);
 }
 function buildColin(gltf, extra) {
-  colin.clips = gltf.animations;
+  // A MORPH-WEIGHTS-ONLY CLIP IS A BLENDER ACTION, NOT AN ANIMATION -- and one of them can
+  // undo his face. Removing the pose donors left three behind (`Mesh.002Action` /
+  // `Mesh.003Action` / `Mesh.004Action`, one frame each, a single `weights` track on `teeth`,
+  // `eyes` and `head`), and the last is the dangerous one: a `weights` track on `head` writes
+  // ALL 42 morph influences, so playing it once would zero `Colin_Head_MIX` -- the shape that
+  // makes the generic base head HIS -- and hand back a stranger's face. Nothing names them, so
+  // nothing plays them today; that is exactly the kind of "safe until it isn't" that a
+  // re-export turns into a bug at the worst moment. A clip that drives no BONE is not
+  // locomotion and this game has no use for one, so it never enters the pool.
+  colin.clips = gltf.animations.filter(c => {
+    const bones = c.tracks.filter(t => !/\.morphTargetInfluences$/.test(t.name)).length;
+    if (bones) return true;
+    console.log('[clips] dropped ' + c.name + ' -- morph weights only, drives no bone');
+    return false;
+  });
   if (extra && extra.length) {
     // A BORROWED CLIP CARRIES THE LENDER'S PROPS. The alien's rig has `weapon` and
     // `weapon_direction` nodes that Colin has no equivalent of -- 66 of its 68 targets are

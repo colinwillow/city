@@ -484,6 +484,17 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   measures a path the game does not take is the `normals.mjs` / `normGeo` mistake, and this
   file has now paid for it three times. It calls `stripPoses` first, which is how both numbers
   above were obtained.
+  **HE FIXED IT AT THE SOURCE ONE BUILD LATER** — the c97 export is 6 skinned meshes, 0 loose,
+  31644 tris, bounds 0.003..1.319, every clip byte-identical in duration and none lost. So
+  `stripPoses` is a no-op on it and stays anyway: he re-exports constantly and says himself
+  that Cinema 4D adds them every time he imports.
+  **AND REMOVING THEM LEFT THREE CLIPS BEHIND.** `Mesh.002Action` / `Mesh.003Action` /
+  `Mesh.004Action`, one frame each, a single `weights` track on `teeth`, `eyes` and `head`.
+  Nothing names them so nothing plays them — and the `head` one is a landmine regardless,
+  because a `weights` track writes ALL 42 morph influences and would zero `Colin_Head_MIX`,
+  the shape that makes the generic base head HIS. `buildColin` keeps only clips that drive a
+  BONE: a morph-weights-only clip is a Blender action, not an animation, and this game has no
+  use for one.
 - **THE ARMED GAIT IS THE WHOLE TIME HE IS CARRYING IT (`gunOut`), NOT `p.aim`.** `p.aim` is
   only live from the moment the trigger arms, which is a fraction of a second before a shot;
   a man walking around with a blaster does not swing his arms the rest of the time. It is also
