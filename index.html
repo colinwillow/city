@@ -249,7 +249,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c109</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c110</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -262,7 +262,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c109';
+const BUILD = 'c110';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -688,9 +688,10 @@ const WEAP = {
   // he is going and where he is pointing. Forward is `rifle_run_aim`, sideways is the strafe
   // for that side, and standing still is the idle.
   aimRun: 'rifle_run_aim', strafeL: 'rifle_strafe_left', strafeR: 'rifle_strafe_right',
-  aimBack: '',          // THE GAP: no backpedal clip, so retreating plays the forward one and
-                        // the feet go the wrong way. Name one here and it blends in; same hook
-                        // as `GAIT.sprint` and `HANG.clip`, and the same reason it is empty.
+  // RETREATING. A clone of `aimRun` built at load and played at a NEGATIVE time scale, so his
+  // feet go the way he is actually travelling. It was empty and the forward clip played while
+  // he backed away, which is a moonwalk with a rifle.
+  aimBack: 'rifle_run_back',
   aimRunRef: 5.33, strafeLRef: 4.36, strafeRRef: 4.57,
   // THESE TWO WERE TYPED AND BOTH WERE WRONG; `npm run gait` MEASURES THEM.
   // A clip is time-scaled by `speed / ref`, so one cycle takes `dur * ref / speed` seconds --
@@ -4489,6 +4490,16 @@ function buildColin(gltf, extra) {
       aim.duration = .1;            // a zero-length clip on repeat divides by its own length
       colin.clips.push(aim);
     } else if (!sh) console.warn('[aim] no ' + WEAP.clip + ' -- the sighted hold falls back to the rifle idle');
+    // RETREATING IS THE FORWARD CLIP RUN BACKWARDS, and it needs to be a CLONE rather than the
+    // same action with a negative time scale. Walking diagonally backwards is genuinely part
+    // retreat and part strafe, so both have to be able to carry weight ON THE SAME FRAME -- and
+    // one action cannot be playing forwards and backwards at once. Plutopia's `rifleBack` is
+    // the same clone for the same reason.
+    // The reversal itself is one negative `colinScale` where it is blended, not a second clip.
+    const fr = colin.clips.find(c => c.name === WEAP.aimRun);
+    if (fr && WEAP.aimBack && !colin.clips.some(c => c.name === WEAP.aimBack)) {
+      const bk = fr.clone(); bk.name = WEAP.aimBack; colin.clips.push(bk);
+    }
   }
   buildSkin(gltf, 'colin');
   wear('colin');
@@ -4633,16 +4644,26 @@ function colinAnim(dt) {
       // to his nose" does. That is the whole reason the strafes exist and it falls straight out
       // of `plant` being zero while the trigger is held.
       const rel = sp > .2 ? wrapAngle(Math.atan2(p.vel.x, p.vel.z) - p.faceH) : 0;
-      const cf = Math.abs(Math.cos(rel)), sf = Math.sin(rel), as = Math.abs(sf);
-      const tot = Math.max(1e-4, cf + as);
+      // FORWARD AND BACK ARE TWO SHARES, NOT ONE. `Math.abs(cos)` folded them together, so
+      // backing away played the forward run at full weight -- a moonwalk with a rifle. Split,
+      // the retreat clip takes the negative half and nothing is thresholded: walking diagonally
+      // backwards is genuinely part retreat and part strafe, which is what stops it snapping.
+      const co = Math.cos(rel), sf = Math.sin(rel), as = Math.abs(sf);
+      const bk = WEAP.aimBack && colin.actions[WEAP.aimBack] ? Math.max(0, -co) : 0;
+      const cf = bk > 0 ? 0 : Math.max(0, co);
+      const tot = Math.max(1e-4, cf + bk + as);
       // +X IS HIS LEFT -- heading grows +Z toward +X and his right is `(-fz, fx)`. So travel
       // rotated toward +X off his nose (a positive `rel`, hence a positive sine) is a strafe to
       // the LEFT. Written down because this argument comes out backwards half the time.
       const side = sf > 0 ? WEAP.strafeL : WEAP.strafeR;
       t[WEAP.aimRun] = w * (cf / tot) * k;
+      if (bk > 0) t[WEAP.aimBack] = w * (bk / tot) * k;
       t[side] = w * (as / tot) * k;
       still((1 - w) * k);
       colinScale(WEAP.aimRun, clamp(sp / WEAP.aimRunRef, GAIT.tsLo, GAIT.tsHi));
+      // AND THE REVERSAL IS THE MINUS SIGN. Same reference as the forward clip, because it is
+      // the same clip -- only the direction of travel through it changes.
+      colinScale(WEAP.aimBack, -clamp(sp / WEAP.aimRunRef, GAIT.tsLo, GAIT.tsHi));
       colinScale(WEAP.strafeL, clamp(sp / WEAP.strafeLRef, GAIT.tsLo, GAIT.tsHi));
       colinScale(WEAP.strafeR, clamp(sp / WEAP.strafeRRef, GAIT.tsLo, GAIT.tsHi));
     } else {
@@ -4735,6 +4756,12 @@ const COP = {
   // over: the shot has somewhere to put its energy and a body that goes over a bonnet reads as
   // hit, where one that folds on the spot reads as a hitpoint being deducted.
   fly: { up: 7.4, back: 9.5, g: 20, spin: 2.6, min: .35 },
+  // OUT COLD. He used to be up half a second after the clip finished, which reads as a man
+  // tripping rather than a man being knocked out. `out` is the beat he lies there, and the
+  // stars are what say he is unconscious rather than merely prone -- the oldest shorthand in
+  // animation, and the one thing that makes the pause read as a STATE instead of a delay.
+  out: 2.4,
+  stars: { n: 3, r: .34, y: .40, size: .27, spin: 3.1 },
   stun: .62,        // of a hit clip he is held for; the tail blends back into whatever is next
   fire: 1.7,        // seconds between shots
   gunAt: .46,       // the fraction of `shoot_pistol` the round leaves on
@@ -4947,6 +4974,58 @@ function copSet(c, st) { c.st = st; c.t = 0; }
 // track bakes COLIN's bone lengths and applied to another skeleton it stretches it. The
 // officer is drawn at his own scale and the launch is code-driven, so losing the hips
 // translation costs nothing here, exactly as it costs nothing for the borrowed characters.
+// SEEING STARS. Drawn once and shared: a five-point star with a FAT DARK OUTLINE under a hot
+// fill, which is the same rule the word in the effect sheet follows -- it has to survive being
+// twenty pixels across on a phone and still read as ink laid on top of the render.
+// NOT ADDITIVE, for the slash mark's reason: additive over a lit street has nowhere to go but
+// white, and it would clear `POST.bloomTh` and come back out of the chain as a glowing lump.
+let _starTex = null;
+function starTex() {
+  if (_starTex) return _starTex;
+  const S = 64, cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const g = cv.getContext('2d'), c = S * .5;
+  const pts = (r, ir, rot) => {
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * Math.PI * 2 + rot, rr = i % 2 ? ir : r;
+      const x = c + Math.cos(a) * rr, y = c + Math.sin(a) * rr;
+      if (i) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+    g.closePath();
+  };
+  pts(S * .42, S * .17, -Math.PI / 2);
+  g.lineJoin = 'round'; g.lineWidth = S * .14; g.strokeStyle = 'rgba(24,12,32,.95)'; g.stroke();
+  g.fillStyle = '#ffd23c'; g.fill();
+  pts(S * .26, S * .10, -Math.PI / 2); g.fillStyle = 'rgba(255,250,224,.92)'; g.fill();
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false;
+  return (_starTex = t);
+}
+// A RING OVER WHOEVER IS OUT. Built the first time an officer needs one and then only shown
+// and hidden -- eight men times three sprites is nothing, and building them at load would make
+// every officer pay for a state most of them never reach.
+// `depthTest` stays ON: stars that punch through a wall are worse than stars his own shoulder
+// hides half of, and the half his body occludes is what puts them BEHIND his head.
+function copStars(c, on) {
+  if (!on) { if (c.stars) c.stars.visible = false; return; }
+  const S = COP.stars;
+  if (!c.stars) {
+    const g = new THREE.Group();
+    for (let i = 0; i < S.n; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTex(), transparent: true, depthWrite: false }));
+      sp.userData.noHole = true; g.add(sp);
+    }
+    g.renderOrder = 5; scene.add(g); c.stars = g;
+  }
+  c.stars.visible = true;
+  c.stars.position.set(c.x, c.y + COLIN_HEIGHT * S.y, c.z);
+  for (let i = 0; i < c.stars.children.length; i++) {
+    const sp = c.stars.children[i], a = FX.t * S.spin + i / c.stars.children.length * Math.PI * 2;
+    // a flat ring seen in perspective, with a little bob, so it reads as going ROUND his head
+    sp.position.set(Math.cos(a) * S.r, Math.sin(a * 2) * S.r * .16, Math.sin(a) * S.r);
+    sp.scale.setScalar(S.size * (.82 + .18 * Math.sin(FX.t * 7 + i * 2.1)));
+  }
+}
 function copsLearnFlight() {
   if (!cops.length || !colin.clips) return 0;
   const want = [COP.clips.flyB, COP.clips.flyF].filter(Boolean);
@@ -5151,7 +5230,7 @@ function stepCops(dt) {
         t[c.clip] = 1;
         if (c.gun) c.gun.visible = false;
         c.armed = 0;
-        if (c.t > clipLen2(c, c.clip) + .5) { c.clip = c.clip === COP.clips.downB ? COP.clips.upB : COP.clips.upF; copSet(c, 'up'); }
+        if (c.t > clipLen2(c, c.clip) + COP.out) { c.clip = c.clip === COP.clips.downB ? COP.clips.upB : COP.clips.upF; copSet(c, 'up'); }
         break;
       case 'up':
         t[c.clip] = 1;
@@ -5207,6 +5286,7 @@ function stepCops(dt) {
     c.box.minx = c.x - COP.r; c.box.maxx = c.x + COP.r;
     c.box.minz = c.z - COP.r; c.box.maxz = c.z + COP.r;
     c.box.miny = c.y; c.box.maxy = c.y + COLIN_HEIGHT * (c.st === 'down' || c.st === 'up' ? .32 : .95);
+    copStars(c, c.st === 'down');
     c.root.position.set(c.x, c.y, c.z);
     c.root.rotation.y = c.h;
     skinWeights(c, t, dt, false, COP.clips.idle);

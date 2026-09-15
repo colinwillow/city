@@ -1055,6 +1055,32 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   **Placed by `npm run spots 4`**, not by eye — same rule as the ramps.
   **The chip says `· NO COP GLB` / `· NO PISTOL GLB` unasked**, because a console warning is
   invisible on a phone.
+- **OUT COLD, WITH STARS (`COP.out`, `COP.stars`, `copStars`).** He was back on his feet half a
+  second after the knock-down clip finished, which reads as a man TRIPPING rather than a man
+  being knocked out. `out` is the beat he lies there — and the stars are what make that pause
+  read as a STATE instead of a delay. Oldest shorthand in animation, and it is doing real work:
+  without them a longer lie-down is just a slower get-up.
+  **A FAT DARK OUTLINE UNDER A HOT FILL**, which is the rule the effect sheet's word follows —
+  it has to survive being twenty pixels across on a phone and still read as ink laid on top of
+  the render. **NOT ADDITIVE**, for the slash mark's reason: additive over a lit street has
+  nowhere to go but white, clears `POST.bloomTh` and comes back out of the bloom chain as a
+  glowing lump.
+  **`depthTest` STAYS ON.** Stars that punch through a wall are worse than stars his own
+  shoulder hides half of — and the half his body occludes is exactly what puts them BEHIND his
+  head rather than pasted over it.
+  Built the first time an officer needs one rather than at load: eight men times three sprites
+  is nothing, but building them up front makes every officer pay for a state most never reach.
+- **RETREATING UNDER AIM IS THE FORWARD CLIP RUN BACKWARDS (`WEAP.aimBack`), AND IT HAD TO BE A
+  CLONE.** The hook sat empty for three builds and the forward run played while he backed away
+  — a moonwalk with a rifle. Two things make it work:
+  1. **`Math.abs(cos)` FOLDED FORWARD AND BACK TOGETHER.** Split into two shares, the retreat
+     takes the negative half, and nothing is thresholded: walking diagonally backwards is
+     genuinely part retreat and part strafe, which is what stops it snapping between them.
+  2. **IT IS A CLONE OF `aimRun`, NOT THE SAME ACTION REVERSED.** Diagonal retreat needs both
+     carrying weight ON THE SAME FRAME, and one action cannot play forwards and backwards at
+     once. Plutopia's `rifleBack` is the same clone for the same reason.
+  The reversal itself is then one **negative `colinScale`** at the blend, on the same reference
+  as the forward clip — it is the same clip, only the direction of travel through it changes.
 - **HE GOT UP WITH ONE HIT POINT, SO EVERY OFFICER AFTER HIS FIRST KNOCK-DOWN WAS A ONE-PUNCH
   MAN.** `COP.hp` is three and always was, and `copHit` already counted down through the four
   `hit_*` clips — but the `up` state set `c.hp = 1`, so the three-hit chain existed for exactly
