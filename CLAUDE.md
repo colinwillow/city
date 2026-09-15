@@ -1366,6 +1366,35 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   but a BONE's translation lives inside the armature, which carries the hundredth scale. The
   tool multiplied by the model scale alone and was out by 100x. Same class as `Box3` against
   geometry bounds, one node up — measure the chain, never assume it.
+- **THE AUTO-FOLLOW IS THE BOARD'S AND NOWHERE ELSE (c105).** It fired on speed alone, so it
+  chased him round on foot too. *"When you run around the camera should not follow your
+  direction — the character should run around freely and only the right stick orbits the
+  camera. That is unique to the skateboard."* And the reason is the difference between the two:
+  **a board goes where it points**, so the lens wants to be behind it and letting go of the pad
+  should not leave you looking at its side. **On foot he turns on the spot**, in any direction
+  the left thumb picks, and a lens that swings in behind every one of those turns means the
+  world spins whenever he does. One condition — `player.board &&` — and the ground/air split
+  inside it still holds.
+  `stepAim`'s camera ease is NOT this and must stay: that is the aim loop, it only runs while
+  the trigger pad is live, and it is the thing that centres the shot.
+- **HOLDING A CHARGE HE IS BRACED, NOT AT EASE (`WEAP.aimPose`).** `rifle_idle_01` is the gun
+  DOWN and him standing about, and that is what played while a shot spun up — with the sighted
+  pose only appearing AFTER the release, when the shoot clip finally ran. **Exactly backwards**,
+  and he said so: *"he's like looking down the sight of the gun, he should be, but he's not
+  until you release the trigger."*
+  **THE FIRST FRAME OF THE SHOOT CLIP IS THE SAME RIG ALREADY SIGHTED**, so trimming that clip
+  to its first key gives the hold for free and IN REGISTER — the shot then continues from the
+  very frame the hold was sitting on, so there is no seam at the release.
+  **TRIMMED RATHER THAN PAUSED**, which is Plutopia's note and the reason this is a clip and
+  not an action flag: a paused action still has a duration the mixer walks, and **one keyframe
+  cannot drift**. `duration` is .1 rather than 0 because a zero-length clip on repeat divides
+  by its own length.
+  Built in `buildColin` BEFORE `buildSkin`, so it is in the pool before any skin clones it and
+  every borrowed character gets it through `skinClips` unchanged.
+  **AND IT ONLY APPLIES STANDING STILL.** Moving, it means nothing extra — the walk, the
+  run-aim and the strafes already hold the gun up. So it is one line splitting the "not moving"
+  share of the blend, in both branches, rather than a state: a weight like every other weight
+  here, easing in and out with the rest instead of cutting.
 - **AIMED, THE LEGS ANSWER THE ANGLE AND NOT THE SPEED — WHICH IS WHAT THE STRAFES ARE FOR.**
   The ordinary armed gait is the three-clip speed blend like any other. The AIMED one cannot
   be: while the trigger is held he faces the shot and travels wherever the thumb says (`plant`

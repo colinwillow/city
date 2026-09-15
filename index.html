@@ -249,7 +249,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c104</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c105</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -262,7 +262,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c104';
+const BUILD = 'c105';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -679,6 +679,7 @@ const WEAP = {
   // and `rifle_shoot_stationary_01` plays on the shot. It costs no new control and it is gated
   // on the kit, so an empty name or a missing clip falls straight back to the ordinary gait.
   clip: 'rifle_shoot_stationary_01',
+  aimPose: 'rifle_aim',  // built at load from that clip's FIRST KEY -- see buildColin
   fireHold: .42,        // how long the shoot clip owns the body, scaled to fit
   idle: 'rifle_idle_01', walk: 'rifle_walk_fwd_01', run: 'rifle_run',
   // AIMING IS ITS OWN SET, AND IT IS WHAT THE STRAFES WERE ALWAYS FOR. While the trigger is
@@ -902,7 +903,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -4452,6 +4453,26 @@ function buildColin(gltf, extra) {
     if (t.end) c.duration = Math.max(.05, c.duration - t.end / FPS);
     if (t.start) TRIM_IN[nm] = Math.min(t.start / FPS, c.duration - .05);
   }
+  // BRACED, NOT AT EASE. `rifle_idle_01` is the gun DOWN and him standing about, which is the
+  // wrong body for a man holding a charge on a trigger -- and until c105 that is what played
+  // while the shot spun up, with the sighted pose only appearing AFTER the release, when the
+  // shoot clip finally ran. Exactly backwards.
+  // The first frame of the shoot clip is the same rig ALREADY SIGHTED, so trimming that clip
+  // to its first key gives the pose he holds while winding one up, for free and in register --
+  // the shot then continues from the very frame the hold was sitting on.
+  // TRIMMED RATHER THAN PAUSED, which is Plutopia's note and the reason this is a clip and not
+  // an action flag: a paused action still has a duration the mixer walks, and ONE KEYFRAME
+  // CANNOT DRIFT. It is built here so it is in `colin.clips` before any skin clones the pool,
+  // which is what makes every borrowed character get it through `skinClips` unchanged.
+  {
+    const sh = colin.clips.find(c => c.name === WEAP.clip);
+    if (sh && !colin.clips.some(c => c.name === WEAP.aimPose)) {
+      const aim = sh.clone(); aim.name = WEAP.aimPose;
+      for (const t of aim.tracks) { const sz = t.getValueSize(); t.times = new t.times.constructor([0]); t.values = t.values.slice(0, sz); }
+      aim.duration = .1;            // a zero-length clip on repeat divides by its own length
+      colin.clips.push(aim);
+    } else if (!sh) console.warn('[aim] no ' + WEAP.clip + ' -- the sighted hold falls back to the rifle idle');
+  }
   buildSkin(gltf, 'colin');
   wear('colin');
   colin.ready = true;
@@ -4581,6 +4602,14 @@ function colinAnim(dt) {
     const r = clamp((sp - GAIT.walkAt) / (GAIT.runAt - GAIT.walkAt), 0, 1);
     const f = WEAP.clip && colin.actions[WEAP.clip] ? clamp(p.fireT / WEAP.fireHold, 0, 1) : 0;
     const k = 1 - f;
+    // STANDING STILL, HOLDING A CHARGE, HE IS SIGHTED. The share of the blend that is "not
+    // moving" splits between the at-ease idle and the braced pose by whether the trigger is
+    // armed -- and MOVING it means nothing extra, because the walk, the run-aim and the
+    // strafes already hold the gun up. That is why this is one line in both branches rather
+    // than a state: it is a weight like every other weight here, so it eases in and out with
+    // the rest of the blend instead of cutting.
+    const aimK = (p.aim && colin.actions[WEAP.aimPose]) ? 1 : 0;
+    const still = nm => { t[WEAP.idle] = nm * (1 - aimK); t[WEAP.aimPose] = nm * aimK; };
     if (p.aim && colin.actions[WEAP.aimRun]) {
       // AIMED: THE LEGS ANSWER THE ANGLE, NOT THE SPEED. He is facing the shot and moving
       // wherever the thumb says, so "how fast" no longer picks the clip -- "which way, relative
@@ -4595,12 +4624,12 @@ function colinAnim(dt) {
       const side = sf > 0 ? WEAP.strafeL : WEAP.strafeR;
       t[WEAP.aimRun] = w * (cf / tot) * k;
       t[side] = w * (as / tot) * k;
-      t[WEAP.idle] = (1 - w) * k;
+      still((1 - w) * k);
       colinScale(WEAP.aimRun, clamp(sp / WEAP.aimRunRef, GAIT.tsLo, GAIT.tsHi));
       colinScale(WEAP.strafeL, clamp(sp / WEAP.strafeLRef, GAIT.tsLo, GAIT.tsHi));
       colinScale(WEAP.strafeR, clamp(sp / WEAP.strafeRRef, GAIT.tsLo, GAIT.tsHi));
     } else {
-      t[WEAP.idle] = (1 - w) * k;
+      still((1 - w) * k);
       t[WEAP.walk] = w * (1 - r) * k;
       t[WEAP.run] = w * r * k;
       colinScale(WEAP.walk, clamp(sp / WEAP.walkRef, GAIT.tsLo, GAIT.tsHi));
@@ -6588,7 +6617,15 @@ function stepCam(dt) {
   // lens turns with him, and nothing appears to have happened except that you are dizzy.
   // Off the ground the camera holds still and lets him rotate in front of it.
   if (player.board && !player.grounded) cam.idle = 0;
-  else if (cam.idle > CAM.idle && sp > .8) {
+  // ON FOOT THE CAMERA DOES NOT CHASE HIM AT ALL, AND THAT IS PLUTOPIA'S RULE. The auto-follow
+  // is what makes RIDING pleasant -- a board goes where it points, the lens wants to be behind
+  // it, and letting go of the pad should not leave you looking at his side. On foot it is the
+  // opposite: he runs in any direction the left thumb picks, turning on the spot is normal,
+  // and a lens that swings in behind every one of those turns means the world spins whenever
+  // he does. **The character runs around freely and only the right stick orbits the camera.**
+  // So it is gated on the board rather than on speed: one condition, and the ground/air split
+  // above still holds inside it.
+  else if (player.board && cam.idle > CAM.idle && sp > .8) {
     const want = sp > 1.2 ? Math.atan2(player.vel.x, player.vel.z) : player.faceH;
     cam.az += wrapAngle(want - cam.az) * Math.min(1, CAM.follow * dt * clamp(sp / 5, .3, 1.4));
   }
