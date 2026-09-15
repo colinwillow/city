@@ -135,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c73</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c74</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c73';
+const BUILD = 'c74';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -337,6 +337,26 @@ const TRICK = {
   // held off until it finishes, after which the still-held thumb spins him as it always did.
   rollLock: true,
 };
+// MELEE, ON FOOT. The clips are Plutopia's alien's, lifted into `models/chars/melee.glb` by
+// `npm run melee` -- five clips and a bone hierarchy, 2.22 MB of character cut to 0.18 MB of
+// animation. He shares Colin's bind pose exactly (0.0 deg, measured), so they drive every
+// skin through the same path the walk does and need no correction of their own.
+const MELEE = {
+  // A CHAIN, NOT A BUTTON. Each flick inside `window` of the last one takes the next strike;
+  // let it lapse and the next flick starts again at the first. Three strikes that escalate.
+  chain: ['melee_punch_01', 'melee_slash', 'melee_round_kick'],
+  window: .45,       // how long after a strike the next flick still chains
+  // AND A SLIDE TACKLE IS WHAT A MELEE AT SPEED IS. Not a fourth item in the chain -- a
+  // different opening to it: above `runAt` the first strike becomes the tackle and the
+  // punches follow from there, so running at somebody and hitting melee reads as one move.
+  runAt: 4.6, slide: 'slide',
+  slideV: 1.15,      // the tackle keeps this much of his speed, bled off across the clip
+  lunge: 2.4,        // and a standing strike still steps INTO it rather than punching the air
+  url: 'models/chars/melee.glb',
+  roll: 'roll',      // the left pad's flick: a dodge, and the only i-frames in the game
+  rollV: 7.4,
+  hold: .55,         // of each strike he cannot steer out of; after that the stick has him back
+};
 // THE RIGHT STICK ORBITS, IT DOES NOT PITCH. Up and down on that pad are spent the
 // moment they move the lens, and they are worth more as verbs -- jump, and whatever
 // comes after it. So the elevation is a constant: a shallow look-down that keeps him
@@ -480,7 +500,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"1ea8c3fb","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1833,7 +1853,10 @@ function clipLen(name, fb) {
   const a = colin.actions[name]; if (!a) return fb;
   return Math.max(.05, a.getClip().duration - (TRIM_IN[name] || 0));
 }
+// A DODGE ROLL IS THE ONLY THING IN THIS GAME THAT MAKES HIM UNHITTABLE, and it is the whole
+// reason to have one: without i-frames a roll is a slower walk with a nicer clip.
 function carHit(c) {
+  if (player.melI) return;
   const p = player;
   if (p.hitCool > 0) return;
   if (p.hit && p.hit !== 'fly') return;                      // already down; leave him there
@@ -2690,8 +2713,24 @@ function cycleChar(dir) {
   const n = CHARS.list.length, i = charIdx(CHARS.want);
   pickChar(CHARS.list[((i + dir) % n + n) % n].key, dir);
 }
-function buildColin(gltf) {
+function buildColin(gltf, extra) {
   colin.clips = gltf.animations;
+  if (extra && extra.length) {
+    // A BORROWED CLIP CARRIES THE LENDER'S PROPS. The alien's rig has `weapon` and
+    // `weapon_direction` nodes that Colin has no equivalent of -- 66 of its 68 targets are
+    // shared bones and those two are not bones at all. An unresolvable track is a console
+    // warning per clip per skin and no animation, so they go here, once, against COLIN's own
+    // node names: every other skin is filtered again by `skinClips` against its own.
+    const have = new Set(); gltf.scene.traverse(o => { if (o.name) have.add(o.name); });
+    let cut = 0;
+    for (const c of extra) {
+      if (colin.clips.some(x => x.name === c.name)) continue;
+      const keep = c.tracks.filter(t => { const d = t.name.indexOf('.'); return have.has(d > 0 ? t.name.slice(0, d) : t.name); });
+      cut += c.tracks.length - keep.length;
+      c.tracks = keep; colin.clips.push(c);
+    }
+    console.log('[melee] ' + extra.length + ' borrowed clips (' + extra.map(c => c.name).join(', ') + '), ' + cut + ' prop tracks dropped');
+  }
   // A tail is taken by shortening the clip's own duration, which is all the mixer reads to
   // know when a LoopOnce action is done. A head is taken by starting the action late --
   // the frames are still in the file, nothing ever reaches them.
@@ -2716,7 +2755,9 @@ function colinScale(name, s) { const a = colin.actions[name]; if (a) a.setEffect
 const ONCE = ['jump_going_up', 'jump_coming_down', 'landing_roll', 'idle_jump_init', 'run_jump_init',
   'skate_ollie_init_air', 'skate_ollie_air', 'skate_ollie_landing', 'back_flip', 'front_flip',
   'flying_backwards', 'flying_forwards', 'fall_to_back', 'fall_to_face_down',
-  'get_up_from_back', 'get_up_from_face'];
+  'get_up_from_back', 'get_up_from_face',
+  // every melee clip plays once and holds its last frame, like every other one-shot here
+  'melee_punch_01', 'melee_slash', 'melee_round_kick', 'slide', 'roll'];
 function colinSet(t, dt) { skinWeights(colin, t, dt, player.hitSnap); player.hitSnap = false; }
 function skinScale(skin, name, s) { const a = skin.actions && skin.actions[name]; if (a) a.setEffectiveTimeScale(s); }
 // The same easing, against whichever skin is asked for -- the card walks two at once.
@@ -2756,6 +2797,9 @@ function colinAnim(dt) {
     else t[p.hitFace ? 'get_up_from_face' : 'get_up_from_back'] = 1;
     colinSet(t, dt); return;
   }
+  // A MELEE OWNS HIM WHOLE. One clip at weight 1 and nothing of the gait underneath: a punch
+  // with a walk cycle blended into it is a man waving while he strolls.
+  if (p.mel) { t[p.mel] = 1; colinSet(t, dt); return; }
   if (p.board) {
     // crouch -> pop -> rise -> land. The crouch is a blend rather than a state, so a thumb
     // resting on the pad settles into it and a tap goes straight past it to the pop.
@@ -2882,7 +2926,11 @@ function bindStick(el, out, onTap, onFlick, rel, onRel) {
 // right are not flicks at all -- you hold them, and in the air that is the manual spin.
 bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
   const p = player;
-  if (!p.board || p.grounded || p.hit || p.trick) return;
+  // ON FOOT THE LEFT PAD'S FLICK IS A DODGE ROLL, in whatever direction he is already going.
+  // It is the same gesture that flips him on the board, which is the point: the pad means
+  // "the body" either way.
+  if (!p.board) { if (p.grounded && !p.hit) meleeGo('roll'); return; }
+  if (p.grounded || p.hit || p.trick) return;
   // SIDEWAYS IS A BARREL ROLL. It used to bail out here -- left and right were the held spin
   // and nothing else -- but a fast sweep and a hold are two different gestures on the same
   // axis, and the pad has always been able to tell them apart.
@@ -2914,7 +2962,10 @@ bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
 bindStick(document.getElementById('stkR'), stick.R, null, boardFlick, true, far => { if (far < .42) player.jump = 1; });
 function boardFlick(dx, dy) {
   const p = player;
-  if (!p.board || p.grounded || p.hit) return;
+  // ON FOOT THE RIGHT PAD'S FLICK IS A STRIKE. That thumb already taps to jump and holds to
+  // wind up; a flick is the one move left in it, and it costs no new control.
+  if (!p.board) { if (p.grounded && !p.hit) meleeGo('hit'); return; }
+  if (p.grounded || p.hit) return;
   const TAU = Math.PI * 2;
   if (Math.abs(dy) > Math.abs(dx)) {
     if (dy < 0) p.bRoll += TAU;                       // kickflip
@@ -2948,7 +2999,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -2999,6 +3050,52 @@ function groundUnder(p, step, vel, fromY, bounce) {
     : Math.max(hmAt(p.x, p.z), hmAt(p.x + q, p.z), hmAt(p.x - q, p.z), hmAt(p.x, p.z + q), hmAt(p.x, p.z - q));
   return { floor: Math.max(hm, r.floor), hm, wall: r.hitWall, ceil: g.ceil };
 }
+// START ONE. `kind` is 'hit' for the chain and 'roll' for the dodge; everything else about
+// them is the same, which is why they share a timer.
+function meleeGo(kind) {
+  const p = player;
+  if (p.board || p.hit || !p.grounded || p.mel || p.rollT > 0) return;
+  let nm;
+  if (kind === 'roll') { nm = MELEE.roll; p.melI = 1; }
+  else {
+    // the chain lapses on its own, so a flick after a pause opens again at the first strike
+    if (p.melWin <= 0) p.melStep = 0;
+    nm = (p.melStep === 0 && p.speed > MELEE.runAt) ? MELEE.slide : MELEE.chain[p.melStep % MELEE.chain.length];
+    p.melStep++; p.melI = 0;
+  }
+  if (!colin.actions[nm]) return;
+  p.mel = nm; p.melT = p.melDur = clipLen(nm, .9); p.melWin = 0;
+  // he commits to the direction he had when he threw it
+  p.melH = p.speed > .4 ? Math.atan2(p.vel.x, p.vel.z) : p.faceH;
+  p.heading = p.faceH = p.melH;
+  p.melV = kind === 'roll' ? MELEE.rollV
+    : nm === MELEE.slide ? Math.max(p.speed * MELEE.slideV, MELEE.runAt) : MELEE.lunge;
+  p.pushing = false; p.goT = 0;
+  snd.jump();
+}
+// A MELEE IS A ROLL WITH A DIFFERENT CLIP, so it is driven the same way `stepRoll` is: the
+// speed bleeds off evenly across the clip, gravity and the ground collider still run, and
+// leaving the ground hands him straight back to the ordinary air code.
+function stepMelee(dt) {
+  const p = player;
+  p.melT = Math.max(0, p.melT - dt);
+  const k = clamp(p.melT / Math.max(.01, p.melDur), 0, 1);
+  const sp = p.melV * k;
+  p.vel.x = Math.sin(p.melH) * sp; p.vel.z = Math.cos(p.melH) * sp;
+  p.vel.y -= MOVE.g * dt;
+  const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
+  p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
+  const g = groundUnder(p.pos, MOVE.step, p.vel, py); p.wall = g.wall;
+  settle(p, g, MOVE.step, px, pz);
+  p.speed = Math.hypot(p.vel.x, p.vel.z);
+  // THE TAIL IS HIS AGAIN. Holding the whole clip makes a three-punch chain feel like three
+  // seconds of watching, so past `hold` a thumb on the pad cancels out of the recovery -- the
+  // same escape `stepRoll` gives him, and what makes the chain feel like a decision each time.
+  if (!p.grounded || p.melT <= 0 || (p.melT < p.melDur * (1 - MELEE.hold) && stickWorld().mag > .25)) {
+    p.melWin = p.melI ? 0 : MELEE.window;   // a dodge does not open the chain
+    p.mel = ''; p.melT = 0; p.melI = 0; p.goT = 0;
+  }
+}
 function stepRoll(dt) {
   const p = player;
   const k = clamp(p.rollT / Math.max(.01, p.rollDur), 0, 1);
@@ -3019,6 +3116,7 @@ function stepFoot(dt) {
   const s = stickWorld(); const p = player;
   p.rHold = stick.R.down ? p.rHold + dt : 0;
   if (p.rollT > 0) { stepRoll(dt); return; }
+  if (p.mel) { stepMelee(dt); return; }
   const sp0 = Math.hypot(p.vel.x, p.vel.z);
   if (s.mag > .1) p.heading = Math.atan2(s.x, s.z);        // the thumb, taken whole
   // the body comes round toward it, briskly on the spot and slowly at a run
@@ -3342,6 +3440,8 @@ function stepPlayer(dt) {
   player.charge = winding ? Math.min(MOVE.chargeMax, player.charge + dt) : (player.jump ? player.charge : 0);
   player.landT = Math.max(0, player.landT - dt);
   player.rollT = Math.max(0, player.rollT - dt);
+  player.melWin = Math.max(0, player.melWin - dt);
+  if (player.melWin <= 0 && !player.mel) player.melStep = 0;
   player.airT = player.grounded ? 0 : player.airT + dt;
   if (player.hit) { stepHit(dt); return; }
   if (player.board) stepSkate(dt); else stepFoot(dt);
@@ -3751,8 +3851,15 @@ frame();
       for (const u of CLOUDS.urls) { try { got.push(await loadGLB(u, 'loading the sky')); } catch (e) { /* that one is not here */ } }
       if (got.length) buildClouds(got); else console.warn('no cloud models found');
     }
+    // THE BORROWED CLIPS GO INTO THE SAME POOL COLIN'S OWN ARE IN, so every skin picks them up
+    // through `skinClips` unchanged -- the same filter, the same HIPFIX, no second path. They
+    // are already rotation-only (see `npm run melee`), which is what makes that safe: Colin
+    // takes the pool raw, and an alien's position tracks would stretch him to alien lengths.
+    let melee = null;
+    try { melee = await loadGLB(MELEE.url, 'learning to fight'); }
+    catch (e) { console.warn('[melee] no melee.glb -- punches and the roll will be missing', e); }
     setBoot('waking colin', 1);
-    try { const c = await loadGLB('models/colin.glb', 'loading colin'); buildColin(c); } catch (e) { console.warn('colin failed', e); }
+    try { const c = await loadGLB('models/colin.glb', 'loading colin'); buildColin(c, melee && melee.animations); } catch (e) { console.warn('colin failed', e); }
     const sg = groundAt(player.pos.x, player.pos.z, 60, 0);
     player.pos.y = sg.hit ? sg.floor : hmAt(player.pos.x, player.pos.z); player.safe.copy(player.pos);
     buildMap();
@@ -3764,7 +3871,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, PARADE, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, PARADE, MELEE, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

@@ -19,7 +19,8 @@
     "cross": "node tools/cross.mjs",
     "rigs": "node tools/rigs.mjs",
     "wear": "node tools/wear.mjs",
-    "wearfit": "node tools/wearfit.mjs"
+    "wearfit": "node tools/wearfit.mjs",
+    "melee": "node tools/melee.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

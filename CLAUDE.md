@@ -643,6 +643,39 @@ playwright unless he asks for it by name.
   local translations up the parent chain, which ignores every rotation and scale on the way:
   it put Colin's hips at 52.8 and three candidates at a NEGATIVE height, and that number was
   about to pick the scale every character is drawn at.
+- **MELEE IS ON FOOT AND IT COSTS NO NEW CONTROL (`MELEE`, `meleeGo`, `stepMelee`).**
+  Both pads already flick on the board; on foot neither did. **Right pad flick = a strike,
+  left pad flick = a dodge roll**, which keeps each pad meaning the same thing it means on the
+  board (the right one is the verb, the left one is the body).
+  **A CHAIN, NOT A BUTTON.** Each flick inside `MELEE.window` takes the next of three
+  escalating strikes; let it lapse and the next flick opens at the first again.
+  **A slide tackle is not a fourth strike, it is a different OPENING.** Above `runAt` the first
+  strike becomes the tackle and the punches follow from there, so running at somebody and
+  hitting melee is one move rather than two decisions.
+  **`stepMelee` is `stepRoll` with a different clip** — speed bleeding off across the clip,
+  gravity and the ground collider still running, leaving the ground handing him straight back
+  to the air code. Copying that shape is why it needed no new physics.
+  **The tail of every strike is cancellable (`MELEE.hold`).** Holding the whole clip makes a
+  three-punch chain feel like three seconds of watching; past `hold`, a thumb on the pad takes
+  him out of the recovery, which is what makes each link in the chain a decision.
+  **A dodge roll is the only thing in the game that makes him unhittable** (`p.melI`, tested
+  at the top of `carHit`) — without i-frames a roll is a slower walk with a nicer clip.
+- **BORROWED CLIPS GO INTO COLIN'S OWN POOL, NOT A SECOND PATH.** `npm run melee` lifts five
+  clips out of Plutopia's alien into `models/chars/melee.glb` and `buildColin` appends them to
+  `colin.clips`, so every skin picks them up through `skinClips` unchanged — same filter, same
+  `HIPFIX`. The alien shares Colin's bind pose exactly (0.0°, measured), which is what makes
+  that legitimate.
+  **The extractor cuts them to ROTATION-ONLY offline**, for the same reason `skinClips` does:
+  a position track bakes the ALIEN's bone lengths and Colin takes the pool RAW. Doing it in
+  the file means no clip in it can ever be applied the wrong way by accident.
+  **`2.22 MB → 0.18 MB`, and the last order of magnitude is a trap.** Disposing an animation
+  or a channel does not dispose its SAMPLER, and a sampler is where the keyframes live — the
+  first cut dropped 25 clips and 680 channels and still weighed 1.33 MB with prune reporting
+  four accessors removed. Dispose the samplers explicitly and prune frees 4978.
+  **A borrowed clip carries the lender's PROPS.** The alien's rig has `weapon` and
+  `weapon_direction`, which are not bones and which Colin has no equivalent of (66 of 68
+  targets are shared). An unresolvable track is a console warning per clip per skin and no
+  animation, so `buildColin` filters them once against Colin's own node names.
 - **THE TITLE CARD IS THE GAME, NOT A SECOND SCENE (`TITLE`, `titleFrame`, `camAim`).**
   Plutopia builds a whole disposable planet for its card (`DIO.*`) because its world is
   procedural and the shot wants something that does not exist in play. This one already has
