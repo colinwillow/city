@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c93</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c94</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c93';
+const BUILD = 'c94';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -571,7 +571,12 @@ const KIT = {
 // a jump (`far` never reaches .80), a hold near the middle is still the sprint and the
 // charge-jump, and only a deliberate push UP is the trigger.
 const WEAP = {
-  url: 'models/alien_blaster.glb',
+  // HIS OWN BLASTER, AND IT CARRIES THE JOINTS. Measured through gltf-transform: geometry
+  // -65.6..7.4 on X (so the barrel runs along -X, 0.73 m long at its armature's 0.01), with
+  // `weapon_root` at the origin and `weapon_tip` 56.2 units down the barrel -- the same pair
+  // `pistol.glb` is built round. So the MUZZLE is a node here, not a guess, and the day Colin
+  // has a weapon joint the whole hand placement below stops being hand-nudged as well.
+  url: 'models/blaster.glb',
   fireAt: .80, keepAt: .50, armT: .10, fireArc: 1.05,
   cool: .42,            // seconds between shots
   chargeT: .9,          // a full charge takes this long
@@ -788,7 +793,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1676,7 +1681,13 @@ function attachGear(gl, kind) {
     o.material.needsUpdate = true;
   });
   const g = new THREE.Group(); g.add(model); g.visible = false;
-  gear[kind] = { g, model };
+  // THE MUZZLE, IF THE FILE SAYS WHERE IT IS. `weapon_tip` rides the model through every
+  // transform `fitOne` applies, so its WORLD position is right whatever scale or offset the
+  // hand placement ends up at -- which is the whole reason to read a node rather than to
+  // measure the mesh and add a number.
+  let tip = null;
+  model.traverse(o => { if (o.name === 'weapon_tip') tip = o; });
+  gear[kind] = { g, model, tip };
   return g;
 }
 // WHICH BONE, FOUND BY PATTERN RATHER THAN BY NAME. Every skin in here is a Mixamo rig but
@@ -1847,7 +1858,7 @@ function muzzleAt(out) {
   const p = player, fx = Math.sin(p.faceH), fz = Math.cos(p.faceH);
   if (gear.blaster && gear.blaster.g.visible) {
     gear.blaster.g.updateWorldMatrix(true, false);
-    gear.blaster.g.getWorldPosition(out);
+    (gear.blaster.tip || gear.blaster.g).getWorldPosition(out);
     // clear of his body along the shot, the same correction Plutopia makes: a bolt born on
     // the gun is born inside whatever he is standing next to
     const reach = Math.max(WEAP.out, Math.hypot(out.x - p.pos.x, out.z - p.pos.z));
