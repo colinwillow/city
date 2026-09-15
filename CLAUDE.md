@@ -1817,6 +1817,58 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   spend the second jump on a flip at the exact moment the hold is meant to be lighting the
   motor, and the two would fight every time you flew out of a jump. While the pack is out the
   second jump is simply not there: the pack IS the air move.
+- **THE JETPACK HAS NO NULLS IN IT, AND THE FILE SAYS SO (c120).** *"I have nulls or roots
+  where the tips of the jets are."* Read through the real loader, `models/alien_jetpack.glb` is
+  **ONE node, one Tripo mesh, 0 skins, 0 animations** — no markers of any kind. `blaster.glb`
+  has `weapon_root`/`weapon_tip`; the jetpack was never given the same treatment, so whatever
+  export carries those nulls has not been pushed.
+  **SO THE CODE WAS WRITTEN TO TAKE THEM THE MOMENT THEY APPEAR**, which is `weapFit`'s own
+  rule and the reason the c96 Colin export needed no code change at all: `JET.tip` is a pattern
+  (`jet|nozzle|thrust|exhaust|flame`), `attachGear` collects every match, and until one exists
+  the nozzle is **MEASURED** — the bottom-centre of the pack's own WORLD bounds, taken live so
+  it survives `fitOne`'s scale, `JET.at`'s nudge and whatever bone the pack landed on.
+  **THE TEST IS THAT A LOCATOR HAS NO MESH.** An empty is a marker and a mesh is art — the same
+  structural test `stripPoses` uses — so a mesh called `jetpack` can never be read as a nozzle
+  and the next exporter is free to spell the name differently.
+  **AND A FLAME IS NOT A CARD.** A card is a drawing that plays once and dies; a flame is ON for
+  as long as the motor burns. So it is the CHARGE BALL's machinery — a stack of additive
+  sprites at one point, flickering, scaled by `p.jetK` — and NOT a new vocabulary invented for
+  it, which is the c101 "electric tree branches" lesson standing. The flicker is the crackle's
+  own rule: at thirty frames a second a value thrown somewhere new every frame IS what fire
+  looks like, for the cost of writing a scale. It is hung BELOW the nozzle by half its length,
+  because a sprite is centred on its origin and one drawn at the joint comes half out of the
+  top of the pack.
+- **THE PUFFS CAME OUT OF THE MIDDLE OF HIS BACK (c120).** *"They kind of just go over him."*
+  The spawn was `gear.jet`'s group centre less a typed 12 cm — and the pack is worn at CHEST
+  height, so a 1.44 m card (nearly as tall as he is) was being born across his shoulders. Two
+  things, and both were measurements waiting to be taken: it comes out of the NOZZLE now (a
+  quarter of a metre lower, and where the flame is), and `JET.puff` is .92 rather than 1.44.
+  `JET.blast` came down with it — the ignition crack has to stay bigger than the putts.
+- **THE EFFECT LOOK IS A SWITCH, NOT AN ARGUMENT (`FX.style`).** *"Plutopia is more like a cozy
+  play game, this is kind of different, so I'm not sure that the flat style is for me — but
+  maybe it is."* That is a look-at-it decision and it belongs on the phone, not in a rewrite:
+      cards   the hand-drawn sheet -- stutters on 3s, and it is the ONLY one with the WORDS
+      glow    additive plasma, hot core cooling outward: no outline, no stutter, NO WORDS
+      both    layered, worth one look before deciding
+  It rides the SAME `fxPop` call every effect already goes through, so a second look cost a
+  branch and a colour table rather than a second particle system — and **nothing is deleted**,
+  so it stays a comparison rather than a build. `city.FX.style`, or the Effects row in settings.
+  **LOSING THE WORDS IS THE REAL TRADE** and it is the thing to judge: POW / BOOM / ZAP are
+  drawn INTO the sheet, so they cannot survive a vocabulary that has no drawing in it.
+  `burst` carries a velocity now, with the cards' own drag, or exhaust in the glow style would
+  expand where it was born and read as a flash instead of as a plume.
+- **THE BOARD'S STRIKE IS ON THE RIGHT PAD, AND c118 PUT IT ON THE LEFT (c120).** *"You did the
+  wrong stick for melee."* The left pad is the one that STEERS the board, so every hard
+  correction of a steering thumb threw a punch — and it was spent on the one gesture that could
+  not be spared. **THE PADS HAVE TO MEAN THE SAME THING ON THE BOARD AS ON FOOT**: the left pad
+  is the BODY, the right pad is the VERB. Break that and neither pad means anything you can
+  carry from one to the other.
+  **FLICK ONLY, so the right pad keeps both its other jobs** — a DRAG is still the camera and a
+  PUSH AND HOLD is still the trigger. The three separate themselves by construction: arming
+  needs `fireAt` .80 held for `armT` .10 s and a flick is over long before that, which is the
+  same separation that already lets melee and the blaster share this pad on foot.
+  **`p.aim` ALONE IS THE GATE, NEVER `KIT.out.blaster`.** That is the THIRD time a guard here
+  has been written against CARRYING the gun when the thing to guard against is FIRING it.
 - **EVERY PIECE OF KIT IS PARENTED TO A BONE, AND THAT IS RIGHT HERE FOR THE REASON THE TITLE
   CARD'S BOARD IS NOT.** The board is hung off the hand's WORLD MATRIX because there is no
   holding clip and it has to be placed, scaled and turned by hand every frame anyway. A piece
