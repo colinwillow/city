@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c86</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c87</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c86';
+const BUILD = 'c87';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -3757,6 +3757,13 @@ const SHOT = {
   spread: .09,      // and how wide he is, as a fraction of the distance
   push: 6.5,        // what a hit does, into the car system's own knock-down
   col: '#ffe08a', tail: 2.6,
+  // A ROUND THAT PASSES THROUGH A CAR IS NOT COVER, IT IS SCENERY. It bounces off what it
+  // hits -- the geometry of this city is thirty thousand axis-aligned boxes in a grid, so the
+  // face it struck IS its normal and the reflection is one sign flip. `bounce` is how much
+  // speed survives one, `ric` how many it gets before it is spent, and after the first it
+  // cannot hurt you: a ricochet you did not see coming and could not have dodged is a cheap
+  // shot, and the whole point of a slow round is that it is dodgeable.
+  bounce: .62, ric: 2,
 };
 const COP_ONCE = new Set(['draw_weapon', 'shoot_pistol', 'hit_body', 'hit_head', 'hit_ribs', 'hit_stomach',
   'knock_down_front', 'knock_down_back', 'get_up_front', 'get_up_back']);
@@ -3898,7 +3905,7 @@ function copsPunched(x, z, h) {
   }
   return n;
 }
-const _cg = new THREE.Vector3();
+const _cg = new THREE.Vector3(), _cpos = { x: 0, y: 0, z: 0 }, _cbox = [];
 function stepCops(dt) {
   if (!cops.length || !COP.on) return;
   const p = player, px = p.pos.x, pz = p.pos.z;
@@ -3980,7 +3987,11 @@ function stepCops(dt) {
           t[COP.clips.idle] = clamp(1 - Math.abs(c.speed) / 1.2, 0, 1);
           t[COP.clips.walk] = clamp(Math.abs(c.speed) / 1.4, 0, 1);
         }
-        if (c.fireT <= 0 && mayFire && !p.hit) { c.fireT = COP.fire * c.cadence; c.shotT = 1; c.t = 0; c.fired = 0; }
+        // HE DOES NOT SHOOT THROUGH THE CAR HE CANNOT SEE PAST. Checked on the decision to
+        // fire rather than every frame -- it is a dozen box lookups and it only has to be
+        // right at the moment the trigger goes.
+        if (c.fireT <= 0 && mayFire && !p.hit && copSees(c, p)) { c.fireT = COP.fire * c.cadence; c.shotT = 1; c.t = 0; c.fired = 0; }
+        else if (c.fireT <= 0 && mayFire) c.fireT = .35;   // blocked: look again shortly, do not spin
         if (c.shotT > 0 && !c.fired && c.t > clipLen2(c, COP.clips.shoot) * COP.gunAt) { c.fired = 1; copShoot(c); }
         if (c.shotT > 0 && c.t > clipLen2(c, COP.clips.shoot)) c.shotT = 0;
         if (!go || d > COP.range * 1.3) copSet(c, 'chase');
@@ -4011,11 +4022,26 @@ function stepCops(dt) {
     c.speed += clamp(want - c.speed, -acc * dt, acc * dt);
     if (c.speed > .01) {
       const nx = c.x + Math.sin(c.h) * c.speed * dt, nz = c.z + Math.cos(c.h) * c.speed * dt;
-      // He walks on the same triangle collider the player does, and stops at a wall rather
-      // than through it -- one query, no capsule: a cop is not worth a second physics path.
       const g = groundAt(nx, nz, c.y + 1.2, .6);
       const fy = g.hit ? g.floor : hmAt(nx, nz);
-      if (Math.abs(fy - c.y) < 1.1) { c.x = nx; c.z = nz; c.y = fy; } else c.speed = 0;
+      if (Math.abs(fy - c.y) < 1.1) {
+        // AND THE SOLIDS, THROUGH THE PLAYER'S OWN RESOLVER. He was walking through cars and
+        // buildings because the only thing tested was the GROUND HEIGHT under his next step --
+        // which a car roof is not, and a wall's footprint is not either. `resolveBoxes` is the
+        // same capsule push the player gets: it takes a position, the boxes near it, and moves
+        // the position out of them. No second physics path, which is the whole reason to reuse
+        // it rather than write a cop-shaped one.
+        _cpos.x = nx; _cpos.y = fy; _cpos.z = nz;
+        gridQuery(nx, nz, 1.2, _cbox);
+        for (const o of carsNear(nx, nz, 8, _cn)) _cbox.push(o.box);
+        const r = resolveBoxes(_cpos, COP.r, COLIN_HEIGHT * .95, .45, _cbox, null, 0);
+        // A wall he is pressed into costs him his speed, so he does not grind along it at a
+        // run with his legs going; the resolver has already moved him clear of it.
+        const slid = Math.hypot(_cpos.x - nx, _cpos.z - nz);
+        c.x = _cpos.x; c.z = _cpos.z;
+        c.y = Math.max(fy, r.floor > -Infinity ? r.floor : fy);
+        if (slid > c.speed * dt * .6) c.speed *= .35;
+      } else c.speed = 0;
     }
     c.root.position.set(c.x, c.y, c.z);
     c.root.rotation.y = c.h;
@@ -4065,7 +4091,7 @@ function shotFire(x, y, z, dx, dy, dz) {
   m.position.set(x, y, z);
   m.scale.set(1, 1, SHOT.tail);
   m.lookAt(x + dx, y + dy, z + dz);
-  m.userData.dx = dx; m.userData.dy = dy; m.userData.dz = dz; m.userData.d = 0;
+  m.userData.dx = dx; m.userData.dy = dy; m.userData.dz = dz; m.userData.d = 0; m.userData.b = 0;
 }
 function stepShots(dt) {
   const p = player;
@@ -4078,7 +4104,14 @@ function stepShots(dt) {
     // the ground stops it, which is what makes cover mean something
     const g = groundAt(m.position.x, m.position.z, m.position.y + 1, 1);
     if (m.position.y < (g.hit ? g.floor : hmAt(m.position.x, m.position.z))) { shotPop(m); continue; }
-    if (p.hit || p.melI) continue;            // a dodge roll's i-frames cover this too
+    // AND EVERYTHING SOLID. It was passing straight through cars and walls, so a car was not
+    // cover and standing behind one did nothing. `shotBox` finds what it is inside and which
+    // FACE it went in by -- the boxes are axis-aligned, so the face is the normal and the
+    // reflection is one sign flip.
+    if (shotBox(m, step)) continue;
+    // after the first bounce it is spent as a threat: a ricochet you never saw coming and
+    // could not have dodged is a cheap shot
+    if (p.hit || p.melI || u.b) continue;     // a dodge roll's i-frames cover this too
     const bx = p.pos.x - m.position.x, by = p.pos.y + COLIN_HEIGHT * .5 - m.position.y, bz = p.pos.z - m.position.z;
     if (bx * bx + bz * bz < SHOT.rad * SHOT.rad + .35 && Math.abs(by) < COLIN_HEIGHT * .55) {
       shotPop(m); playerShot(u.dx, u.dz);
@@ -4088,6 +4121,52 @@ function stepShots(dt) {
 function shotPop(m) {
   m.visible = false;
   slashArc(m.position.x, m.position.y, m.position.z, Math.random() * 3, .7, 1);
+}
+// WHAT IT IS INSIDE, AND WHICH WAY OUT. The city is axis-aligned boxes in a grid, so this is
+// three overlaps and a smallest-penetration test -- the axis it is LEAST deep into is the face
+// it came in by, which is the same reasoning `carHit` uses to pick a car's nose from its flank.
+// Cars carry a `yaw` and are tested in their own frame by `resolveBoxes`; for a bullet the
+// axis-aligned bounds are close enough and a great deal cheaper.
+const _sbox = [];
+function shotBox(m, step) {
+  const x = m.position.x, y = m.position.y, z = m.position.z, u = m.userData;
+  gridQuery(x, z, 1, _sbox);
+  for (const o of carsNear(x, z, 8, _cn)) _sbox.push(o.box);
+  for (const b of _sbox) {
+    if (x < b.minx || x > b.maxx || z < b.minz || z > b.maxz || y < b.miny || y > b.maxy) continue;
+    const px = Math.min(x - b.minx, b.maxx - x), py = Math.min(y - b.miny, b.maxy - y), pz = Math.min(z - b.minz, b.maxz - z);
+    slashArc(x, y, z, Math.random() * 3, .6, 1);
+    if (++u.b > SHOT.ric) { m.visible = false; return true; }
+    // back out of the face it went in by, then reflect about it
+    if (px <= py && px <= pz) { u.dx = -u.dx; m.position.x += u.dx * step; }
+    else if (py <= pz) { u.dy = -u.dy; m.position.y += u.dy * step; }
+    else { u.dz = -u.dz; m.position.z += u.dz * step; }
+    m.lookAt(m.position.x + u.dx, m.position.y + u.dy, m.position.z + u.dz);
+    u.d += SHOT.range * (1 - SHOT.bounce);     // a bounce costs it range rather than speed,
+    return false;                              // which keeps one number doing the fading
+  }
+  return false;
+}
+// CAN HE ACTUALLY SEE YOU? Bouncing the round off the car is half the fix; the other half is
+// that he should not be emptying a magazine into the boot of it in the first place. A dozen
+// samples down the line to you against the same boxes -- coarse on purpose, because this runs
+// per officer per shot and a bullet that clips a lamp post on the way is not the failure a
+// wall is.
+const _losP = { x: 0, y: 0, z: 0 };
+function copSees(c, p) {
+  const ax = c.x, ay = c.y + COLIN_HEIGHT * .62, az = c.z;
+  const bx = p.pos.x, by = p.pos.y + COLIN_HEIGHT * .5, bz = p.pos.z;
+  const N = 12;
+  for (let i = 1; i < N; i++) {
+    const t = i / N, x = ax + (bx - ax) * t, y = ay + (by - ay) * t, z = az + (bz - az) * t;
+    gridQuery(x, z, .6, _sbox);
+    for (const o of carsNear(x, z, 8, _cn)) _sbox.push(o.box);
+    for (const b of _sbox) {
+      if (x < b.minx || x > b.maxx || z < b.minz || z > b.maxz || y < b.miny || y > b.maxy) continue;
+      return false;
+    }
+  }
+  return true;
 }
 // STRAIGHT INTO THE CAR'S OWN KNOCK-DOWN. A second damage system for one bullet is a second
 // damage system to keep in step with the first.

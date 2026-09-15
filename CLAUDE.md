@@ -986,7 +986,28 @@ playwright unless he asks for it by name.
   intercept is a pistol you cannot dodge; he aims at where you are now plus a fraction of where
   you are going, so standing still is punished and moving is rewarded.
   **`range` is the other half of "the bullets don't just go infinitely"** — they stop, and the
-  ground stops them too, which is what makes cover mean something. A dodge roll's i-frames
+  ground stops them too, which is what makes cover mean something.
+  **AND SO DOES EVERYTHING SOLID (`shotBox`, c87).** A round that passes through a car is not
+  cover, it is scenery — c85's only tested the ground height, so standing behind a car did
+  nothing. This city is thirty thousand AXIS-ALIGNED boxes in a grid, which makes the whole
+  thing three overlaps and a smallest-penetration test: **the axis it is least deep into is the
+  face it came in by**, so that face IS the normal and the reflection is one sign flip. (Same
+  reasoning `carHit` uses to pick a car's nose from its flank.) `bounce` is what a ricochet
+  costs it and `ric` how many it gets — and **after the first it cannot hurt you**, because a
+  ricochet you never saw coming and could not have dodged is a cheap shot, and the whole point
+  of a slow round is that it is dodgeable.
+  **AND HE CHECKS HE CAN SEE YOU BEFORE HE FIRES (`copSees`).** Bouncing the round off the car
+  is only half of it; the other half is that he should not be emptying a magazine into the boot
+  of it. A dozen samples down the line against the same boxes — coarse on purpose, because it
+  runs per officer per shot and a round that clips a lamp post on the way is not the failure a
+  wall is. Checked on the DECISION to fire, not every frame; blocked, he looks again in .35 s
+  rather than spinning on it.
+- **A COP WALKS ON `resolveBoxes`, THE PLAYER'S OWN RESOLVER.** He was walking through cars and
+  buildings because the only thing tested was the GROUND HEIGHT under his next step — which a
+  car roof is not, and a wall's footprint is not either. It takes a position, the boxes near
+  it, and pushes the position out of them; reusing it is the whole point, because a cop-shaped
+  second physics path is a second physics path to keep in step with the first. A wall he is
+  pressed into costs him his speed, so he does not grind along it at a run with his legs going. A dodge roll's i-frames
   cover them like everything else. A hit goes straight into the car's own knock-down rather
   than opening a second damage system.
 - **`city.slash({roll, r, y, size})` FIRES ONE AND LETS HIM LOOK AT IT.** The melee marks came
