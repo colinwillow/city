@@ -932,6 +932,22 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   **AND HE CANNOT TURN TO IT.** `stepSkate` owns the heading, so the strike goes where he is
   RIDING and the flick only says *now*. Writing `p.heading` there would carve the board
   sideways on every punch — the same rule that stops the aim steering him while riding.
+- **THE BOLT LEAVES ON `p.aimH`, NOT ON `p.faceH` (c119, `shotH`).** *"If I release when the
+  aimer is on something it doesn't really shoot at the aimer."* The reticle is drawn from
+  `p.aimH` — the eased, lock-assisted bearing the aim loop settles on — and `boltFire`,
+  `muzzleAt` and the charge ball were all built off his FACING instead.
+  **ON FOOT THAT ONLY LAGGED**, which is a few degrees and reads as sloppy aim: `stepAim` sets
+  `p.heading = p.aimH` on release and `faceH` eases onto `heading` over `face0`/`face1`.
+  **ON THE BOARD IT IS UNRELATED**, which is why he could see it. c113 deliberately stopped the
+  aim writing `p.heading` while riding — `stepSkate` owns it, and a second writer would carve
+  the deck toward whatever you looked at — so `faceH` there is purely the direction of travel
+  and the shot went down the board instead of down the sight.
+  **A MARK THE GUN DOES NOT KEEP IS WORSE THAN NO ASSIST AT ALL**, which is `WEAP.lock`'s own
+  rule one step further on, and the same shape as the slash mark firing on the input frame
+  rather than the contact frame: the picture and its consequence have to be ONE event.
+  `shotH()` is the single answer — `p.aimH` while the aim is live (`p.aim || p.turning`),
+  `p.faceH` otherwise — and the muzzle offset, the flash, the charge ball and the bolt all read
+  it, so they cannot disagree about which way the gun is pointing.
 - **THE AIM LOOP RUNS SLOWER ON THE BOARD (`WEAP.ride`).** *"The aimer zips around."* Two things
   feed that and both are speed: the camera sweeps in behind the aim while he is ALSO being
   carried across the ground at twenty metres a second, so a target's bearing changes on its own

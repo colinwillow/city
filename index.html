@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c118</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c119</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c118';
+const BUILD = 'c119';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -2235,11 +2235,23 @@ function buildChargeFx() {
   return _chg;
 }
 const _mz = new THREE.Vector3();
+// WHERE THE SHOT GOES IS THE AIM, NEVER HIS FACING. The reticle is drawn from `p.aimH` -- the
+// eased, lock-assisted bearing the aim loop settles on -- so the bolt, the muzzle offset and
+// the flash all have to leave on that same number, or the mark is drawing a promise the gun
+// does not keep and the assist is worse than none at all (`WEAP.lock`'s own rule).
+// ON FOOT `faceH` merely LAGGED it, which is a few degrees and reads as sloppy aim. ON THE
+// BOARD it is unrelated: c113 deliberately stopped the aim writing `p.heading` while riding
+// (`stepSkate` owns it -- writing it there would carve the deck toward whatever you looked
+// at), so `faceH` is purely the board's direction of travel and the shot went there instead.
+// That is *"if I release when the aimer is on something it doesn't really shoot at the
+// aimer"*, and it is the same class as the slash mark firing on the input frame: the picture
+// and its consequence have to be one event.
+function shotH() { const p = player; return (p.aim || p.turning) && p.aimH !== undefined ? p.aimH : p.faceH; }
 // WHERE THE MUZZLE IS. The blaster is parented to his hand, so its own world matrix already
 // knows -- and while there is no weapon bone on Colin yet, the fallback is chest height and a
 // step in front of him, which is where a shot comes from on a man who is miming it.
 function muzzleAt(out) {
-  const p = player, fx = Math.sin(p.faceH), fz = Math.cos(p.faceH);
+  const p = player, h = shotH(), fx = Math.sin(h), fz = Math.cos(h);
   if (gear.blaster && gear.blaster.g.visible) {
     gear.blaster.g.updateWorldMatrix(true, false);
     (gear.blaster.tip || gear.blaster.g).getWorldPosition(out);
@@ -2256,7 +2268,7 @@ function stepChargeFx(c, dt) {
   if (c < .02) { if (fx.g.visible) fx.g.visible = false; return; }
   fx.g.visible = true;
   muzzleAt(_mz); fx.g.position.copy(_mz);
-  fx.g.rotation.set(0, player.faceH, 0);
+  fx.g.rotation.set(0, shotH(), 0);
   const t = FX.t, siz = lerp(.22, .80, c), pulse = 1 + Math.sin(t * 22) * .12 * c;
   fx.core.scale.setScalar(siz * .7 * pulse);
   fx.core.material.opacity = .95 * c;
@@ -2428,7 +2440,7 @@ const pbolts = [];
 function boltFire(k) {
   const p = player;
   muzzleAt(_mz);
-  const fx = Math.sin(p.faceH), fz = Math.cos(p.faceH);
+  const h = shotH(), fx = Math.sin(h), fz = Math.cos(h);
   pbolts.push(new PBolt(_mz.x, _mz.y, _mz.z, fx, 0, fz, k));
   // THE MUZZLE FLASH IS TWO BURSTS, not one. Hot and small over cool and wide is what makes a
   // flash read as a flash rather than as a dot appearing.
