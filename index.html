@@ -135,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c74</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c75</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c74';
+const BUILD = 'c75';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -336,6 +336,20 @@ const TRICK = {
   // not a bug to work around, it is the same gesture: so the roll goes first and the yaw is
   // held off until it finishes, after which the still-held thumb spins him as it always did.
   rollLock: true,
+};
+// THE SECOND JUMP, ON FOOT, AND IT IS A FLIP. He asked whether the double jump should be a
+// flip or whether the flip should be its own thing; one move is better than two, so the
+// second jump IS the flip -- tap the right pad again in the air and he kicks off nothing and
+// goes over. A flick picks WHICH way over; a plain tap goes front.
+const AIR = {
+  jumps: 2,          // how many times he may leave the ground before touching it again
+  second: .92,       // the second as a fraction of the first: kicking off nothing is not a leg press
+  front: 'front_flip', back: 'back_flip',
+  // THE FLIP FILLS THE AIR HE HAS LEFT, the same rule the board tricks live by: `front_flip`
+  // is 0.80 s and `back_flip` is 1.77, so at 1x one finishes a third of the way up and the
+  // other could never be landed. The ballistics at the moment of the kick decide the length
+  // and the clip is scaled to it.
+  fill: .9, min: .34, max: 1.5,
 };
 // MELEE, ON FOOT. The clips are Plutopia's alien's, lifted into `models/chars/melee.glb` by
 // `npm run melee` -- five clips and a bone hierarchy, 2.22 MB of character cut to 0.18 MB of
@@ -2835,7 +2849,7 @@ function colinAnim(dt) {
     // wind-up (`p.charge`, hold the right pad) is already there to drive, and `GAIT.windUp`
     // below is the hook -- name a clip and it plays while he is loading, which is where the
     // two init clips were always trying to be.
-    t['jump_going_up'] = 1;
+    t[p.air || 'jump_going_up'] = 1;
   } else if (p.rollT > 0) {
     t['landing_roll'] = 1;
   } else if (GAIT.windUp && p.charge > .06 && colin.actions[GAIT.windUp]) {
@@ -2964,7 +2978,15 @@ function boardFlick(dx, dy) {
   const p = player;
   // ON FOOT THE RIGHT PAD'S FLICK IS A STRIKE. That thumb already taps to jump and holds to
   // wind up; a flick is the one move left in it, and it costs no new control.
-  if (!p.board) { if (p.grounded && !p.hit) meleeGo('hit'); return; }
+  if (!p.board) {
+    if (p.hit) return;
+    if (p.grounded) meleeGo('hit');
+    // IN THE AIR THE SAME FLICK PICKS WHICH WAY HE GOES OVER, and spends the second jump to
+    // do it -- it is the tap with a direction on it, not a separate move. Up is a front flip
+    // and down a back one, the same way round as on the board.
+    else { p.airWant = dy < 0 ? 'front' : 'back'; p.jump = 1; }
+    return;
+  }
   if (p.grounded || p.hit) return;
   const TAU = Math.PI * 2;
   if (Math.abs(dy) > Math.abs(dx)) {
@@ -2999,10 +3021,10 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
-function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
-function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
+function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
+function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
   // left stick -> world direction, relative to the camera azimuth
@@ -3049,6 +3071,18 @@ function groundUnder(p, step, vel, fromY, bounce) {
   const hm = g.hit ? g.floor
     : Math.max(hmAt(p.x, p.z), hmAt(p.x + q, p.z), hmAt(p.x - q, p.z), hmAt(p.x, p.z + q), hmAt(p.x, p.z - q));
   return { floor: Math.max(hm, r.floor), hm, wall: r.hitWall, ceil: g.ceil };
+}
+// KICK OFF NOTHING. Called from the jump block below, for the second jump only.
+function airStart(kind) {
+  const p = player, nm = kind === 'back' ? AIR.back : AIR.front;
+  if (!colin.actions[nm]) return;
+  // the air he has left AFTER the kick -- vel.y is already the new one when this is called
+  const gy = groundAt(p.pos.x, p.pos.z, p.pos.y, MOVE.step);
+  const h = Math.max(0, p.pos.y - (gy.hit ? gy.floor : p.pos.y));
+  const t = (p.vel.y + Math.sqrt(p.vel.y * p.vel.y + 2 * MOVE.g * h)) / MOVE.g;
+  p.air = nm; p.airDur = clamp(t * AIR.fill, AIR.min, AIR.max); p.airFT = 0;
+  colinScale(nm, clipLen(nm, p.airDur) / p.airDur);
+  snd.flip();
 }
 // START ONE. `kind` is 'hit' for the chain and 'roll' for the dodge; everything else about
 // them is the same, which is why they share a timer.
@@ -3158,18 +3192,33 @@ function stepFoot(dt) {
   const sp = Math.hypot(p.vel.x, p.vel.z);
   // jump
   p.coyote = p.grounded ? MOVE.coyote : p.coyote - dt;
-  if (p.jump && p.coyote > 0) {
-    // A CHARGE JUMP. Held, it is higher AND longer -- the forward part goes along his TRAVEL
-    // rather than his facing, so a wind-up into a run leaps, and a wind-up on the spot just
-    // goes up. Both come off the same release, which is the tap that always jumped.
-    const k = clamp(p.charge / MOVE.chargeMax, 0, 1);
-    p.vel.y = MOVE.jump * (1 + MOVE.chargeUp * k);
-    if (k > .05 && sp0 > .5) { const inv = 1 / sp0; p.vel.x += p.vel.x * inv * MOVE.chargeOut * k; p.vel.z += p.vel.z * inv * MOVE.chargeOut * k; }
-    p.charge = 0;
+  if (p.grounded) { p.jumps = 0; p.air = ''; }
+  // THE SECOND ONE IS THE SAME TAP. `coyote` is what says the ground is still his; past that
+  // he has one more in him, and that one goes over.
+  const again = !p.grounded && p.jumps > 0 && p.jumps < AIR.jumps && !p.mel && !p.hit;
+  if (p.jump && (p.coyote > 0 || again)) {
+    if (p.coyote > 0) {
+      // A CHARGE JUMP. Held, it is higher AND longer -- the forward part goes along his TRAVEL
+      // rather than his facing, so a wind-up into a run leaps, and a wind-up on the spot just
+      // goes up. Both come off the same release, which is the tap that always jumped.
+      const k = clamp(p.charge / MOVE.chargeMax, 0, 1);
+      p.vel.y = MOVE.jump * (1 + MOVE.chargeUp * k);
+      if (k > .05 && sp0 > .5) { const inv = 1 / sp0; p.vel.x += p.vel.x * inv * MOVE.chargeOut * k; p.vel.z += p.vel.z * inv * MOVE.chargeOut * k; }
+      p.charge = 0; p.jumps = 1;
+      snd.jump();
+    } else {
+      // THE KICK IS SET, NOT ADDED. Adding to whatever he had makes a double jump off the top
+      // of a charge jump into orbit and one off the bottom of a fall do nothing; setting it
+      // makes the second jump the same height whenever he spends it, which is what makes it
+      // a reliable save.
+      p.vel.y = MOVE.jump * AIR.second; p.jumps++;
+      airStart(p.airWant || 'front');
+    }
     p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0;
-    snd.jump();
   }
-  p.jump = 0;
+  p.jump = 0; p.airWant = '';
+  // the flip runs out before the flight usually does, and he finishes it in the ordinary pose
+  if (p.air) { p.airFT += dt; if (p.airFT >= p.airDur) p.air = ''; }
   p.vel.y -= MOVE.g * dt;
   const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;

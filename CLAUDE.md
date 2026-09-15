@@ -643,6 +643,26 @@ playwright unless he asks for it by name.
   local translations up the parent chain, which ignores every rotation and scale on the way:
   it put Colin's hips at 52.8 and three candidates at a NEGATIVE height, and that number was
   about to pick the scale every character is drawn at.
+- **THE SECOND JUMP IS THE FLIP (`AIR`, `airStart`).** One move is better than two, so the
+  double jump and the air flip are the same thing: tap the right pad again in the air and he
+  kicks off nothing and goes over. A FLICK picks which way over — up front, down back, the
+  same way round as on the board — and spends the same jump; it is the tap with a direction
+  on it, not a separate move.
+  **`p.jumps > 0` is the gate, so falling off a building grants nothing.** The second jump
+  exists only if he actually took the first; `coyote` still covers the first 0.12 s off a
+  ledge, and after that a man who walked off a roof has no flip in him.
+  **The kick is SET, not added.** Adding to whatever he had sends a double off the top of a
+  charge jump into orbit and one off the bottom of a fall nowhere. Setting it makes the second
+  jump the same height whenever it is spent, which is what makes it a reliable save.
+  **The flip fills the air he has left**, the board tricks' rule: `front_flip` is 0.80 s and
+  `back_flip` 1.77, so at 1x one finishes a third of the way up and the other could never be
+  landed. Measured at `second: .92`:
+      tapped at the apex   apex 5.19 m, 1.21 s of air, flip over 1.09 s (back x1.63)
+      tapped falling late  apex 2.98 m, 1.03 s,        flip over 0.93 s (back x1.90)
+  `.84` was the first try and squeezed the back flip to **x2.17**, which is the number that
+  moved it. Front is the default because it is the shorter clip and the one a plain tap gets.
+  **A charge jump into a double reaches 8.0 m**, against houses at 7–11 — that is deliberate,
+  and it is what the ledge hangs and the ladders will be built on top of.
 - **MELEE IS ON FOOT AND IT COSTS NO NEW CONTROL (`MELEE`, `meleeGo`, `stepMelee`).**
   Both pads already flick on the board; on foot neither did. **Right pad flick = a strike,
   left pad flick = a dodge roll**, which keeps each pad meaning the same thing it means on the
