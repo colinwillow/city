@@ -1111,6 +1111,61 @@ playwright unless he asks for it by name.
   **Colin has no weapon bone and no shoot clip** — `WEAP.fit` is the hand offset, hand-placed
   because nothing in either file says where the grip goes, and **`city.weapFit()` re-applies
   it**. `WEAP.clip` is the hook for a shoot animation the day there is one.
+- **THE BLASTER IS PLUTOPIA'S, PORTED — AND c84 SHIPPED A PARAPHRASE OF IT, WHICH IS NOT THE
+  SAME THING.** One flat sphere and a slash mark where the original is: a HEAD that is a stack
+  of three additive sprites (violet corona, cyan body, white-hot core) so it reads as a ball
+  wrapped in haze rather than a disc; a COMET TAIL of six shrinking sprites down its own −Z; a
+  CRACKLE of seven hot pips thrown to new places every frame with half of them dark, which at
+  thirty frames a second is what electricity looks like for the cost of moving a few sprites;
+  and a TRAIL of twelve sprites left at WORLD positions along the path, so the shot draws a
+  streak of cooling plasma behind it rather than only carrying a comet with it.
+  **A CHARGE BALL WINDS UP AT THE MUZZLE** (`stepChargeFx`) — core, halo, five motes on a
+  SHRINKING spiral and three flickering licks. That the spiral closes in is the whole read: it
+  says the shot is getting bigger without a number on screen.
+  **NOT PARENTED TO THE BONE.** The bone is in the skeleton's 0.01-scaled space and a sprite
+  hung off it inherits a scale that depends on how big the model happened to be. It rides in
+  WORLD space at the muzzle, sized in metres like the bolt it becomes.
+  **NO LIGHT ON THE BOLT.** Adding and removing a `PointLight` relights every material in the
+  scene, and a shot a second would recompile the world mid-stride. The bursts carry the flash.
+  **TWO HALF-STEPS PER FRAME.** At fifty metres a second a whole frame is most of a metre,
+  wide enough for a bolt to pass clean through a police officer.
+  **A MUZZLE FLASH IS TWO BURSTS AND A LANDING IS SIX** — hot and small over cool and wide,
+  plus a scatter of sparks. A single sprite going out is a dot; the stack is what makes it
+  read as a detonation.
+  **EVERY LENGTH IS PLUTOPIA'S TIMES .625**, because its alien is 2.8 m and Colin is 1.75:
+  speed 76→48, rad 2.2→1.4, ride 2.6→1.1, climb 44→28, grace 1.8→1.1. **`zaps` and `trail`
+  are COUNTS, not lengths**, so they come over unchanged. A borrowed effect only reads the
+  same if it keeps its relationship to the body that fires it.
+  **And `JET.up` keeps its RATIO to gravity, not its value** — 46 against 32 there is 1.44, so
+  28.8 against this game's 20. A number copied across two different gravities means something
+  else.
+- **THE JETPACK'S FIRST PUFF IS THE BANG.** `jet` starts at frame 0 of the sheet — the crack —
+  and every one after it starts at the flame (`puff`). That is the ignition and the
+  putt-putt-putt after it, and it is the whole shape of the effect; without the distinction it
+  is one drawing flickering. The scatter is a random angle and radius about him, because a
+  column of cards stacked on one spot reads as one card.
+- **`FX.t` ADVANCES AT THE TOP OF THE FRAME.** It used to tick inside `fxStep`, at the END, so
+  every card spawned during the frame was born a sixtieth of a second in the future — `vAge <
+  0.0` discards, and the frame that got dropped was the first one: the spark.
+- **A COP IS A SOLID, AND HE WAS NOT ONE AT ALL.** `gridQuery` is the static grid, built once
+  at load, so an officer who walks is not in it — which is why you stood inside them. The box
+  goes on the cop and is handed to the PLAYER's collider every frame the way a car's is: same
+  code, no second path. **`yaw` is left OFF** — `resolveBoxes` would test him in his own frame
+  like a car, and a man is round; an axis-aligned box the width of his shoulders is closer to
+  the truth than an oriented one that swings as he turns.
+- **AND THE PUNCH WAS MEASURED FROM THE WRONG POINT.** `copsPunched` was handed the SLASH
+  MARK's position — already a metre in front of his chest — and asked for anything within
+  reach of THAT, in front of THAT. An officer standing right on top of him is BEHIND that
+  point, so **the one case that matters most failed every time**. It is a cone about the
+  PLAYER now, `MELEE.arc` wide, with anything inside `COP.r` hit whichever way he is pointing,
+  because that close there is no meaningful direction left.
+- **THE SLASH MARKS NEEDED PLUTOPIA'S NUMBERS, NOT APPROXIMATIONS OF THEM.** c80 shipped
+  life .2 against .24, r 1.5 against 1.9, peak .92 against .9, rolls −.28/−1.0/.4 against
+  −.25/−.95/.35 — close enough to look deliberate and wrong enough to read as "turned". And
+  the PLACEMENT was picked rather than derived: Plutopia draws at `MELEE.reach * .62` out of a
+  3.4 reach on a 2.8 m body (= **.753 of his height**) and `RIG.height * .58` up; mine were
+  .95 and .62, a mark half a body too far out and too high. The contact fractions are its
+  `MELEE.hit` too — .32/.48/.31/.19, measured there against these same alien clips.
 - **THE BOLT RIDES THE GROUND, IT DOES NOT FLY A LINE (`BOLT`, `stepBolts`).** `ride` metres
   over whatever is under it, climbing at `climb` and settling at `fall`, so a shot goes over a
   kerb and down into a dip and carries on instead of burying itself in the first thing that is

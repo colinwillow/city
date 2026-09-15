@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c89</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c91</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c89';
+const BUILD = 'c91';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -511,13 +511,24 @@ const MELEE = {
   // which is the "about double as far" the tackle was asked for, bought mostly by the profile
   // rather than by a launch spike: 8.05 -> 12.95 m/s, not 8.05 -> 21.
   carry: .45,
+  // HOW WIDE THE SWING IS. Plutopia's own `MELEE.arc`, and it has to be generous: a thumb on a
+  // phone does not place a heading to five degrees, and a punch that misses because you were
+  // eleven degrees off is a punch that reads as not working at all.
+  arc: 1.2,
   // THE MARK LANDS WHEN THE ARM DOES, NOT WHEN THE THUMB DOES. Drawing it on the input puts
   // the picture a third of a second before the hand gets there, and a swing and its
   // consequence arriving as two separate events is exactly what "you cannot actually hit
   // things" looks like from outside. `at` is the fraction of the move the blow lands on,
   // per clip, because a round kick connects later in its arc than a jab does.
-  at: { melee_punch_01: .34, melee_slash: .42, melee_round_kick: .50, slide: .24 },
-  fxY: .62, fxR: .95,   // up his body and out in front of him, as fractions of his height
+  // AND THE CONTACT FRACTIONS ARE PLUTOPIA'S TOO -- `MELEE.hit`, which it measured against its
+  // own clips, and these are the same clips: .32, .48, .31, .19. A round kick connecting at
+  // half way through was my guess; .31 is what the clip actually does.
+  at: { melee_punch_01: .32, melee_slash: .48, melee_round_kick: .31, slide: .19 },
+  // WHERE IT SITS, likewise derived from Plutopia rather than picked: it draws at
+  // `MELEE.reach * .62` out of a 3.4 reach on a 2.8 m body, which is .753 of his height, and
+  // `RIG.height * .58` up. Mine were .95 and .62 -- a mark half a body too far out and too
+  // high, which is most of "they're not lined up well".
+  fxY: .58, fxR: .753,
   url: 'models/chars/melee.glb',
   roll: 'roll',      // the left pad's flick: a dodge, and the only i-frames in the game
   rollV: 9.5,
@@ -565,6 +576,12 @@ const WEAP = {
   cool: .42,            // seconds between shots
   chargeT: .9,          // a full charge takes this long
   min: .35,             // and a shot loosed early is this fraction of one
+  // WHERE THE BOLT ACTUALLY LEAVES HIM, and Plutopia's note is the reason both exist: a bolt
+  // born ON the gun is born inside whatever he is standing next to and bursts on it at once,
+  // and the gun is on his body, which eases onto the aim -- so on a flick-and-release the
+  // barrel still points where he WAS while the bolt already flies where the stick pointed.
+  // Clear of him, chest high, ON the shot line. (Its 1.6/.62 on a 2.8 m alien -> 1.0/.62.)
+  out: 1.0, high: .62,
   aimTurn: 2.6,         // while charging, left and right STEER him, in radians a second
   len: .30,             // the blaster's length in his hand, measured to, not typed
   // Where it sits in his hand. NOT derived: Colin has no weapon bone (his rig is 66 joints and
@@ -579,9 +596,17 @@ const WEAP = {
 // itself in the first one. `stun` is the plasma part: a car it touches is dead in the road
 // for that long, lights arcing over it, and the traffic rules route round it because a
 // stopped car is something they already know how to handle.
+// PLUTOPIA'S NUMBERS, SCALED. Its alien is 2.8 m and Colin is 1.75, so every length here is
+// its value times .625 -- the speed, the sizes and the blast all keep their relationship to
+// the body that fires them, which is the only way a borrowed effect reads the same.
+//     speed 76 -> 48   rad 2.2 -> 1.4   size 3.4 -> .55 (the sprite stack is sized off it)
+//     ride 2.6 -> 1.1  climb 44 -> 28   fall 13 -> 8   grace 1.8 -> 1.1
+// `zaps` and `trail` are COUNTS, not lengths, so they come over unchanged: seven crackle pips
+// and twelve streak sprites are what the shot is made of.
 const BOLT = {
-  speed: 54, life: 2.2, rad: 1.5, ride: 1.1, climb: 30, fall: 11,
-  size: .30, stun: 2.6, n: 12,
+  speed: 48, life: 2.2, rad: 1.4, ride: 1.1, climb: 28, fall: 8, grace: 1.1,
+  size: .55, zaps: 7, trail: 12,
+  stun: 2.6,
   hue0: '#7fe6ff', hue1: '#c69cff',
 };
 // THE JETPACK. Thrust against gravity while the pad is held, out of a tank that fills again
@@ -589,13 +614,17 @@ const BOLT = {
 // is what stops that being a launch: it is a ride.
 const JET = {
   url: 'models/alien_jetpack.glb',
-  up: 34, cap: 9, burn: .55, fill: .42, from: .10, ease: .16,
+  // PLUTOPIA'S, SCALED. `up` keeps its RATIO to gravity (46 against 32 there = 1.44, so 28.8
+  // against this game's 20) -- that ratio is what "he climbs while it burns" means, and a
+  // number copied across two different gravities means something else. Lengths take the same
+  // .625 the bolt does: cap 15 -> 9.4, drift 5.5 -> 3.4, puff 2.3 -> 1.44, blast 3.4 -> 2.1.
+  up: 28.8, cap: 9.4, burn: .62, fill: .38, from: .12, ease: .16,
   // PUTT, PUTT, PUTT. `every` is the gap between cards, and it is what makes a jetpack read as
   // a motor rather than as a jet of gas: a continuous stream is a shader effect, a rhythm of
   // discrete puffs is drawn animation. The FIRST one is the ignition bank (a crack), every one
   // after it is `puff` -- which is the same drawings two frames in, so the crack is simply not
   // played. No word on any of them: a motor running is not a punchline.
-  every: .085, puff: 1.5, blast: 2.2, drift: 4.2,
+  every: .085, puff: 1.44, blast: 2.1, drift: 3.4,
   // `at` is in the SPINE BONE's own frame: across, along, and out from his back. Clear of him
   // rather than in him -- "it fits decent but could move backwards a little bit".
   // `city.JET.at[2] = -.19; city.weapFit()` nudges it live.
@@ -1422,7 +1451,6 @@ function fxPop(x, y, z, bank, sz, vx, vy, vz) {
   P.size[i] = sz || FX.size; P.f0[i] = bk[0]; P.len[i] = bk[1];
 }
 function fxStep(dt) {
-  FX.t += dt;
   const P = _fx; if (!P) return;
   P.mat.uniforms.uT.value = FX.t;
   P.mat.uniforms.uScale.value = renderer.domElement.height * .5 / Math.tan(camera.fov * Math.PI / 360);
@@ -1482,12 +1510,19 @@ function fxSheet(url) {
 // with a roll in SCREEN space. It cannot be edge-on, it cannot face the wrong way, and it
 // reads the same from anywhere. That is also what lets his own hand-drawn ones drop straight
 // in: put a PNG at `SLASH.url` and it replaces the canvas one with no other change.
+// PLUTOPIA'S CONSTANTS, TO THE DIGIT. c80 shipped approximations of them (life .2 against
+// .24, r 1.5 against 1.9, peak .92 against .9) and approximations of a drawn effect are a
+// different drawn effect. These are its numbers.
 const SLASH = {
-  life: .2, r: 1.5, col: '#eaf4ff', hot: '#ffe2b6', url: null, n: 6, peak: .92,
+  life: .24, r: 1.9, col: '#e7f4ff', hot: '#ffe2b6', url: null, n: 6, peak: .9,
   // Which way the mark lies on screen, per clip. Radians, 0 is horizontal. Matched by eye to
   // what each swing LOOKS like rather than derived off a bone, because what is being matched
   // is the read of the animation and not where the hand went.
-  roll: { melee_punch_01: -.28, melee_slash: -1.0, melee_round_kick: .4, slide: .1 },
+  // AND ITS ROLLS, which are the part that was actually wrong on screen. Plutopia keys them
+  // mel0/mel1/mel2/slide and City's chain IS those three alien clips in that order, so they
+  // map one to one: -.25, -.95, .35, .1. Mine were -.28, -1.0, .4 -- close enough to look
+  // deliberate and wrong enough to read as "turned".
+  roll: { melee_punch_01: -.25, melee_slash: -.95, melee_round_kick: .35, slide: .1 },
 };
 let _slashPool = null, _slashTex = null;
 function slashTex() {
@@ -1684,7 +1719,7 @@ function gearRehome() { if (gear.blaster || gear.jet) weapFit(); }
 function stepAim(dt) {
   const p = player;
   const armed = KIT.on && KIT.cur === 'blaster' && !p.board && !p.hit && !p.mel && !p.hang && !p.lad;
-  if (!armed) { p.aim = 0; p.aimT = 0; p.chg = 0; return; }
+  if (!armed) { p.aim = 0; p.aimT = 0; p.chg = 0; stepChargeFx(0, dt); return; }
   p.shotT = Math.max(0, (p.shotT || 0) - dt);
   const sx = stick.R.x, sy = -stick.R.y, mag = Math.hypot(sx, sy);
   // UP, inside a cone. `atan2(x, y)` is the angle off straight up, so the cone is one test.
@@ -1708,87 +1743,271 @@ function stepAim(dt) {
       p.aim = 0; p.aimT = 0; p.chg = 0;
     }
   }
+  // THE BALL WINDS UP AT THE MUZZLE while he holds it, which is the whole read of the charge
+  // -- the swirl closing in says the shot is getting bigger without a number on screen.
+  stepChargeFx(p.aim ? WEAP.min + (1 - WEAP.min) * p.chg : 0, dt);
 }
-// ONE POOL, NEVER AN ALLOCATION PER SHOT. `n` of them, recycled, exactly the way the slash
-// marks and the contact blobs are.
-function boltMake() {
-  if (!gear.boltGeo) {
-    gear.boltGeo = new THREE.SphereGeometry(1, 10, 8);
-    gear.boltMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(BOLT.hue0), transparent: true,
-      opacity: .95, depthWrite: false, fog: false });
+// ---------- glow sprites, Plutopia's ----------
+// EVERYTHING BELOW IS ADDITIVE SPRITES ON ONE SHARED TEXTURE, which is what the blaster and
+// the plasma are made of over there. c84 wrote a paraphrase instead -- one flat sphere and a
+// slash mark -- and a paraphrase of an effect is not the effect. This is the real one.
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  const r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(.22, 'rgba(255,255,255,.62)');
+  r.addColorStop(.5, 'rgba(255,255,255,.16)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c);
+})();
+function glow(hex, size, opacity = .8) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: new THREE.Color(hex),
+    transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  s.scale.setScalar(size); s.userData.noHole = true; s.renderOrder = 4;
+  return s;
+}
+// A BURST: one sprite that opens out and fades on a square law. Plutopia's whole explosion
+// vocabulary is stacks of these at different sizes, colours and lifetimes -- which is why a
+// bolt landing there reads as a detonation and a single sprite reads as a dot going out.
+const bursts = [];
+function burst(x, y, z, hex, size = 6, life = 1.2) {
+  let b = bursts.find(q => !q.s.visible);
+  if (!b && bursts.length < 64) { b = { s: glow(hex, 1, .95), size, life, t: 0 }; scene.add(b.s); bursts.push(b); }
+  if (!b) b = bursts[0];
+  b.s.visible = true; b.s.material.color.set(hex); b.s.material.opacity = .95;
+  b.s.position.set(x, y, z); b.s.scale.setScalar(1); b.size = size; b.life = life; b.t = 0;
+  return b;
+}
+function stepBursts(dt) {
+  for (const b of bursts) {
+    if (!b.s.visible) continue;
+    b.t += dt; const k = b.t / b.life;
+    if (k >= 1) { b.s.visible = false; continue; }
+    b.s.scale.setScalar(lerp(1, b.size, Math.sqrt(k)));
+    b.s.material.opacity = .95 * (1 - k) * (1 - k);
   }
-  const m = new THREE.Mesh(gear.boltGeo, gear.boltMat.clone());
-  m.visible = false; m.renderOrder = 3; m.userData.noHole = true; m.frustumCulled = false;
-  scene.add(m); gear.bolts.push(m); return m;
 }
-function boltFire(k) {
-  const p = player;
-  let m = gear.bolts.find(b => !b.visible);
-  if (!m && gear.bolts.length < BOLT.n) m = boltMake();
-  if (!m) m = gear.bolts[0];
-  // OUT OF THE MUZZLE IF THERE IS ONE. The blaster is parented to his hand, so its own world
-  // matrix already knows where the barrel is and which way it points -- nothing about that is
-  // typed here. Without the model it leaves his chest along his facing, which is where a shot
-  // comes from on a man who is miming it.
-  const fx = Math.sin(p.faceH), fz = Math.cos(p.faceH);
-  let ox = p.pos.x + fx * .5, oy = p.pos.y + COLIN_HEIGHT * .62, oz = p.pos.z + fz * .5;
+// ---------- the ball of plasma gathering at the muzzle ----------
+// NOT PARENTED TO THE BONE. The bone is in the skeleton's own 0.01-scaled space and a sprite
+// hung off it inherits a scale that depends on how big the model happened to be. This rides
+// in WORLD space at the muzzle, sized in metres like the bolt it becomes, and turned to face
+// the shot so the swirl is a disc seen head-on rather than edge-on. Built once and reused --
+// a shot a second must allocate nothing.
+let _chg = null;
+function buildChargeFx() {
+  const g = new THREE.Group(); g.visible = false;
+  const core = glow(BOLT.hue0, 1, .95);            // the white-hot centre
+  const halo = glow(BOLT.hue1, 1, .6);             // a cooler violet shell
+  g.add(halo, core);
+  const swirl = [];                                // motes drawn inward as it winds up
+  for (let i = 0; i < 5; i++) { const sp = glow('#eaffff', 1, .9); g.add(sp); swirl.push(sp); }
+  const arc = [];                                  // little licks of lightning off it
+  for (let i = 0; i < 3; i++) { const sp = glow('#dff2ff', 1, .8); g.add(sp); arc.push(sp); }
+  scene.add(g);
+  _chg = { g, core, halo, swirl, arc };
+  return _chg;
+}
+const _mz = new THREE.Vector3();
+// WHERE THE MUZZLE IS. The blaster is parented to his hand, so its own world matrix already
+// knows -- and while there is no weapon bone on Colin yet, the fallback is chest height and a
+// step in front of him, which is where a shot comes from on a man who is miming it.
+function muzzleAt(out) {
+  const p = player, fx = Math.sin(p.faceH), fz = Math.cos(p.faceH);
   if (gear.blaster && gear.blaster.g.visible) {
     gear.blaster.g.updateWorldMatrix(true, false);
-    gear.blaster.g.getWorldPosition(_gs); ox = _gs.x; oy = _gs.y; oz = _gs.z;
+    gear.blaster.g.getWorldPosition(out);
+    // clear of his body along the shot, the same correction Plutopia makes: a bolt born on
+    // the gun is born inside whatever he is standing next to
+    const reach = Math.max(WEAP.out, Math.hypot(out.x - p.pos.x, out.z - p.pos.z));
+    out.x = p.pos.x + fx * reach; out.z = p.pos.z + fz * reach;
+    out.y = Math.max(out.y, p.pos.y + COLIN_HEIGHT * WEAP.high);
+  } else out.set(p.pos.x + fx * WEAP.out, p.pos.y + COLIN_HEIGHT * WEAP.high, p.pos.z + fz * WEAP.out);
+  return out;
+}
+function stepChargeFx(c, dt) {
+  const fx = _chg || buildChargeFx();
+  if (c < .02) { if (fx.g.visible) fx.g.visible = false; return; }
+  fx.g.visible = true;
+  muzzleAt(_mz); fx.g.position.copy(_mz);
+  fx.g.rotation.set(0, player.faceH, 0);
+  const t = FX.t, siz = lerp(.22, .80, c), pulse = 1 + Math.sin(t * 22) * .12 * c;
+  fx.core.scale.setScalar(siz * .7 * pulse);
+  fx.core.material.opacity = .95 * c;
+  fx.halo.scale.setScalar(siz * 1.5 * (1 + Math.sin(t * 9) * .1));
+  fx.halo.material.opacity = .55 * c;
+  // THE SWIRL: motes on a SHRINKING spiral, pulled in as the charge fills. That it closes in
+  // is the whole read -- it says the shot is getting bigger without a number on screen.
+  for (let i = 0; i < fx.swirl.length; i++) {
+    const sp = fx.swirl[i], a = t * (5 + i) + i * 2.51;
+    const r = siz * (1.5 - c) * (.5 + .5 * ((i / fx.swirl.length + t * .3) % 1));
+    sp.position.set(Math.cos(a) * r, Math.sin(a) * r, Math.sin(a * .7) * r * .4);
+    sp.scale.setScalar(siz * .32);
+    sp.material.opacity = c * (.5 + .5 * Math.sin(a * 1.3));
   }
-  m.visible = true;
-  m.position.set(ox, oy, oz);
-  m.scale.setScalar(BOLT.size * (.7 + .6 * k));
-  m.material.color.set(k > .8 ? BOLT.hue1 : BOLT.hue0);
-  m.material.opacity = .95;
-  m.userData.vx = fx * BOLT.speed; m.userData.vz = fz * BOLT.speed;
-  m.userData.t = 0; m.userData.k = k;
-  fxPop(ox, oy, oz, 'flash', .55 + k * .7, fx * 3, 1.2, fz * 3);
+  for (let i = 0; i < fx.arc.length; i++) {       // flickering licks
+    const sp = fx.arc[i], a = t * (13 + i * 5) + i * 1.9;
+    sp.position.set(Math.cos(a) * siz * .9, Math.sin(a * 1.7) * siz * .9, Math.sin(a) * siz * .5);
+    sp.scale.setScalar(siz * rnd(.10, .30));
+    sp.material.opacity = Math.random() < .45 ? c : 0;
+  }
+}
+
+// ---------- the bolt ----------
+// PLUTOPIA'S, WHOLE. A head that is a STACK of three sprites (violet corona, cyan body,
+// white-hot core) so it reads as a ball wrapped in haze rather than as a flat disc; a comet
+// tail of shrinking sprites trailing back along its own -Z; a crackle of hot pips thrown to
+// new places every frame with half of them dark, which at thirty frames a second is what
+// electricity looks like for the cost of moving a few sprites; and a TRAIL of sprites left at
+// WORLD positions along the path, so the shot draws a streak of cooling plasma behind it
+// rather than only carrying a comet with it.
+// No light on it: adding and removing a PointLight relights every material in the scene, and
+// a shot a second would recompile the world mid-stride. The bursts carry the flash.
+class PBolt {
+  constructor(x, y, z, dx, dy, dz, charge) {
+    const B = BOLT;
+    this.alive = true; this.t = 0;
+    this.x = x; this.y = y; this.z = z;
+    this.vx = dx * B.speed; this.vy = dy * B.speed; this.vz = dz * B.speed;
+    // Stored PER BOLT rather than read off BOLT, so a charged shot in flight keeps its size
+    // after the next one is fired at a different charge.
+    const c = clamp(charge === undefined ? 1 : charge, WEAP.min, 1);
+    this.c = c;
+    this.size = B.size * (.7 + c * .55);
+    this.rad = B.rad * (.8 + c * .5);
+    this.g = new THREE.Group();
+    const S = this.size;
+    this.core = glow('#ecffff', S * .62, .85);
+    this.body = glow('#3fbfff', S * 1.6, .85);
+    this.shell = glow(B.hue1, S * 2.6, .34);
+    this.g.add(this.shell, this.body, this.core);
+    this.tail = [];
+    for (let i = 0; i < 6; i++) {
+      const k = (i + 1) / 6;
+      const sp = glow(i < 3 ? '#8fe6ff' : '#b79cff', S * lerp(1.2, .25, k), lerp(.6, .08, k));
+      sp.position.z = -k * S * 3.2;
+      this.g.add(sp); this.tail.push(sp);
+    }
+    this.zaps = [];
+    for (let i = 0; i < B.zaps; i++) { const zp = glow('#eaffff', S * .3, .9); this.g.add(zp); this.zaps.push(zp); }
+    this.trail = []; this.tcur = 0;
+    for (let i = 0; i < B.trail; i++) {
+      const sp = glow('#7fd6ff', S * .9, 0); sp.userData.a = 0;
+      scene.add(sp); this.trail.push(sp);
+    }
+    this.g.position.set(x, y, z);
+    this.g.quaternion.setFromUnitVectors(_bZ, _bv.set(dx, dy, dz).normalize());
+    scene.add(this.g);
+  }
+  update(dt) {
+    const B = BOLT;
+    if ((this.t += dt) > B.life) { this.pop('#8fe0ff', 4, .5); return; }
+    // TWO HALF-STEPS. At fifty metres a second a whole frame is most of a metre, which is wide
+    // enough for a bolt to pass clean through a police officer.
+    for (let i = 0; i < 2; i++) {
+      const h = dt * .5;
+      this.x += this.vx * h; this.z += this.vz * h;
+      const g = groundAt(this.x, this.z, this.y + 3, 3);
+      const floor = (g.hit ? g.floor : hmAt(this.x, this.z)) + B.ride;
+      this.y = this.y < floor ? Math.min(floor, this.y + B.climb * h) : Math.max(floor, this.y - B.fall * h);
+      if (this.strike()) return;
+    }
+    this.g.position.set(this.x, this.y, this.z);
+    this.g.rotation.z += dt * 11;                        // the whole comet corkscrews as it flies
+    const t = this.t, S = this.size;
+    this.core.scale.setScalar(S * .62 * (.85 + Math.sin(t * 52) * .15));
+    this.body.scale.setScalar(S * 1.6 * (.92 + Math.sin(t * 31 + 1) * .12));
+    this.shell.material.opacity = .34 * (.75 + Math.sin(t * 17) * .25);
+    for (const zp of this.zaps) {
+      zp.position.set(rnd(-1.2, 1.2), rnd(-1.2, 1.2), rnd(-2.2, .6)).multiplyScalar(S * .5);
+      zp.scale.setScalar(S * rnd(.12, .4));
+      zp.material.opacity = Math.random() < .5 ? rnd(.5, 1) : 0;
+    }
+    // stamp the streak: drop a fading sprite where it is, and age the rest
+    const sp = this.trail[this.tcur]; this.tcur = (this.tcur + 1) % this.trail.length;
+    sp.position.set(this.x, this.y, this.z); sp.userData.a = 1;
+    for (const s of this.trail) {
+      if ((s.userData.a -= dt / .34) <= 0) { s.userData.a = 0; s.material.opacity = 0; continue; }
+      const a = s.userData.a;
+      s.material.opacity = a * .55;
+      s.scale.setScalar(S * (.4 + a * .8));
+      s.material.color.set(a > .5 ? '#8fe6ff' : '#b79cff');
+    }
+  }
+  strike() {
+    const B = BOLT, R = this.rad;
+    // The first metre is through his own shoulder and whatever he is standing beside.
+    if (this.t * B.speed < B.grace) return false;
+    for (const c of cops) {
+      const dx = c.x - this.x, dy = c.y + COLIN_HEIGHT * .5 - this.y, dz = c.z - this.z;
+      if (dx * dx + dy * dy + dz * dz > (R + COP.r * 1.6) * (R + COP.r * 1.6)) continue;
+      c.hp = 0; copHit(c, Math.atan2(-dx, -dz));
+      heatAdd(HEAT.bolt - HEAT.down);
+      this.pop('#ff9adf', 7, .95); return true;
+    }
+    for (const o of carsNear(this.x, this.z, 8, _cn)) {
+      if (Math.hypot(o.x - this.x, o.z - this.z) > R + o.hl) continue;
+      if (this.y > o.box.maxy + 1) continue;
+      o.zap = B.stun; o.speed = 0; heatAdd(HEAT.zap);
+      fxPop(o.x, o.y + o.hh * .9, o.z, 'zap', 2.4);
+      this.pop('#bfe8ff', 7, .8); return true;
+    }
+    // anything solid, the same box test the police rounds use
+    gridQuery(this.x, this.z, 1, _sbox);
+    for (const b of _sbox) {
+      if (this.x < b.minx || this.x > b.maxx || this.z < b.minz || this.z > b.maxz || this.y < b.miny || this.y > b.maxy) continue;
+      this.pop('#d8ffb0', 6, .85); return true;
+    }
+    // The ground no longer stops it -- it RIDES the ground. What stops it is ground it could
+    // not climb: a bank steeper than the climb rate, which it has now driven into.
+    const g = groundAt(this.x, this.z, this.y + 3, 3);
+    const fy = g.hit ? g.floor : hmAt(this.x, this.z);
+    if (this.y < fy - .1) { this.y = fy + .3; this.pop('#ffd9a0', 7, .9); return true; }
+    return false;
+  }
+  pop(hex, size, life) {
+    const R = this.rad;
+    this.alive = false;
+    // A REAL LITTLE DETONATION: a hot white flash, the coloured splash of whatever it hit, a
+    // violet shockwave, and a scatter of sparks. Bigger for a bigger charge. A single sprite
+    // going out is a dot; this is what makes it read as landing.
+    const k = .8 + this.c * .8;
+    burst(this.x, this.y, this.z, '#ffffff', size * .42 * k, life * .5);
+    burst(this.x, this.y, this.z, hex, size * .85 * k, life);
+    burst(this.x, this.y, this.z, BOLT.hue1, size * 1.2 * k, life * 1.3);
+    for (let i = 0; i < 4 + (this.c * 4 | 0); i++) {
+      const a = rnd(0, Math.PI * 2), r = rnd(.2, R);
+      burst(this.x + Math.cos(a) * r, this.y + rnd(-.2, .6), this.z + Math.sin(a) * r,
+        i % 2 ? '#8fe6ff' : '#eaffff', rnd(.6, 1.4), rnd(.4, .8));
+    }
+    fxPop(this.x, this.y, this.z, 'boom', 1.6 + this.c * .9);
+    snd.hit(1, this.x, this.z);
+    this.dispose();
+  }
+  dispose() {
+    scene.remove(this.g);
+    for (const s of this.trail) scene.remove(s);
+  }
+}
+const _bZ = new THREE.Vector3(0, 0, 1), _bv = new THREE.Vector3();
+const pbolts = [];
+function boltFire(k) {
+  const p = player;
+  muzzleAt(_mz);
+  const fx = Math.sin(p.faceH), fz = Math.cos(p.faceH);
+  pbolts.push(new PBolt(_mz.x, _mz.y, _mz.z, fx, 0, fz, k));
+  // THE MUZZLE FLASH IS TWO BURSTS, not one. Hot and small over cool and wide is what makes a
+  // flash read as a flash rather than as a dot appearing.
+  burst(_mz.x, _mz.y, _mz.z, '#dff4ff', .9 + k * .8, .14 + k * .06);
+  burst(_mz.x, _mz.y, _mz.z, '#6fc8ff', 1.3 + k * 1.2, .2 + k * .1);
+  fxPop(_mz.x, _mz.y, _mz.z, 'flash', .55 + k * .7, fx * 3, 1.2, fz * 3);
   snd.trick();
 }
-const _bz = new THREE.Vector3();
 function stepBolts(dt) {
-  for (const m of gear.bolts) {
-    if (!m.visible) continue;
-    const u = m.userData;
-    u.t += dt;
-    if (u.t > BOLT.life) { m.visible = false; continue; }
-    m.position.x += u.vx * dt; m.position.z += u.vz * dt;
-    // IT RIDES THE GROUND RATHER THAN FLYING A LINE. `ride` metres over whatever is under it,
-    // climbing at `climb` and settling at `fall` -- so it goes over a kerb and down into a dip
-    // and carries on, instead of burying itself in the first thing that is not flat. A slope
-    // steeper than it can climb still stops it, which is right: plasma should splash on a wall.
-    const g = groundAt(m.position.x, m.position.z, m.position.y + 3, 3);
-    const fy = (g.hit ? g.floor : hmAt(m.position.x, m.position.z)) + BOLT.ride;
-    m.position.y += clamp(fy - m.position.y, -BOLT.fall * dt, BOLT.climb * dt);
-    m.material.opacity = .95 * (1 - Math.max(0, (u.t - BOLT.life * .7) / (BOLT.life * .3)));
-    if (Math.abs(m.position.y - fy) > 2.2) { boltPop(m); continue; }   // it could not climb that
-    // A CAR IS DEAD IN THE ROAD FOR `stun`, WHICH IS THE PLASMA PART. The traffic rules need
-    // no new case for it: a stopped car is exactly what `blocked` and the stuck failsafe
-    // already know how to route round, so one field on the car is the whole mechanic.
-    let hit = 0;
-    for (const c of carsNear(m.position.x, m.position.z, 6, _cn)) {
-      if (Math.hypot(c.x - m.position.x, c.z - m.position.z) > BOLT.rad + c.hl) continue;
-      c.zap = BOLT.stun; c.speed = 0; hit = 1; heatAdd(HEAT.zap);
-      // ZAP, on the car rather than on the bolt: the event is the car being stopped.
-      fxPop(c.x, c.y + c.hh * .9, c.z, 'zap', 2.4);
-      break;
-    }
-    if (!hit) for (const c of cops) {
-      if (Math.hypot(c.x - m.position.x, c.z - m.position.z) > BOLT.rad + COP.r) continue;
-      if (Math.abs(c.y + COLIN_HEIGHT * .5 - m.position.y) > 1.6) continue;
-      c.hp = 0; copHit(c, Math.atan2(m.position.x - c.x, m.position.z - c.z) + Math.PI);
-      heatAdd(HEAT.bolt - HEAT.down);   // copHit already added the knock-down's share
-      hit = 1; break;
-    }
-    if (hit) boltPop(m);
+  for (let i = pbolts.length - 1; i >= 0; i--) {
+    pbolts[i].update(dt);
+    if (!pbolts[i].alive) pbolts.splice(i, 1);
   }
+  stepBursts(dt);
 }
-function boltPop(m) {
-  m.visible = false;
-  fxPop(m.position.x, m.position.y, m.position.z, 'boom', 1.9);
-  snd.hit(1, m.position.x, m.position.z);
-}
+
 // THE THRUST. Held pad while the jetpack is out: up against gravity, capped so it is a ride
 // and not a launch, out of a tank that fills again on the ground.
 function stepJet(dt) {
@@ -1806,20 +2025,28 @@ function stepJet(dt) {
   // So the gate is just "held past the tap". A TAP still jumps (`onRel` needs `far < .42` and
   // `from` is .10 s), a HOLD flies, and a drag does both, which is what flying wants.
   const want = stick.R.down && p.rHold > JET.from && p.fuel > 0 ? 1 : 0;
-  const lit = p.jetK > .12;
   p.jetK = damp(p.jetK || 0, want, JET.ease, dt);
   // The puffs come out of the nozzle, which is the pack on his back, and are thrown DOWN and
   // BEHIND him -- a puff that hangs where it was born reads as a sticker rather than as
   // exhaust. `gear.jet` knows where the pack actually is, so nothing about that is typed.
-  p.jetT = (p.jetT || 0) - dt;
-  if (p.jetK > .12 && p.jetT <= 0) {
-    p.jetT = JET.every;
-    let ox = p.pos.x, oy = p.pos.y + COLIN_HEIGHT * .55, oz = p.pos.z;
-    if (gear.jet && gear.jet.g.parent) { gear.jet.g.updateWorldMatrix(true, false); gear.jet.g.getWorldPosition(_gs); ox = _gs.x; oy = _gs.y; oz = _gs.z; }
-    const hx = Math.sin(p.faceH), hz = Math.cos(p.faceH);
-    fxPop(ox, oy - .2, oz, lit ? 'puff' : 'jet', lit ? JET.puff : JET.blast,
-      -hx * JET.drift * .4 - p.vel.x * .3, -JET.drift, -hz * JET.drift * .4 - p.vel.z * .3);
-  }
+  // PLUTOPIA'S SPAWN, LINE FOR LINE. THE FIRST ONE IS THE BANG: `jet` starts at frame 0 of
+  // the sheet -- the crack -- and every one after it starts at the flame. That is the ignition
+  // and the putt-putt-putt after it, and it is the whole shape of the effect. The scatter is
+  // a random angle and radius about him rather than a single point, because a column of cards
+  // stacked on one spot reads as one card flickering.
+  if (want && p.fuel > 0) {
+    p.jetT = (p.jetT || 0) - dt;
+    if (p.jetT <= 0) {
+      p.jetT = JET.every;
+      const first = !p.jetLit; p.jetLit = 1;
+      const a = Math.random() * Math.PI * 2, r = Math.random() * .19;
+      let ox = p.pos.x, oy = p.pos.y + COLIN_HEIGHT * .32, oz = p.pos.z;
+      if (gear.jet && gear.jet.g.parent) { gear.jet.g.updateWorldMatrix(true, false); gear.jet.g.getWorldPosition(_gs); ox = _gs.x; oy = _gs.y - .12; oz = _gs.z; }
+      fxPop(ox + Math.cos(a) * r, oy, oz + Math.sin(a) * r,
+        first ? 'jet' : 'puff', first ? JET.blast : JET.puff * rnd(.82, 1.18),
+        -p.vel.x * .18 + Math.cos(a) * .7, -JET.drift, -p.vel.z * .18 + Math.sin(a) * .7);
+    }
+  } else { p.jetLit = 0; p.jetT = 0; }
   if (want && p.fuel > 0) {
     p.fuel = Math.max(0, p.fuel - JET.burn * dt);
     p.vel.y = Math.min(JET.cap, p.vel.y + JET.up * p.jetK * dt);
@@ -3998,8 +4225,8 @@ const COP = {
   stun: .62,        // of a hit clip he is held for; the tail blends back into whatever is next
   fire: 1.7,        // seconds between shots
   gunAt: .46,       // the fraction of `shoot_pistol` the round leaves on
-  r: .42,           // his own radius, for the punch test and for not standing inside a wall
-  reach: 2.4,       // how close one of his strikes has to be to land on the player
+  r: .42,           // his own radius: his solid box, and the floor of the punch test
+  reach: 2.4,       // how far a strike of HIS reaches
   hitPush: 7.5,     // how hard a bullet shoves the player, m/s
   // `get_up_front` is 7.67 s at 1x and `get_up_back` 2.75 -- measured, by `npm run cop`.
   // Seven and a half seconds of a man standing up is a nap, so the get-up is played at a
@@ -4211,12 +4438,23 @@ function copHit(c, fromH) {
 }
 // A PUNCH LANDS WHERE THE ARM IS, which is the same frame the slash mark is drawn on --
 // `MELEE.at`. Anything else and the picture and the consequence are two separate events.
+// THE BLOW IS MEASURED FROM HIM, NOT FROM THE STRIKE POINT, and that is why nothing landed.
+// It was handed the mark's position -- already a metre in front of his chest -- and then
+// asked for anything within `reach` of THAT, in front of THAT. An officer standing right on
+// top of him is BEHIND that point, so the one case that matters most failed every time; and
+// an officer at arm's length was measured from a spot already past him.
+// From the player, an arc `MELEE.arc` wide about the swing, out to `reach`. A cone about the
+// man is what a punch is; a circle about a point a metre away is not.
 function copsPunched(x, z, h) {
+  const p = player;
   let n = 0;
   for (const c of cops) {
-    const dx = c.x - x, dz = c.z - z;
-    if (dx * dx + dz * dz > COP.reach * COP.reach) continue;
-    if (Math.cos(wrapAngle(Math.atan2(dx, dz) - h)) < .2) continue;   // in front of him, not behind
+    const dx = c.x - p.pos.x, dz = c.z - p.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > COP.reach + COP.r) continue;
+    // Inside `COP.r` of him there is no meaningful direction left, so anything that close is
+    // hit whichever way he happens to be pointing.
+    if (d > COP.r && Math.abs(wrapAngle(Math.atan2(dx, dz) - h)) > MELEE.arc) continue;
     if (copHit(c, h)) n++;
   }
   return n;
@@ -4359,6 +4597,17 @@ function stepCops(dt) {
         if (slid > c.speed * dt * .6) c.speed *= .35;
       } else c.speed = 0;
     }
+    // HE IS A SOLID NOW, AND HE WAS NOT ONE AT ALL. `gridQuery` is the static grid, built once
+    // at load, so an officer who walks is not in it -- which is why you could stand inside
+    // one. The box goes on the cop and is handed to the PLAYER's collider every frame the
+    // same way a car's is, so bumping into him is the same code that bumps into a car, with
+    // no second path. `yaw` is left OFF: `resolveBoxes` would test him in his own frame like a
+    // car, and a man is round -- an axis-aligned box the width of his shoulders is closer to
+    // the truth than an oriented one that swings as he turns.
+    if (!c.box) c.box = { minx: 0, maxx: 0, minz: 0, maxz: 0, miny: 0, maxy: 0 };
+    c.box.minx = c.x - COP.r; c.box.maxx = c.x + COP.r;
+    c.box.minz = c.z - COP.r; c.box.maxz = c.z + COP.r;
+    c.box.miny = c.y; c.box.maxy = c.y + COLIN_HEIGHT * (c.st === 'down' || c.st === 'up' ? .32 : .95);
     c.root.position.set(c.x, c.y, c.z);
     c.root.rotation.y = c.h;
     skinWeights(c, t, dt, false, COP.clips.idle);
@@ -4888,7 +5137,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -4928,6 +5177,10 @@ function groundUnder(p, step, vel, fromY, bounce) {
   // heightmap + roofs + cars; walls push the position out
   gridQuery(p.x, p.z, 1.2, _boxes);
   for (const c of carsNear(p.x, p.z, 8, _cars)) _boxes.push(c.box);
+  // AND THE POLICE. They are not in `gridQuery` -- that grid is built once at load and they
+  // walk -- so without this you stood inside them. There are eight, so a flat scan is cheaper
+  // than a second spatial grid would be to keep.
+  for (const c of cops) if (c.box && Math.abs(c.x - p.x) < 4 && Math.abs(c.z - p.z) < 4) _boxes.push(c.box);
   const r = resolveBoxes(p, .38, 1.7, step, _boxes, vel, bounce);
   // The real triangle where there is one, and only then the heightmap. They are not
   // combined: taking the max of an exact surface and a smeared one just puts the smear
@@ -5936,6 +6189,10 @@ function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), .05);
   if (!ready) return;
+  // THE CARD CLOCK ADVANCES FIRST. It used to tick inside `fxStep`, at the END of the frame,
+  // so every card spawned during the frame was born a sixtieth of a second in the FUTURE --
+  // `vAge < 0.0` discards, and the frame that got dropped was the first one: the spark.
+  FX.t += dt;
   toonSync();
   // The card runs the WHOLE scene -- traffic, clouds, his mixer, the post chain. Only the
   // player is suspended, and only because he is being posed rather than driven.
