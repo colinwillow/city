@@ -1513,6 +1513,26 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   run-aim and the strafes already hold the gun up. So it is one line splitting the "not moving"
   share of the blend, in both branches, rather than a state: a weight like every other weight
   here, easing in and out with the rest instead of cutting.
+- **RIDING AND SHOOTING IS AN OVERRIDE, NOT A BLEND (c115), AND PLUTOPIA PAID FOR THAT
+  DISTINCTION.** Its note, and it is the whole thing: laying a hold pose ON TOP of a gait gives
+  the arms the gait's swing PLUS the pose, so they flip about, and the spine gets twisted
+  twice. **Averaging two clips that both key an arm does not give one arm doing both things; it
+  gives a shrug.** Additive was its first attempt and it was wrong.
+  So nothing is allowed to fight over a track. Two clone families, and between them every bone
+  is claimed exactly once:
+      `__up`     the gun pose with ONLY spine-up tracks — arms, shoulders, neck, head, spine
+      `__legs`   a board clip with every spine-up track REMOVED — hips, legs, the bounce
+  Played together at full weight they compose into one body: he rides with his legs and holds
+  the gun with his arms, and neither half knows the other is there.
+  **HIPS STAYS WITH THE LEGS.** It is not a spine-up bone, and its POSITION is what carries the
+  whole body's travel and bounce — handing it to the pose nails him to one height.
+  **THE SWAP HAPPENS AFTER THE BOARD BRANCH HAS HAD ITS SAY**, not inside it, so every weight
+  AND EVERY TIME SCALE it worked out is preserved. That second part is load-bearing: **the push
+  clip is the CLOCK for the shove** (see `SK8`), so a leg clone that did not inherit its scale
+  would put his foot on the road on the wrong frame and the whole push cycle would drift.
+  **Every `skate_*` clip gets a leg clone**, so this holds through a push and in the air as
+  well as standing still — and which pose is up follows the state: the sighted hold while
+  charging, the recoil while `fireT` runs, the rifle idle otherwise.
 - **AIMED, THE LEGS ANSWER THE ANGLE AND NOT THE SPEED — WHICH IS WHAT THE STRAFES ARE FOR.**
   The ordinary armed gait is the three-clip speed blend like any other. The AIMED one cannot
   be: while the trigger is held he faces the shot and travels wherever the thumb says (`plant`

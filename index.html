@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c114</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c115</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c114';
+const BUILD = 'c115';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -4617,6 +4617,31 @@ function buildColin(gltf, extra) {
     // one action cannot be playing forwards and backwards at once. Plutopia's `rifleBack` is
     // the same clone for the same reason.
     // The reversal itself is one negative `colinScale` where it is blended, not a second clip.
+    // RIDING AND SHOOTING IS AN OVERRIDE, NOT A BLEND, AND PLUTOPIA PAID FOR THAT DISTINCTION.
+    // Its note: laying a hold pose ON TOP of a gait gives the arms the gait's swing PLUS the
+    // pose, so they flip about, and the spine gets twisted twice. Averaging two clips that
+    // both key an arm does not give one arm doing both things; it gives a shrug.
+    // So nothing is allowed to fight over a track. Two clone families, and between them every
+    // bone is claimed exactly once:
+    //   `__up`    the gun pose with ONLY spine-up tracks -- arms, shoulders, neck, head, spine
+    //   `__legs`  a board clip with every spine-up track REMOVED -- hips, legs, the bounce
+    // Played together at full weight they compose into one body: he rides with his legs and
+    // holds the gun with his arms, and neither half knows the other is there.
+    // HIPS STAYS WITH THE LEGS. It is not a spine-up bone, and its POSITION is what carries
+    // the whole body's travel and bounce -- handing it to the pose would nail him to a height.
+    const UPPER = /spine|chest|neck|head|shoulder|arm|hand|fore|clavicle|thumb|index|middle|ring|pinky/i;
+    const boneOf = t => { const d = t.name.indexOf('.'); return d > 0 ? t.name.slice(0, d) : t.name; };
+    const carve = (nm, suf, keep) => {
+      if (!nm || colin.clips.some(c => c.name === nm + suf)) return;
+      const src = colin.clips.find(c => c.name === nm);
+      if (!src) return;
+      const c2 = src.clone(); c2.name = nm + suf;
+      c2.tracks = c2.tracks.filter(t => UPPER.test(boneOf(t)) === keep);
+      if (c2.tracks.length) colin.clips.push(c2);
+    };
+    for (const nm of [WEAP.aimPose, WEAP.idle, WEAP.clip]) carve(nm, '__up', true);
+    // every board clip, so this holds through a push and in the air as well as standing still
+    for (const c of colin.clips.slice()) if (/^skate_/.test(c.name)) carve(c.name, '__legs', false);
     const fr = colin.clips.find(c => c.name === WEAP.aimRun);
     if (fr && WEAP.aimBack && !colin.clips.some(c => c.name === WEAP.aimBack)) {
       const bk = fr.clone(); bk.name = WEAP.aimBack; colin.clips.push(bk);
@@ -4809,6 +4834,26 @@ function colinAnim(dt) {
       const q = clamp((sp - GAIT.sprintAt) / Math.max(1, GAIT.runAt), 0, 1);
       t[GAIT.sprint] = w * r * q; t['run_fwd'] = w * r * (1 - q);
       colinScale(GAIT.sprint, clamp(sp / GAIT.sprintRef, GAIT.tsLo, GAIT.tsHi));
+    }
+  }
+  // ---- RIDING WITH THE GUN OUT: swap each board clip for its leg-only twin and let the gun
+  // pose own the arms. Done HERE, after the whole board branch has had its say, so every
+  // weight and every time scale it worked out is preserved -- the push clip is the CLOCK for
+  // the shove (see SK8), and a leg clone that did not inherit its scale would put his foot on
+  // the road on the wrong frame.
+  if (p.board && KIT.out.blaster && !p.hit) {
+    const up = (p.aim ? WEAP.aimPose : p.fireT > 0 ? WEAP.clip : WEAP.idle) + '__up';
+    if (colin.actions[up]) {
+      for (const k of Object.keys(t)) {
+        const lg = k + '__legs', a0 = colin.actions[k], a1 = colin.actions[lg];
+        if (!a1) continue;
+        a1.setEffectiveTimeScale(a0 ? a0.getEffectiveTimeScale() : 1);
+        t[lg] = t[k]; delete t[k];
+      }
+      t[up] = 1;
+      // the recoil is compressed to the same beat it gets on foot -- a 1.13 s clip against a
+      // .42 s window would otherwise show the first third of a shot and stop
+      if (up.indexOf(WEAP.clip) === 0) colinScale(up, clipLen(WEAP.clip, 1.13) / Math.max(.05, WEAP.fireHold));
     }
   }
   colinSet(t, dt);
