@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c95</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c96</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c95';
+const BUILD = 'c96';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -594,7 +594,16 @@ const WEAP = {
   // barrel runs along -X in the blaster's own file -- measured, geometry -74.9..25.0 on X --
   // and a hand joint's forward is +Z, which is the quarter turn `ry` starts at.
   fit: { x: 0, y: 0, z: 0, rx: 0, ry: Math.PI / 2, rz: 0, s: 1 },
-  clip: '',             // the hook for a shoot clip the day there is one; see GAIT.sprint
+  // THE ARMED GAIT, AND THE HOOK IS FILLED. `clip` was a name with nothing reading it, written
+  // the way `GAIT.sprint` is -- and the c96 export lands the clips: six `rifle_*` animations in
+  // the same commit as the weapon joint, which is not a coincidence. A man carrying a blaster
+  // does not walk with his arms swinging, so while it is OUT the whole gait is the armed one
+  // and `rifle_shoot_stationary_01` plays on the shot. It costs no new control and it is gated
+  // on the kit, so an empty name or a missing clip falls straight back to the ordinary gait.
+  clip: 'rifle_shoot_stationary_01',
+  fireHold: .42,        // how long the shoot clip owns the body, scaled to fit
+  idle: 'rifle_idle_01', walk: 'rifle_walk_fwd_01', run: 'rifle_run_fwd_01',
+  walkRef: 1.7, runRef: 4.4,
 };
 // THE BOLT. It rides a fixed height above whatever is under it rather than flying a straight
 // line, which is Plutopia's rule and the reason a shot goes over a kerb instead of burying
@@ -793,7 +802,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"75088889","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1785,6 +1794,10 @@ function gearRehome() { if (gear.blaster || gear.jet) weapFit(); }
 function stepAim(dt) {
   const p = player;
   const armed = KIT.on && KIT.cur === 'blaster' && !p.board && !p.hit && !p.mel && !p.hang && !p.lad;
+  // OUTSIDE the armed gate, because a recoil that only ticks while the gun is out is a recoil
+  // that welds itself on at full weight the moment he stows it mid-shot -- the `isRunning()`
+  // landmine's own shape, one state along.
+  p.fireT = Math.max(0, (p.fireT || 0) - dt);
   if (!armed) { p.aim = 0; p.aimT = 0; p.chg = 0; stepChargeFx(0, dt); return; }
   p.shotT = Math.max(0, (p.shotT || 0) - dt);
   const sx = stick.R.x, sy = -stick.R.y, mag = Math.hypot(sx, sy);
@@ -1805,7 +1818,7 @@ function stepAim(dt) {
     // between that and `fireAt` is what stops a thumb rolling inward on the way off cancelling
     // the shot you meant.
     if (!stick.R.down || mag < WEAP.keepAt || !inCone) {
-      if (p.shotT <= 0) { boltFire(WEAP.min + (1 - WEAP.min) * p.chg); p.shotT = WEAP.cool; }
+      if (p.shotT <= 0) { boltFire(WEAP.min + (1 - WEAP.min) * p.chg); p.shotT = WEAP.cool; p.fireT = WEAP.fireHold; }
       p.aim = 0; p.aimT = 0; p.chg = 0;
     }
   }
@@ -3940,7 +3953,49 @@ function dressSkin(model, key) {
     m.needsUpdate = true;
   }
 }
+// A MORPH TARGET'S DONOR OBJECT IS NOT PART OF THE CHARACTER, AND c96's COLIN SHIPPED 48 OF
+// THEM. A face rig authored in Blender keeps one whole spare head per blend shape -- every
+// `*_MIX` viseme, every brow, `Cross_Eyed`, `Look_Up` -- and an exporter that is asked for the
+// scene rather than for the character writes them all out as ordinary meshes beside him. They
+// are the shapes the 42 morph targets were BUILT from; the targets themselves live inside the
+// head primitive and do not need them, so they are pure residue. In the new file:
+//     6 skinned meshes,  31644 tris   -- Colin
+//    48 loose meshes,   362510 tris   -- the donors, ELEVEN TIMES his whole body
+// and every one of them has NO MATERIAL INDEX (three gives those pure white), is NOT SKINNED
+// so it never follows a bone, and sits under a group translated to y = +4871 / -9839 in
+// armature units -- 49 m over his head and 98 m under the road, riding his root for ever.
+// **AND IT WOULD HAVE BROKEN THE GAME OUTRIGHT, not merely looked wrong.** `measureSkin`
+// takes the character's scale from the geometry bounds of every mesh it can see, and the
+// donors read 143.17..178.40 against Colin's own 0.003..1.312 -- so the span it measured
+// would have been 181.0 instead of 1.309 and **he would have been drawn at 1/138th of his
+// size**, a speck on the road, with the white teeth rule painting the donors in his face
+// texture on the way past.
+// THE TEST IS SKINNING, NOT THE NAME. `Poses__head` is this exporter's word for it and the
+// next one will pick another, but the property that makes a donor a donor is structural: it
+// has no skin, so it cannot follow the skeleton, so it CANNOT be part of a character -- it
+// would stand still while he walked away. Only applied to files that do have skinned meshes,
+// which leaves `blaster.glb` and `pistol.glb` (all-loose, by construction) untouched.
+// Measured across every character file in the repo: Colin is the only one with any.
+function stripPoses(model, key) {
+  let skinned = 0; model.traverse(o => { if (o.isSkinnedMesh) skinned++; });
+  if (!skinned) return;
+  const drop = []; model.traverse(o => { if (o.isMesh && !o.isSkinnedMesh) drop.push(o); });
+  if (!drop.length) return;
+  let tris = 0;
+  for (const o of drop) {
+    const g = o.geometry, ix = g && g.index;
+    tris += ix ? ix.count / 3 : (g && g.attributes.position ? g.attributes.position.count / 3 : 0);
+    if (o.parent) o.parent.remove(o);
+    if (g) g.dispose();
+  }
+  // and the now-empty `Poses__*` groups they hung under, so nothing walks them again
+  const empty = []; model.traverse(o => { if (!o.isMesh && !o.isBone && o.children.length === 0 && o.parent) empty.push(o); });
+  for (const o of empty) o.parent.remove(o);
+  console.log('[skin] ' + key + ': dropped ' + drop.length + ' unskinned pose meshes (' + Math.round(tris) + ' tris) -- morph donors, not the character');
+}
 function buildSkin(gltf, key) {
+  // BEFORE `measureSkin`, because `measureSkin` is what they break.
+  stripPoses(gltf.scene, key);
   const skin = measureSkin(gltf.scene, key);
   dressSkin(skin.model, key);
   // HIS OWN ROOT, ALWAYS IN THE SCENE. One shared root can only ever hold one character, and
@@ -4119,7 +4174,10 @@ const ONCE = ['jump_going_up', 'jump_coming_down', 'landing_roll', 'idle_jump_in
   'flying_backwards', 'flying_forwards', 'fall_to_back', 'fall_to_face_down',
   'get_up_from_back', 'get_up_from_face',
   // every melee clip plays once and holds its last frame, like every other one-shot here
-  'melee_punch_01', 'melee_slash', 'melee_round_kick', 'slide', 'roll'];
+  'melee_punch_01', 'melee_slash', 'melee_round_kick', 'slide', 'roll',
+  // the recoil is a one-shot like every other event here: it plays once and holds its last
+  // frame, and rewinds the moment its weight comes up off the floor for the next round.
+  'rifle_shoot_stationary_01'];
 function colinSet(t, dt) { skinWeights(colin, t, dt, player.hitSnap); player.hitSnap = false; }
 function skinScale(skin, name, s) { const a = skin.actions && skin.actions[name]; if (a) a.setEffectiveTimeScale(s); }
 // The same easing, against whichever skin is asked for -- the card walks two at once.
@@ -4213,6 +4271,22 @@ function colinAnim(dt) {
     const w = clamp(sp / GAIT.walkAt, 0, 1), r = clamp((sp - GAIT.walkAt) / (GAIT.runAt - GAIT.walkAt), 0, 1);
     t[GAIT.windUp] = k;
     t['idle_neutral'] = (1 - w) * (1 - k); t['walk_fwd_neutral'] = w * (1 - r) * (1 - k); t['run_fwd'] = w * r * (1 - k);
+  } else if (gunOut() && colin.actions[WEAP.idle]) {
+    // CARRYING THE BLASTER IS ITS OWN GAIT. Same three-clip blend on the same measured speed
+    // -- nothing about the locomotion changes, only which three clips it asks for -- so every
+    // number above (`walkAt`, `runAt`, the time scaling) keeps meaning what it meant. The
+    // shoot clip takes the body for `fireHold` on top, compressed to it the way a melee strike
+    // is rather than played at 1x, because 1.13 s of recoil against a .42 s cooldown is a man
+    // still finishing his last shot when the next one leaves.
+    const w = clamp(sp / GAIT.walkAt, 0, 1);
+    const r = clamp((sp - GAIT.walkAt) / (GAIT.runAt - GAIT.walkAt), 0, 1);
+    const f = WEAP.clip && colin.actions[WEAP.clip] ? clamp(p.fireT / WEAP.fireHold, 0, 1) : 0;
+    t[WEAP.idle] = (1 - w) * (1 - f);
+    t[WEAP.walk] = w * (1 - r) * (1 - f);
+    t[WEAP.run] = w * r * (1 - f);
+    if (f > 0) { t[WEAP.clip] = f; colinScale(WEAP.clip, clipLen(WEAP.clip, 1.13) / Math.max(.05, WEAP.fireHold)); }
+    colinScale(WEAP.walk, clamp(sp / WEAP.walkRef, GAIT.tsLo, GAIT.tsHi));
+    colinScale(WEAP.run, clamp(sp / WEAP.runRef, GAIT.tsLo, GAIT.tsHi));
   } else {
     const w = clamp(sp / GAIT.walkAt, 0, 1);
     const r = clamp((sp - GAIT.walkAt) / (GAIT.runAt - GAIT.walkAt), 0, 1);
@@ -4808,7 +4882,7 @@ function playerShot(dx, dz) {
   const p = player;
   p.hitFwd = Math.cos(wrapAngle(Math.atan2(-dx, -dz) - p.faceH)) < 0;
   p.hit = 'fly'; p.hitSnap = true; p.hitCool = HIT.cool;
-  p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.mel = ''; p.aim = 0; p.chg = 0;
+  p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.mel = ''; p.aim = 0; p.chg = 0; p.fireT = 0;
   p.pushing = false; p.pushT = 0; p.grounded = false;
   p.vel.x = dx * SHOT.push; p.vel.z = dz * SHOT.push; p.vel.y = SHOT.push * .45;
   if (p.board) dropBoard();
@@ -4988,6 +5062,14 @@ document.getElementById('resetB').addEventListener('pointerdown', e => { e.preve
 //     same press, which reads as "I picked the blaster and it took the jetpack away".
 // One variable, three symptoms, and every one of them looks like a different bug.
 function kitOut() { return KIT.cur === 'board' ? (player.board ? 1 : 0) : KIT.on; }
+// IS THE BLASTER ACTUALLY IN HIS HANDS. Not `KIT.on` on its own -- that is true for the
+// jetpack too -- and not `p.aim`, which is only live from the moment the trigger arms. The
+// armed gait belongs to the whole time he is carrying it, and every state that takes the body
+// away (the board, a knock-down, a strike, a ledge, a ladder) hands the gait back.
+function gunOut() {
+  const p = player;
+  return !!(KIT.on && KIT.cur === 'blaster' && !p.board && !p.hit && !p.mel && !p.hang && !p.lad);
+}
 function kitUse() {
   // THE TAP TAKES THE CURRENT THING OUT OR PUTS IT AWAY. The board keeps its own code path --
   // it is a whole locomotion mode rather than a held object -- so the key routes to it.
@@ -5004,7 +5086,7 @@ function kitPick(k) {
   // Putting one away and taking another out is one motion: whatever was deployed goes.
   if (KIT.cur === 'board' && player.board) toggleBoard();
   KIT.cur = k; KIT.on = 0;
-  player.aim = 0; player.chg = 0; player.jetK = 0;
+  player.aim = 0; player.chg = 0; player.fireT = 0; player.jetK = 0;
   gearShow(); kitPaint(); kitSave();
 }
 function kitSave() { try { localStorage.setItem(KIT.key, KIT.cur); } catch (e) {} }

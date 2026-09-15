@@ -47,6 +47,19 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   `skate_idol_crouch`, `skate_push_standing/crouch`, `skate_ollie_init_air`,
   `skate_ollie_air`, `skate_ollie_landing`), car hits (`flying_backwards`,
   `flying_forwards`), dances, waving. 42 face morphs on `head`.
+  **c96 brought it to 46 and added the WEAPON JOINTS.** `weapon_root` on `mixamorig_RightHand`
+  with `weapon_tip` at (-0.562, 0, 0.099) — **the same pair `blaster.glb` is built round, to
+  three decimal places**, so `npm run joints models/colin.glb models/blaster.glb` reads MATCH
+  and the blaster parents with IDENTITY: no scale, no offset, no rotation. The officer's pistol
+  taught this a build earlier; `weapFit` was already written to take the joint the moment one
+  appeared, so the export needed no code change at all to land the gun in his hand.
+  The six new clips are `rifle_idle_01`, `rifle_walk_fwd_01`, `rifle_run_fwd_01`,
+  `rifle_strafe_left/right` and `rifle_shoot_stationary_01` — arriving in the SAME commit as
+  the joint, which is not a coincidence: they are what `WEAP.clip` was a hook for.
+  **Nothing was lost in the re-export** (diffed old against new: 0 clips gone, 6 gained) and
+  **`back_flip` is still 53 frames**, so `TRIM.back_flip = { start: 12 }` STAYS. Check that
+  every time: the rule is to delete a TRIM entry the moment an export bakes the cut in, and
+  deleting it while the frames are still there takes the crouch back.
 - `vendor/` — three r180 (module + core), GLTFLoader, DRACOLoader + wasm, BufferGeometryUtils,
   SkeletonUtils. All from the glorp/robits repos.
 - `tools/` — `syntax.mjs` (the gate), `bake.mjs`, `bump.mjs`, `skin.mjs` (every vertex's
@@ -441,6 +454,47 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
 - **A walkable mesh contributes only its deck.** `bridge_a` is one mesh with a deck at
   7 m and towers at 17/28/36/45; rasterising the max made the tower tops the ground.
   Every walkable mesh is capped at `miny + DECK` (12 m) for that reason.
+- **A MORPH TARGET'S DONOR OBJECT IS NOT PART OF THE CHARACTER, AND c96's COLIN SHIPPED 48 OF
+  THEM (`stripPoses`).** A face rig authored in Blender keeps one whole spare head per blend
+  shape — every `*_MIX` viseme, every brow, `Cross_Eyed`, `Look_Up` — and an exporter asked for
+  the SCENE rather than for the character writes them all out as ordinary meshes beside him,
+  under `Poses__head` / `Poses__eyes`. They are the shapes the 42 morph targets were built
+  FROM; the targets live inside the head primitive and do not need them, so they are residue:
+      6 skinned meshes,  31644 tris  — Colin
+     48 loose meshes,   362510 tris  — the donors, ELEVEN TIMES his whole body
+  Every one has **no material index** (three gives those pure white), is **not skinned** so it
+  never follows a bone, and hangs under a group at y = +4871 / −9839 in armature units — 49 m
+  over his head and 98 m under the road, riding his root for ever.
+  **AND IT DOES NOT MERELY LOOK WRONG, IT BREAKS THE GAME OUTRIGHT.** `measureSkin` takes his
+  scale from the geometry bounds of every mesh it can see, and the donors read −5.433..183.694
+  against Colin's own 0.003..1.378. **Measured both ways through the real loader rather than
+  argued:**
+      without the strip   geometry -5.433..183.694  ->  x0.009   he renders 0.01 m TALL
+      with the strip      geometry  0.003..1.378    ->  x1.273   he renders 1.65 m
+  A one-centimetre speck on the road, with the white-teeth rule painting 48 giant faces in his
+  head texture on the way past. **A re-export can do this to you with no warning and no error.**
+  **THE TEST IS SKINNING, NOT THE NAME.** `Poses__head` is this exporter's word for it and the
+  next one will choose another. The property that makes a donor a donor is structural: it has
+  no skin, so it cannot follow the skeleton, so it CANNOT be part of a character — it would
+  stand still while he walked away. Only applied to files that HAVE skinned meshes, which
+  leaves `blaster.glb` and `pistol.glb` (all-loose by construction) untouched. Surveyed across
+  every character file in the repo: Colin is the only one with any.
+  **`npm run wear` HAD TO BE TAUGHT THE GAME'S ORDER TO SEE IT.** The harness called
+  `measureSkin` on the raw scene; `buildSkin` strips first and then measures. A harness that
+  measures a path the game does not take is the `normals.mjs` / `normGeo` mistake, and this
+  file has now paid for it three times. It calls `stripPoses` first, which is how both numbers
+  above were obtained.
+- **THE ARMED GAIT IS THE WHOLE TIME HE IS CARRYING IT (`gunOut`), NOT `p.aim`.** `p.aim` is
+  only live from the moment the trigger arms, which is a fraction of a second before a shot;
+  a man walking around with a blaster does not swing his arms the rest of the time. It is also
+  not bare `KIT.on`, which is true of the jetpack too. Same three-clip blend on the same
+  measured speed as the ordinary gait — only WHICH three clips changes — so `walkAt`, `runAt`
+  and the time scaling all keep meaning what they meant, and a missing clip or an empty name
+  falls straight back. **The recoil is COMPRESSED to `WEAP.fireHold`, the melee strike's rule**:
+  `rifle_shoot_stationary_01` is 1.13 s against a .42 s cooldown, so at 1x he is still
+  finishing his last shot when the next one leaves. And **`p.fireT` ticks OUTSIDE the armed
+  gate** — a recoil that only counts down while the gun is out welds itself on at full weight
+  the moment he stows it mid-shot, which is the `isRunning()` landmine's shape one state along.
 - **`colin.glb`'s `teeth` primitive has NO material index.** three hands it
   `createDefaultMaterial()` — untextured pure white — and it reaches a millimetre further
   forward than his face, so it punches through his lips. `buildColin` reassigns any

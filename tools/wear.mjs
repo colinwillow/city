@@ -72,11 +72,16 @@ const colin = { clips: gl.colin.animations };
   }
 }
 const fn = new Function('THREE', 'CHARS', 'COLIN_HEIGHT', 'colin', 'TITLE',
-  shipped + '\n; return { measureSkin, skinClips, sitSkin };')(THREE, CHARS, COLIN_HEIGHT, colin, { hand: 'mixamorig_RightHand' });
+  shipped + '\n; return { measureSkin, skinClips, sitSkin, stripPoses };')(THREE, CHARS, COLIN_HEIGHT, colin, { hand: 'mixamorig_RightHand' });
 
 const ANKLE = { v: 0 }, YAW = { v: 0 };
 const root = new THREE.Group();
 function check(key, gltf) {
+  // IN THE GAME'S OWN ORDER. `buildSkin` strips the unskinned morph-target donors BEFORE it
+  // measures, and a harness that calls `measureSkin` on the raw scene is measuring a path the
+  // game never takes -- the `normals.mjs` / `normGeo` mistake, which has cost a build here
+  // twice. It is what the scale is read from, so it has to be the same scene.
+  fn.stripPoses(gltf.scene, key);
   const skin = fn.measureSkin(gltf.scene, key);
   CHARS.skins[key] = skin;
   root.add(skin.model);
