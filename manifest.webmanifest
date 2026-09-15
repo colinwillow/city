@@ -1,7 +1,7 @@
 {
-  "name": "City",
-  "short_name": "City",
-  "description": "A low-poly city to skate around.",
+  "name": "Shredworld",
+  "short_name": "Shredworld",
+  "description": "Skate a low-poly city. Two thumbs, a board, a blaster and a jetpack.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>City</title>
+<title>Shredworld</title>
 <link rel="manifest" href="manifest.webmanifest">
 <!-- THE VERSION IS IN THE FILENAME AND NEVER IN A QUERY STRING. iOS drops an
      apple-touch-icon link whose href carries a `?` -- so the cache-buster that was meant to
@@ -18,17 +18,31 @@
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512-v3.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="City">
+<meta name="apple-mobile-web-app-title" content="Shredworld">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0b1020">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<!-- TWO VOICES, AND FREDOKA WAS NEITHER. It is a rounded friendly face -- soft terminals,
+     wide counters, no edge -- which against spray-paint key art reads exactly as he put it:
+     like a three-year-old's. The art carries the personality, so the HUD does not have to
+     shout; it has to look like it belongs on the same poster.
+       BUNGEE is urban signage: squared, heavy, built to be read small and from an angle. It
+       is the street voice, and it goes on the few BIG things -- the button, the pill, the
+       panel headings -- where personality is wanted and there is room for it.
+       BARLOW CONDENSED does the work: keys, labels, the diagnostic chip, the speedo. Condensed
+       is the point -- `JETPACK` has to fit inside a 58 px key and the build chip has to carry
+       `c103 · 29 FPS · 203 DC · ★★ · JET OUT · JAM 117@430,178` on one line of a phone.
+     `display=swap` so a font on a slow connection can never hold the first paint. -->
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root{--disp:'Fredoka',system-ui,sans-serif;--ink:#eaf6ff;--rim:rgba(157,247,255,.45)}
+  :root{--disp:'Bungee',system-ui,sans-serif;--ui:'Barlow Condensed','Arial Narrow',system-ui,sans-serif;
+    --ink:#eaf6ff;--rim:rgba(157,247,255,.45);
+    /* the poster's own palette, so the HUD and the art are the same object */
+    --hot:#ff4fd8;--sun:#ffb43c;--sky:#57e8ff}
   /* touch-action:manipulation is what actually kills iOS double-tap-to-zoom. The viewport
      meta does not: Safari honours user-scalable=no for pinch and ignores it for the tap. */
-  html,body{touch-action:manipulation;margin:0;height:100%;background:#0b1020;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:var(--disp);color:var(--ink)}
+  html,body{touch-action:manipulation;margin:0;height:100%;background:#0b1020;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:var(--ui);color:var(--ink)}
   canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
   /* ---- boot card ---- */
   #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;
@@ -42,8 +56,12 @@
   #bootArt{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 28%;
     opacity:0;transition:opacity .45s ease-out}
   #bootArt.lit{opacity:1}
-  #boot h1{position:relative;font-weight:700;font-size:38px;letter-spacing:.18em;margin:0;text-transform:uppercase;
-    color:#bff4ff;text-shadow:0 0 24px rgba(120,238,255,.6);transition:opacity .3s}
+  /* THE STAND-IN WORDMARK, and BUNGEE IS WIDE. Ten heavy squared letters at 38px with .18em
+     of tracking overflows a phone; the display face carries the personality and the SIZE has
+     to come down to pay for it. Clamped on viewport width so it never touches the edges. */
+  #boot h1{position:relative;font-family:var(--disp);font-size:clamp(20px,7.2vw,34px);letter-spacing:.01em;margin:0;
+    text-transform:uppercase;color:#f4ecd8;
+    text-shadow:0 3px 0 rgba(10,26,58,.9),0 0 30px rgba(120,238,255,.45);transition:opacity .3s}
   #boot h1.gone{opacity:0}          /* the art carries its own wordmark; this is the stand-in */
   /* The bar sits UNDER the art rather than across it, on a scrim, so it never crosses a face */
   #boot .foot{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;gap:10px;
@@ -68,21 +86,31 @@
   #title.on #startB{pointer-events:auto}
   #title.go #startB{pointer-events:none}
   #title.go{opacity:0;transition:opacity .45s ease}
-  #title .word{margin:0 0 auto;padding-top:calc(40px + env(safe-area-inset-top));text-align:center;
-    font-weight:700;font-size:clamp(40px,14vw,104px);line-height:.9;letter-spacing:.05em;text-transform:uppercase;color:#fff;
-    text-shadow:0 3px 0 rgba(8,22,42,.5),0 0 38px rgba(120,238,255,.5),0 0 100px rgba(255,186,110,.4)}
-  #title .word i{display:block;font-style:normal;color:#ffd79a;
-    text-shadow:0 3px 0 rgba(8,22,42,.5),0 0 42px rgba(255,176,86,.75)}
-  #title .sub{font-size:11.5px;letter-spacing:.34em;text-transform:uppercase;opacity:.7}
+  /* HIS WORDMARK, NOT TYPE. No font sets that -- it is drawn, outlined, spattered and has a
+     planet in it. It arrives with a transparent background, so the only work here is size and
+     a shadow to lift it off the street behind it.
+     WIDTH IS CAPPED IN BOTH AXES. The art is 2129x739, near 3:1, so sizing it on width alone
+     puts it off the top of a landscape phone; `max-height` in vh is what stops that, and the
+     two together mean one rule covers both ways round. */
+  #title .word{margin:0 0 auto;padding-top:calc(26px + env(safe-area-inset-top));
+    width:min(92vw,720px);max-height:34vh;object-fit:contain;
+    filter:drop-shadow(0 6px 18px rgba(4,10,24,.65)) drop-shadow(0 0 42px rgba(120,238,255,.3));
+    animation:wordIn .9s cubic-bezier(.16,1,.3,1) both}
+  @keyframes wordIn{from{opacity:0;transform:translateY(-14px) scale(.94)}to{opacity:1;transform:none}}
+  #title .sub{font-size:12.5px;font-weight:600;letter-spacing:.3em;text-transform:uppercase;opacity:.75;
+    text-shadow:0 2px 10px rgba(0,0,0,.7)}
   #startB{touch-action:manipulation;cursor:pointer;border:0;font-family:var(--disp);
-    font-weight:700;font-size:17px;letter-spacing:.24em;text-transform:uppercase;color:#06131f;
-    padding:17px 48px;border-radius:999px;background:linear-gradient(180deg,#eafdff,#7ee7ff);
-    box-shadow:0 10px 30px rgba(8,18,38,.45),0 0 30px rgba(120,238,255,.45);animation:startPulse 2.4s ease-in-out infinite}
-  #startB:active{animation:none;transform:scale(.97)}
+    font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:#1a0730;
+    padding:16px 46px;border-radius:14px;background:linear-gradient(180deg,var(--sun),#ff8a2b);
+    box-shadow:0 6px 0 #a33f00,0 14px 30px rgba(8,18,38,.5),0 0 34px rgba(255,180,60,.4);
+    animation:startPulse 2.4s ease-in-out infinite}
+  /* A HARD BOTTOM EDGE RATHER THAN A BLUR. The poster's letters are drawn with a flat shadow
+     under them, and a soft glow under the button sits in a different world from that. */
+  #startB:active{animation:none;transform:translateY(4px);box-shadow:0 2px 0 #a33f00,0 6px 16px rgba(8,18,38,.5)}
   @keyframes startPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
   /* the character row: who he is, chosen on the card where it can be SEEN */
   #chars{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;pointer-events:none}
-  #chars button{touch-action:manipulation;cursor:pointer;font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.2em;
+  #chars button{touch-action:manipulation;cursor:pointer;font-family:var(--ui);font-weight:700;font-size:13px;letter-spacing:.1em;
     text-transform:uppercase;color:var(--ink);background:rgba(10,22,40,.45);border:1.5px solid var(--rim);border-radius:999px;padding:9px 16px;
     opacity:.75;transition:opacity .2s,border-color .2s,box-shadow .2s}
   #chars button.on{opacity:1;border-color:rgba(157,247,255,.95);box-shadow:0 0 18px rgba(120,238,255,.45),inset 0 0 14px rgba(120,238,255,.15);color:#fff}
@@ -101,14 +129,21 @@
     background:radial-gradient(circle at 38% 32%,rgba(255,250,236,.72),rgba(246,232,204,.34) 58%,rgba(110,170,196,.18));
     border:1px solid rgba(246,232,204,.55);box-shadow:0 0 10px rgba(157,247,255,.22),inset 0 1px 3px rgba(255,255,255,.32);transition:transform .06s linear,box-shadow .18s}
   #sticks .stick.act .knob{box-shadow:0 0 22px rgba(157,247,255,.55),inset 0 1px 3px rgba(255,255,255,.45)}
-  #sticks .lbl{position:absolute;left:0;right:0;bottom:-21px;text-align:center;font-weight:600;text-transform:uppercase;font-size:10.5px;letter-spacing:.22em;color:var(--ink);opacity:.55}
+  #sticks .lbl{position:absolute;left:0;right:0;bottom:-21px;text-align:center;font-family:var(--disp);text-transform:uppercase;
+    font-size:9px;letter-spacing:.06em;color:var(--ink);opacity:.5}
   #stkL{left:calc(20px + env(safe-area-inset-left))} #stkR{right:calc(20px + env(safe-area-inset-right))}
   /* ---- round keys ---- */
   .key{position:fixed;width:62px;height:62px;border-radius:50%;z-index:4;touch-action:none;display:flex;align-items:center;justify-content:center;
-    color:var(--ink);border:1.5px solid var(--rim);font:600 10.5px/1 var(--disp);letter-spacing:.18em;text-transform:uppercase;
+    color:var(--ink);border:1.5px solid var(--rim);font:700 11px/1 var(--ui);letter-spacing:.1em;text-transform:uppercase;
     background:radial-gradient(circle at 40% 32%,rgba(157,247,255,.13),rgba(10,14,40,.52) 62%,rgba(10,14,40,.62));
-    box-shadow:0 4px 16px rgba(0,0,0,.45),inset 0 0 18px rgba(120,238,255,.06);cursor:pointer;-webkit-tap-highlight-color:transparent}
-  .key.on{border-color:rgba(157,247,255,.95);box-shadow:0 0 22px rgba(120,238,255,.5),inset 0 0 22px rgba(120,238,255,.2);color:#fff}
+    box-shadow:0 3px 0 rgba(6,14,34,.7),0 8px 18px rgba(0,0,0,.45),inset 0 0 18px rgba(120,238,255,.06);
+    cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .07s linear,box-shadow .18s,border-color .18s}
+  /* A FLAT EDGE UNDERNEATH, NOT A BLUR -- the poster's letters are drawn with a hard shadow
+     under them, and a soft halo sits in a different world from that. Pressing one takes the
+     edge away, which is the whole animation and costs nothing. */
+  .key:active{transform:translateY(3px);box-shadow:0 0 0 rgba(6,14,34,.7),0 4px 10px rgba(0,0,0,.4)}
+  .key.on{border-color:var(--sky);color:#fff;
+    box-shadow:0 3px 0 rgba(6,14,34,.7),0 8px 18px rgba(0,0,0,.45),0 0 22px rgba(120,238,255,.45),inset 0 0 22px rgba(120,238,255,.22)}
   /* THE KIT IS THREE PLAIN KEYS IN A ROW, NOT A MENU. The radial fan was one button doing
      two jobs -- tap to toggle, press-and-hold to choose -- and a long press is a gesture you
      have to be told about. Three keys say what they are just by being on screen, and a tap is
@@ -119,7 +154,7 @@
     z-index:4;display:flex;gap:13px;pointer-events:none}
   #kitRow .key{position:static;width:58px;height:58px;flex-direction:column;gap:2px;pointer-events:auto}
   #kitRow .key i{font-style:normal;font-size:20px;line-height:1}
-  #kitRow .key u{text-decoration:none;font-size:7.5px;letter-spacing:.12em;opacity:.7}
+  #kitRow .key u{text-decoration:none;font-size:9px;font-weight:700;letter-spacing:.06em;opacity:.8}
   #kitRow .key.on u{opacity:.95}
   /* AN INVISIBLE BUTTON IS STILL A BUTTON. `body.title .key` fades every key out on the title
      card, but the `#kitRow .key` rule above wins on specificity for `pointer-events` -- so
@@ -155,13 +190,13 @@
     overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;
     padding:12px 14px 14px;border-radius:16px;border:1.5px solid rgba(157,247,255,.34);
     background:rgba(8,12,34,.93);box-shadow:0 10px 34px rgba(0,0,0,.6);
-    font:600 11px/1.3 var(--disp);letter-spacing:.1em;color:var(--ink);-webkit-tap-highlight-color:transparent}
+    font:600 12px/1.3 var(--ui);letter-spacing:.04em;color:var(--ink);-webkit-tap-highlight-color:transparent}
   #opt[hidden]{display:none}
-  #opt h4{margin:10px 0 6px;font-size:9.5px;letter-spacing:.22em;text-transform:uppercase;opacity:.5;font-weight:700}
+  #opt h4{margin:12px 0 6px;font-family:var(--disp);font-size:9px;letter-spacing:.04em;text-transform:uppercase;opacity:.55;color:var(--sky)}
   #opt h4:first-child{margin-top:0}
   #opt .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:7px 0}
-  #opt .row span{flex:1;text-transform:uppercase;font-size:10px;letter-spacing:.14em;opacity:.85}
-  #opt .row b{min-width:34px;text-align:right;font-size:10px;color:#8ef0ff;font-weight:700}
+  #opt .row span{flex:1;text-transform:uppercase;font-size:11.5px;letter-spacing:.05em;opacity:.85}
+  #opt .row b{min-width:34px;text-align:right;font-size:11.5px;color:var(--sky);font-weight:700}
   #opt input[type=range]{flex:0 0 108px;width:108px;height:26px;accent-color:#8ef0ff;background:transparent}
   #opt .seg{display:flex;gap:6px}
   #opt .seg i{font-style:normal;padding:5px 9px;border-radius:9px;border:1px solid rgba(157,247,255,.28);
@@ -171,11 +206,11 @@
     letter-spacing:.14em;text-transform:uppercase;cursor:pointer;opacity:.6}
   #opt .tog.on{border-color:rgba(157,247,255,.95);background:rgba(120,238,255,.16);color:#fff;opacity:1}
   /* ---- chips ---- */
-  .chip{position:fixed;z-index:4;font:600 11px/1 var(--disp);letter-spacing:.16em;text-transform:uppercase;color:var(--ink);opacity:.7;
+  .chip{position:fixed;z-index:4;font:600 12px/1.15 var(--ui);letter-spacing:.07em;text-transform:uppercase;color:var(--ink);opacity:.72;
     padding:7px 10px;border-radius:999px;border:1px solid rgba(157,247,255,.22);background:rgba(10,14,40,.45);backdrop-filter:blur(6px)}
   #build{top:calc(14px + env(safe-area-inset-top));left:calc(14px + env(safe-area-inset-left));opacity:1;padding:6px 12px}
-  #build b{font-size:18px;font-weight:700;letter-spacing:.04em;color:#8ef0ff;text-shadow:0 0 12px rgba(120,238,255,.75)}
-  #build i{font-style:normal;font-size:10px;opacity:.55;margin-left:8px;letter-spacing:.1em}
+  #build b{font-family:var(--disp);font-size:15px;letter-spacing:0;color:var(--sky);text-shadow:0 2px 0 rgba(8,20,44,.9),0 0 14px rgba(120,238,255,.7)}
+  #build i{font-style:normal;font-size:11px;opacity:.6;margin-left:8px;letter-spacing:.04em}
   /* Three slow pulses on load. The question this answers is "did it actually reload",
      and a number that looks identical whether it changed or not cannot answer it. */
   #build.fresh{animation:fresh 1.5s ease-out 3}
@@ -183,7 +218,7 @@
     45%{border-color:rgba(157,247,255,.95);box-shadow:0 0 26px rgba(120,238,255,.8),inset 0 0 18px rgba(120,238,255,.3)}}
   /* The newer build is on the server and this one is not it. */
   #upd{position:fixed;top:calc(60px + env(safe-area-inset-top));left:50%;z-index:6;border:0;cursor:pointer;
-    font:700 12px/1 var(--disp);letter-spacing:.14em;text-transform:uppercase;color:#04141c;padding:12px 17px;border-radius:999px;
+    font:400 11px/1 var(--disp);letter-spacing:.04em;text-transform:uppercase;color:#1a0730;padding:12px 17px;border-radius:12px;
     background:linear-gradient(180deg,#a6f4ff,#49cdec);box-shadow:0 6px 22px rgba(0,0,0,.5),0 0 26px rgba(120,238,255,.55);
     animation:updp 1.5s ease-in-out infinite}
   @keyframes updp{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.06)}}
@@ -195,14 +230,14 @@
   #speed{top:calc(58px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:13px;min-width:70px;text-align:center}
   #build{max-width:calc(100vw - 190px - env(safe-area-inset-left) - env(safe-area-inset-right))}
   #build i{white-space:normal}
-  #speed b{font-size:20px;letter-spacing:0;margin-right:4px}
+  #speed b{font-family:var(--disp);font-size:17px;letter-spacing:0;margin-right:5px;color:#fff}
   #help{bottom:calc(26px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);opacity:.45;text-align:center;letter-spacing:.1em;text-transform:none;font-size:11px}
   @media (pointer:coarse){#help{display:none}}
 </style>
 </head>
 <body class="title">
-<div id="boot"><img id="bootArt" alt=""><h1 id="bootH1">City</h1><div class="foot"><div class="bar"><i id="bootBar"></i></div><div class="msg" id="bootMsg">loading the city</div><div class="err" id="bootErr"></div></div></div>
-<div id="title"><h1 class="word">Skate<i>City</i></h1><div id="chars"></div><div class="sub">swipe to change &middot; two thumbs</div><button id="startB">Start</button></div>
+<div id="boot"><img id="bootArt" alt=""><h1 id="bootH1">Shredworld</h1><div class="foot"><div class="bar"><i id="bootBar"></i></div><div class="msg" id="bootMsg">loading shredworld</div><div class="err" id="bootErr"></div></div></div>
+<div id="title"><img id="titleArt" class="word" alt="Shredworld"><div id="chars"></div><div class="sub">swipe to change &middot; two thumbs</div><button id="startB">Start</button></div>
 <div id="sticks">
   <div class="stick" id="stkL"><div class="knob"></div><div class="lbl">MOVE</div></div>
   <div class="stick" id="stkR"><div class="chg" id="stkRChg"></div><div class="knob"></div><div class="lbl">LOOK</div></div>
@@ -214,7 +249,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c103</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c104</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -227,7 +262,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c103';
+const BUILD = 'c104';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -867,7 +902,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/splash_screen_01.png":"6113e27e","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -3664,6 +3699,10 @@ function stepTraffic(dt) {
 // indistinguishable from never having added it. It is held from the moment the art is LIT
 // rather than from page load, so a slow arrival is not also a long wait afterwards.
 const BOOT = { art: 'images/splash_screen_01.png', min: 1.5, lit: 0 };
+// HIS WORDMARK. `shredworld_title_01.png` is the other cut of it -- `city.TITLE.art` and a
+// reload swaps them, or set it here. Loaded through `A()` like everything else, so repainting
+// it under the same filename actually arrives on a phone that has already seen the old one.
+const TITLE_ART = 'images/shredworld_title_02.png';
 const bootBar = document.getElementById('bootBar'), bootMsg = document.getElementById('bootMsg'), bootErr = document.getElementById('bootErr');
 {
   // STARTED HERE RATHER THAN IN `init()`, which is three awaits and fifteen megabytes of GLB
@@ -3675,6 +3714,10 @@ const bootBar = document.getElementById('bootBar'), bootMsg = document.getElemen
   im.onload = () => { im.classList.add('lit'); h1.classList.add('gone'); BOOT.lit = performance.now(); };
   im.onerror = () => { console.warn('[boot] no splash art at ' + BOOT.art); BOOT.lit = -1; };
   im.src = A(BOOT.art);
+  // AND THE WORDMARK ON THE SAME BREATH. It is wanted the instant the boot card lifts, and
+  // fetching it here means it is decoded and waiting rather than popping in a beat late.
+  const t = document.getElementById('titleArt');
+  if (t) { t.onerror = () => console.warn('[title] no wordmark at ' + TITLE_ART); t.src = A(TITLE_ART); }
 }
 // HOW LONG IS LEFT OF THE SPLASH. Nothing if the art never arrived -- a blank hold is just a
 // delay -- and nothing if it has already been up for `min`.
@@ -5397,7 +5440,7 @@ try { const k = localStorage.getItem(KIT.key); if (k && KIT.slots.some(s => s.k 
 // `kitOut()` whether the current thing is deployed, and for the board that is `player.board` --
 // a `const` declared hundreds of lines further down and therefore in its temporal dead zone up
 // here. The throw takes the whole file with it, `init()` never runs, and the boot card sits for
-// ever at the text it was BORN with: "loading the city". Nothing on screen says why.
+// ever at the text it was BORN with: "loading shredworld". Nothing on screen says why.
 // Same trap as `optStart()` and, one repo over, Plutopia's first landmine. `kitStart()` is
 // called at the BOTTOM of the file, where the player exists.
 function kitStart() { kitBuild(); kitPaint(); }
@@ -6656,7 +6699,7 @@ frame();
 (async () => {
   try {
     let city;
-    try { city = await loadGLB('models/city.glb', 'loading the city'); }
+    try { city = await loadGLB('models/city.glb', 'loading shredworld'); }
     catch (e) { console.warn('no baked city, loading the source', e); city = await loadGLB('LowPoly_City_01.glb', 'loading the source city'); }
     setBoot('building the streets', 1);
     await new Promise(r => setTimeout(r, 30));
@@ -6698,7 +6741,7 @@ frame();
     player.pos.y = sg.hit ? sg.floor : hmAt(player.pos.x, player.pos.z); player.safe.copy(player.pos);
     buildMap();
     ready = true;
-    setBoot('shredworld', 1);
+    setBoot('drop in', 1);
     await bootHold();                  // the splash is a card, not a flicker
     document.getElementById('boot').classList.add('off');
     titleEl.classList.add('on');
@@ -6707,7 +6750,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

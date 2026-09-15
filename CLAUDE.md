@@ -1,4 +1,11 @@
-# City — working rules
+# Shredworld — working rules
+
+**The game is called SHREDWORLD** (c104). The repo, the folder and `models/city.glb` are still
+`city` and that is fine — the city is the setting, Shredworld is the game. The three
+`localStorage` keys are STILL `city.kit` / `city.char` / `city.opt` **and must stay that way**:
+renaming them wipes his saved character, his kit slot and every setting on his phone, which is
+a worse first impression of a rename than not renaming them. `window.shred` is the console
+handle now, with `window.city` kept as an alias so nothing typed before this build breaks.
 
 Single-file Three.js r180 game in `index.html` (native ES modules, import map, no build
 step). **Run `npm run bump` before every push** — it raises `BUILD` in both places and
@@ -1542,6 +1549,39 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   left behind on a man who has gone.
   **`weapFit()` is NOT called at load time**: the gear finishes loading three awaits before
   Colin does, so there is no hand to hang it on yet. `wear` is the one place that knows.
+- **TWO VOICES, AND FREDOKA WAS NEITHER.** *"The fonts we've chosen, they're very like, I don't
+  know, three year-old."* He is right and the diagnosis is specific: Fredoka is a ROUNDED
+  friendly face — soft terminals, wide counters, no edge — and against spray-paint key art it
+  reads as a children's app. **The art carries the personality, so the HUD does not have to
+  shout; it has to look like it belongs on the same poster.**
+      --disp   BUNGEE             urban signage: squared, heavy, made to be read small and
+                                  from an angle. The street voice, and it goes on the FEW BIG
+                                  THINGS -- the start button, the update pill, panel headings,
+                                  the build number -- where there is room for personality.
+      --ui     BARLOW CONDENSED   does the work: keys, labels, chips, the speedo. Condensed is
+                                  the POINT -- `JETPACK` has to fit inside a 58 px key and the
+                                  build chip has to carry `c104 · 29 FPS · 203 DC · ★★ ·
+                                  JET OUT · JAM 117@430,178` on one line of a phone.
+  **BUNGEE IS WIDE AND THE SIZES HAD TO COME DOWN TO PAY FOR IT.** `SHREDWORLD` is ten heavy
+  squared letters; at the old 38px with .18em of tracking it overflows a phone. Every place the
+  display face landed lost a few points and nearly all of its letter-spacing. A display face
+  swapped in at the previous size is a display face that overflows.
+  **`display=swap`**, so a font on a slow connection can never hold the first paint.
+  **And the poster's palette is in `:root`** (`--hot`, `--sun`, `--sky`), so the HUD and the art
+  are the same object rather than two designs sharing a screen. The keys and the button take a
+  **flat bottom edge** rather than a soft halo, because the poster's letters are drawn with a
+  hard shadow under them and a blur sits in a different world from that; pressing one takes the
+  edge away, which is the whole animation and costs nothing.
+- **THE WORDMARK IS ART, NOT TYPE (`TITLE_ART`).** `images/shredworld_title_02.png` — drawn,
+  outlined, spattered, with a planet in the O. No font sets that, so the card stopped trying:
+  the DOM `<h1>Skate<i>City</i></h1>` is an `<img>` now. `shredworld_title_01.png` is the other
+  cut and `city.TITLE.art` is not the switch — it is the `TITLE_ART` constant, one line.
+  **IT IS CAPPED IN BOTH AXES.** The art is 2129x739, near 3:1, so sizing on width alone puts
+  it off the top of a landscape phone; `width: min(92vw,720px)` with `max-height: 34vh` is what
+  makes one rule cover both ways round.
+  **It is fetched on the same breath as the splash**, at the top of the module rather than when
+  the card appears, so it is decoded and waiting when the boot card lifts instead of popping in
+  a beat late.
 - **THE SPLASH (`BOOT`, `images/splash_screen_01.png`) IS THE LOADING SCREEN, AND THE ONLY REAL
   DECISION IN IT IS `min`.** His key art — 941x1672 portrait, the SHREDWORLD wordmark, Colin
   over a ramp with the officer and an alien. Three things:
