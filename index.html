@@ -135,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c77</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c78</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c77';
+const BUILD = 'c78';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -399,7 +399,11 @@ const AIR = {
   // is 0.80 s and `back_flip` is 1.77, so at 1x one finishes a third of the way up and the
   // other could never be landed. The ballistics at the moment of the kick decide the length
   // and the clip is scaled to it.
-  fill: .9, min: .34, max: 1.5,
+  // BUT A FLIP THAT TAKES THE WHOLE JUMP READS AS SLOW even though it is, strictly, the
+  // right length -- the rotation is over before the apex in anything that looks snappy, and
+  // the rest of the air is his to aim the landing with. `fill` is .72 rather than .9 and the
+  // ceiling comes down with it, so a long hang cannot stretch one flip across two seconds.
+  fill: .72, min: .30, max: 1.05,
 };
 // MELEE, ON FOOT. The clips are Plutopia's alien's, lifted into `models/chars/melee.glb` by
 // `npm run melee` -- five clips and a bone hierarchy, 2.22 MB of character cut to 0.18 MB of
@@ -410,15 +414,32 @@ const MELEE = {
   // let it lapse and the next flick starts again at the first. Three strikes that escalate.
   chain: ['melee_punch_01', 'melee_slash', 'melee_round_kick'],
   window: .45,       // how long after a strike the next flick still chains
+  // A STRIKE TAKES `strike` SECONDS, WHATEVER ITS CLIP IS. The three clips run 0.92, 1.38 and
+  // 1.33 s at 1x, so a three-punch chain was three and a half seconds of watching -- which is
+  // what "it feels really laggy" was. It is the board tricks' own rule turned round: there the
+  // clip is STRETCHED to fill the air he has left, here it is COMPRESSED to a beat the thumb
+  // can keep up with, and `colinScale` does the work either way.
+  strike: .58, slideDur: 1.15, rollDur: .78,
   // AND A SLIDE TACKLE IS WHAT A MELEE AT SPEED IS. Not a fourth item in the chain -- a
   // different opening to it: above `runAt` the first strike becomes the tackle and the
   // punches follow from there, so running at somebody and hitting melee reads as one move.
   runAt: 4.6, slide: 'slide',
-  slideV: 1.15,      // the tackle keeps this much of his speed, bled off across the clip
-  lunge: 2.4,        // and a standing strike still steps INTO it rather than punching the air
+  slideV: 1.85,      // the tackle keeps this much of his speed, bled off across the clip
+  lunge: 4.0,        // and a standing strike still steps INTO it rather than punching the air
+  // HE HOLDS HIS SPEED AND *THEN* SCRUBS IT. A flat linear bleed puts the average at half the
+  // launch speed, so every metre of travel had to be bought with a speed spike at the front --
+  // which reads as a rocket, not a tackle. Full speed for the first `carry` of the move and
+  // linear to zero after it averages .725 instead of .5: 45% further for the same launch, and
+  // it is what a slide actually looks like.
+  //     strike   1.10 m over 0.92 s   ->   1.67 m over 0.58 s
+  //     roll     4.48 m over 1.21 s   ->   5.37 m over 0.78 s
+  //     tackle   5.19 m over 1.29 s   ->  10.80 m over 1.15 s   (entering at 7 m/s)
+  // which is the "about double as far" the tackle was asked for, bought mostly by the profile
+  // rather than by a launch spike: 8.05 -> 12.95 m/s, not 8.05 -> 21.
+  carry: .45,
   url: 'models/chars/melee.glb',
   roll: 'roll',      // the left pad's flick: a dodge, and the only i-frames in the game
-  rollV: 7.4,
+  rollV: 9.5,
   hold: .55,         // of each strike he cannot steer out of; after that the stick has him back
 };
 // THE RIGHT STICK ORBITS, IT DOES NOT PITCH. Up and down on that pad are spent the
@@ -564,7 +585,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"1ea8c3fb","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -2954,17 +2975,24 @@ const stick = { L: { x: 0, y: 0, down: 0 }, R: { x: 0, y: 0, down: 0 } };
 const keys = {};
 addEventListener('keydown', e => { keys[e.key.toLowerCase()] = 1; if (e.key === ' ') { player.jump = 1; e.preventDefault(); } if (e.key.toLowerCase() === 'b') toggleBoard(); if (e.key.toLowerCase() === 'r') respawn(); });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
-// A FLICK IS A FAST MOVE, NOT A RELEASE. It used to be judged on pointerup, which cannot
-// work for the left pad: that thumb is already down and holding a direction when the trick
-// is wanted, so `held` was always past the window and the gesture could never fire. It is
-// measured off the pad's own travel now -- more than `at` of its radius covered inside
-// `within` seconds -- so it fires the instant the thumb moves, mid-hold, and a slow drag
-// still never reaches it. `gap` stops one sweep firing twice.
-const FLICK = { at: .72, within: .28, gap: .30 };
+// A FLICK IS A FAST MOVE **AND THEN A RELEASE**, AND THE RELEASE IS HALF THE GATE.
+// Two earlier versions each had one half of it and neither worked:
+//   judged on `pointerup` alone -- dead on the left pad, whose thumb is already down and
+//     holding a direction when the trick is wanted, so the time since pointerdown was always
+//     past any window and the gesture could never once have fired;
+//   judged on the pad's own travel alone -- which is what shipped, and it fires MID-HOLD.
+//     Every fast correction of a steering thumb read as a trick, and **a press-and-hold could
+//     not be told from a swipe at all**, which is the bug.
+// So the travel ARMS it and the lift FIRES it. The window (`let`) is measured from the fast
+// travel, NEVER from pointerdown -- that is the part the pointerup version could not do: a
+// thumb four seconds into a steering hold still flicks, and a thumb that sweeps and then
+// stays down never does, however fast the sweep was.
+// A flick eats the tap and the release, so nothing else on that pad fires on the same lift.
+const FLICK = { at: .72, within: .28, let: .26, gap: .10 };
 function bindStick(el, out, onTap, onFlick, rel, onRel) {
   const knob = el.querySelector('.knob');
   let id = null, t0 = 0, far = 0, lx = 0, ly = 0, ox = 0, oy = 0; const RAD = 52;
-  let hist = [], lastFlick = -1e9;
+  let hist = [], lastFlick = -1e9, pend = null;
   const set = (cx, cy) => {
     let dx, dy;
     if (rel) { dx = cx - ox; dy = cy - oy; } else { const r = el.getBoundingClientRect(); dx = cx - (r.left + r.width / 2); dy = cy - (r.top + r.height / 2); }
@@ -2976,9 +3004,10 @@ function bindStick(el, out, onTap, onFlick, rel, onRel) {
     const now = performance.now();
     hist.push({ x: lx, y: ly, t: now });
     while (hist.length > 1 && now - hist[0].t > FLICK.within * 1000) hist.shift();
-    if (now - lastFlick < FLICK.gap * 1000) return;
     const r0 = hist[0], ddx = lx - r0.x, ddy = ly - r0.y;
-    if (Math.hypot(ddx, ddy) > FLICK.at) { lastFlick = now; hist = [{ x: lx, y: ly, t: now }]; onFlick(ddx, ddy); }
+    // ARM ONLY. A later sweep in the same touch re-arms with its own direction and its own
+    // clock, so the flick that counts is always the last one before the thumb came off.
+    if (Math.hypot(ddx, ddy) > FLICK.at) { pend = { x: ddx, y: ddy, t: now }; hist = [{ x: lx, y: ly, t: now }]; }
   };
   el.addEventListener('pointerdown', e => { id = e.pointerId; t0 = performance.now(); ox = e.clientX; oy = e.clientY; el.setPointerCapture(id); out.down = 1; out.far = 0;
     // seeded at the CENTRE, not at the touch: on an absolute pad a thumb slammed straight
@@ -2988,10 +3017,14 @@ function bindStick(el, out, onTap, onFlick, rel, onRel) {
     el.classList.add('act'); set(e.clientX, e.clientY); far = Math.hypot(out.x, out.y); e.stopPropagation(); e.preventDefault(); });
   el.addEventListener('pointermove', e => { if (e.pointerId !== id) return; set(e.clientX, e.clientY); far = Math.max(far, Math.hypot(out.x, out.y)); e.stopPropagation(); });
   const end = e => {
-    if (e.pointerId !== id) return; const held = performance.now() - t0;
-    if (onTap && far < .42 && held < 260) onTap();
-    if (onRel) onRel(far, held / 1000);
-    id = null; out.down = 0; out.x = out.y = 0; out.far = 0; hist = []; knob.style.transform = 'translate(0,0)'; el.classList.remove('act'); e.stopPropagation();
+    if (e.pointerId !== id) return; const now = performance.now(), held = now - t0;
+    let fired = 0;
+    if (pend && onFlick && now - pend.t < FLICK.let * 1000 && now - lastFlick > FLICK.gap * 1000) {
+      lastFlick = now; fired = 1; onFlick(pend.x, pend.y);
+    }
+    if (!fired && onTap && far < .42 && held < 260) onTap();
+    if (!fired && onRel) onRel(far, held / 1000);
+    id = null; pend = null; out.down = 0; out.x = out.y = 0; out.far = 0; hist = []; knob.style.transform = 'translate(0,0)'; el.classList.remove('act'); e.stopPropagation();
   };
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
 }
@@ -3307,7 +3340,10 @@ function meleeGo(kind) {
     p.melStep++; p.melI = 0;
   }
   if (!colin.actions[nm]) return;
-  p.mel = nm; p.melT = p.melDur = clipLen(nm, .9); p.melWin = 0;
+  p.mel = nm;
+  p.melT = p.melDur = kind === 'roll' ? MELEE.rollDur : nm === MELEE.slide ? MELEE.slideDur : MELEE.strike;
+  colinScale(nm, clipLen(nm, p.melDur) / p.melDur);
+  p.melWin = 0;
   // he commits to the direction he had when he threw it
   p.melH = p.speed > .4 ? Math.atan2(p.vel.x, p.vel.z) : p.faceH;
   p.heading = p.faceH = p.melH;
@@ -3322,8 +3358,9 @@ function meleeGo(kind) {
 function stepMelee(dt) {
   const p = player;
   p.melT = Math.max(0, p.melT - dt);
-  const k = clamp(p.melT / Math.max(.01, p.melDur), 0, 1);
-  const sp = p.melV * k;
+  // hold, then scrub -- see MELEE.carry. `u` is progress through the move, 0 at the launch.
+  const u = 1 - clamp(p.melT / Math.max(.01, p.melDur), 0, 1);
+  const sp = p.melV * (u < MELEE.carry ? 1 : Math.max(0, 1 - u) / (1 - MELEE.carry));
   p.vel.x = Math.sin(p.melH) * sp; p.vel.z = Math.cos(p.melH) * sp;
   p.vel.y -= MOVE.g * dt;
   const px = p.pos.x, pz = p.pos.z, py = p.pos.y;

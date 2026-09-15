@@ -434,12 +434,21 @@ playwright unless he asks for it by name.
   - **Right pad — the camera on the ground, the BOARD in the air.** Tap = ollie. Drag =
     camera yaw, **ground only**. Flick up = kickflip, down = 360 flip (a kickflip and a
     shove at once, which is what a varial is), left/right = the two pop shove-its.
-  - **A FLICK IS A FAST MOVE, NOT A RELEASE.** It used to be judged on `pointerup`, which
-    cannot work for the left pad: that thumb is already down and holding a direction when
-    the trick is wanted, so `held` was always past the window and the gesture could never
-    have fired. It is measured on the pad's own travel — more than `FLICK.at` of its radius
-    covered inside `FLICK.within` — so it fires mid-hold, and a slow drag still never
-    reaches it. The history is seeded at the CENTRE on pointerdown, because on an absolute
+  - **A FLICK IS A FAST MOVE *AND THEN A RELEASE*, AND BOTH HALVES ARE THE GATE.** Two
+    earlier versions each had one half and neither worked. Judged on `pointerup` alone it is
+    dead on the left pad: that thumb is already down and holding a direction when the trick
+    is wanted, so the time since `pointerdown` is always past any window and the gesture can
+    never once fire. Judged on the pad's own travel alone — which shipped through c77 — it
+    fires MID-HOLD: every fast correction of a steering thumb reads as a trick, and **a
+    press-and-hold cannot be told from a swipe at all**, which is what he reported.
+    So the travel ARMS it (`FLICK.at` of the radius inside `FLICK.within`) and the lift
+    FIRES it, if the lift comes inside `FLICK.let` **of the travel, never of the
+    pointerdown** — that is the part the `pointerup` version could not do. A thumb four
+    seconds into a steering hold still flicks; a thumb that sweeps and then stays down never
+    does, however fast the sweep was. A later sweep in the same touch re-arms with its own
+    direction and clock, so the flick that counts is the last one before the thumb came off,
+    and a fired flick eats the tap and the release so nothing else on that pad goes off on
+    the same lift. The history is seeded at the CENTRE on pointerdown, because on an absolute
     pad a thumb slammed onto the top edge is a flick and a delta from where it landed says
     the stick never moved.
 - **IN THE AIR THE STICK IS A RATE, NOT A TARGET.** `steer` is the angle between the thumb
@@ -709,6 +718,10 @@ playwright unless he asks for it by name.
       tapped falling late  apex 2.98 m, 1.03 s,        flip over 0.93 s (back x1.90)
   `.84` was the first try and squeezed the back flip to **x2.17**, which is the number that
   moved it. Front is the default because it is the shorter clip and the one a plain tap gets.
+  **`fill` came down to .72 afterwards, because a flip that takes the whole jump READS as
+  slow** even though it is, strictly, the right length: the rotation wants to be over before
+  the apex, and the rest of the air is his to aim the landing with. `max` came down to 1.05
+  with it so a long hang cannot stretch one flip across two seconds.
   **A charge jump into a double reaches 8.0 m**, against houses at 7–11 — that is deliberate,
   and it is what the ledge hangs and the ladders will be built on top of.
 - **MELEE IS ON FOOT AND IT COSTS NO NEW CONTROL (`MELEE`, `meleeGo`, `stepMelee`).**
@@ -728,6 +741,50 @@ playwright unless he asks for it by name.
   him out of the recovery, which is what makes each link in the chain a decision.
   **A dodge roll is the only thing in the game that makes him unhittable** (`p.melI`, tested
   at the top of `carHit`) — without i-frames a roll is a slower walk with a nicer clip.
+- **THE HIPS TRANSLATION IS NOT A BONE LENGTH, AND DROPPING IT IS WHAT MADE HIM FLOAT.**
+  `tools/melee.mjs` cut the borrowed clips to rotation-only — right for every other track,
+  wrong for this one. The hips translation is the body's HEIGHT OFF THE GROUND and every one
+  of these clips crouches: the punch drops the hips 7.8 units, the slide and the roll drop
+  them 55. With the track gone the hips stay at Colin's REST height while the legs are folded
+  underneath, so his soles hang in the air for the whole clip. **Measured, not guessed** —
+  `npm run wear` plays each clip through a real mixer and reads the lowest skinned vertex:
+      melee_punch_01  0.11 .. 0.21 m      melee_slash 0.09 .. 0.21      slide 0.09 .. 0.51
+  which is `(restHips − correctHips) × Colin's unit scale` to the centimetre. So the Hips
+  channel is KEPT and REMAPPED into Colin's units, both ends measured from the two files' own
+  idle clips and nothing typed: `y' = colinStand + (y − alienStand)·(colinStand/alienStand)`,
+  76.3 → 50.6, ×0.663. X and Z are frozen at Colin's own idle values — these clips animate IN
+  PLACE and the travel is code-driven (`MELEE.lunge`, `slideV`), so a borrowed root path would
+  fight it. After: **0.01 .. 0.03** across all five.
+  **`npm run wear` HAD TO LOAD `melee.glb` TOO.** Its first run reported every melee clip
+  "absent", because the borrowed clips are appended to `colin.clips` by `buildColin` at
+  RUNTIME and a harness that opens only `colin.glb` is measuring a pool the game never has.
+  Same mistake as `normals.mjs` and `normGeo`, one directory over.
+  **Only a GROUND clip can float.** A flip's lowest vertex RISES as he tucks — `front_flip`
+  reads 0.00 .. 0.79 and that is the trick, not a fault. The harness flags air clips
+  separately or it reports a bug that is not there.
+  **The borrowed SKINS still drop it** — `skinClips` keeps quaternions only — so the robot,
+  Moussa and the alien float on these clips (and on Colin's own `landing_roll`) exactly as
+  Colin did. Fixing it there is not a scaled copy of this: their rest Hips translation puts
+  the height on a DIFFERENT AXIS (the robot's is `0, 0.25, −73.6`), which is the same trap
+  `HIPFIX` exists for, so the offset would have to go on the model group's world Y rather
+  than on the bone. Every skin is drawn at `COLIN_HEIGHT`, so that offset is the same number
+  in metres for all of them — which is the cheap way in when it is wanted.
+- **A STRIKE TAKES A FIXED TIME; THE CLIP IS COMPRESSED TO IT.** The three melee clips run
+  0.92, 1.38 and 1.33 s at 1x, so a three-punch chain was three and a half seconds of
+  watching — "it feels really laggy". `MELEE.strike`/`slideDur`/`rollDur` are the beat and
+  `colinScale` stretches the clip to fit, which is the board tricks' own rule turned round:
+  there the clip is STRETCHED to the air he has left, here it is COMPRESSED to something the
+  thumb can keep up with.
+  **AND HE HOLDS HIS SPEED BEFORE HE SCRUBS IT (`MELEE.carry`).** A flat linear bleed puts
+  the average at half the launch speed, so every metre of travel has to be bought with a
+  speed spike at the front — which reads as a rocket, not a tackle. Full speed for the first
+  45% and linear to zero after it averages .725 instead of .5: 45% further for the same
+  launch, and it is what a slide actually looks like.
+      strike   1.10 m over 0.92 s   ->   1.67 m over 0.58 s
+      roll     4.48 m over 1.21 s   ->   5.37 m over 0.78 s
+      tackle   5.19 m over 1.29 s   ->  10.80 m over 1.15 s   (entering at 7 m/s)
+  The tackle is the "about double as far" it was asked for, bought mostly by the profile
+  rather than by the launch: 8.05 → 12.95 m/s, not 8.05 → 21.
 - **BORROWED CLIPS GO INTO COLIN'S OWN POOL, NOT A SECOND PATH.** `npm run melee` lifts five
   clips out of Plutopia's alien into `models/chars/melee.glb` and `buildColin` appends them to
   `colin.clips`, so every skin picks them up through `skinClips` unchanged — same filter, same

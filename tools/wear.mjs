@@ -51,7 +51,8 @@ async function prep(f) {
 const loader = new GLTFLoader();
 const load = f => new Promise((res, rej) => loader.parse(readFileSync(f).buffer.slice(0), '', res, rej));
 const FILES = { colin: 'models/colin.glb', robot: 'models/chars/robot.glb',
-                moussa_robit: 'models/chars/moussa_robit.glb', alien_orange: 'models/chars/alien_orange.glb' };
+                moussa_robit: 'models/chars/moussa_robit.glb', alien_orange: 'models/chars/alien_orange.glb',
+                melee: 'models/chars/melee.glb' };
 const gl = {};
 for (const k in FILES) gl[k] = await load(await prep(FILES[k]));
 
@@ -59,6 +60,17 @@ for (const k in FILES) gl[k] = await load(await prep(FILES[k]));
 const CHARS = { skins: {}, h: {} };
 const COLIN_HEIGHT = 1.75;
 const colin = { clips: gl.colin.animations };
+// THE BORROWED CLIPS ARE PART OF COLIN'S POOL AT RUNTIME (`buildColin`), so a harness that
+// loads only colin.glb measures a pool the game never has -- which is how the first run
+// reported every melee clip "absent".
+{
+  const have = new Set(); gl.colin.scene.traverse(o => { if (o.name) have.add(o.name); });
+  for (const c of gl.melee.animations) {
+    if (colin.clips.some(x => x.name === c.name)) continue;
+    c.tracks = c.tracks.filter(t => { const d = t.name.indexOf('.'); return have.has(d > 0 ? t.name.slice(0, d) : t.name); });
+    colin.clips.push(c);
+  }
+}
 const fn = new Function('THREE', 'CHARS', 'COLIN_HEIGHT', 'colin', 'TITLE',
   shipped + '\n; return { measureSkin, skinClips, sitSkin };')(THREE, CHARS, COLIN_HEIGHT, colin, { hand: 'mixamorig_RightHand' });
 
@@ -70,6 +82,34 @@ function check(key, gltf) {
   root.add(skin.model);
   const mixer = new THREE.AnimationMixer(skin.model);
   const clips = fn.skinClips(skin, colin.clips);
+  // EVERY CLIP, NOT JUST THE IDLE. `sitSkin` lifts him by what ONE pose says; if another clip
+  // sits the body somewhere else relative to the root he floats or sinks for the whole of it,
+  // and that is exactly the complaint. Play each one and read the soles.
+  if (key === 'colin') {
+    const mx = new THREE.AnimationMixer(skin.model);
+    console.log('   sole height per clip (idle is the one sitSkin measured):');
+    // ONLY A GROUND CLIP CAN FLOAT. A flip's lowest vertex RISES as he tucks -- that is the
+    // trick, not a fault -- so flagging it reads as a bug that is not there.
+    const AIR = new Set(['front_flip', 'back_flip', 'jump_going_up']);
+    for (const nm of ['idle_neutral', 'walk_fwd_neutral', 'run_fwd', 'melee_punch_01', 'melee_slash', 'melee_round_kick', 'slide', 'roll', 'front_flip', 'back_flip', 'jump_going_up']) {
+      const c = clips.find(x => x.name === nm); if (!c) { console.log('      ' + nm.padEnd(18) + ' (absent)'); continue; }
+      const a = mx.clipAction(c); mx.stopAllAction(); a.reset().play(); a.setEffectiveWeight(1);
+      let lo = 1e9, hi = -1e9, t = 0;
+      for (let i = 0; i < 12; i++) {
+        mx.setTime(c.duration * i / 11); skin.model.updateMatrixWorld(true);
+        let y = 1e9;
+        skin.model.traverse(o => { if (!o.isSkinnedMesh) return;
+          const pos = o.geometry.attributes.position, st = Math.max(1, Math.floor(pos.count / 150)), v = new THREE.Vector3();
+          for (let j = 0; j < pos.count; j += st) { o.applyBoneTransform(j, v.fromBufferAttribute(pos, j)); o.localToWorld(v); if (v.y < y) y = v.y; } });
+        if (y < lo) lo = y; if (y > hi) hi = y; t += y;
+      }
+      const mean = t / 12;
+      console.log('      ' + nm.padEnd(18) + ' soles ' + lo.toFixed(2) + ' .. ' + hi.toFixed(2) +
+        '   mean ' + mean.toFixed(2) + (AIR.has(nm) ? '   (air)' : lo > .06 ? '   *** FLOATING ' + lo.toFixed(2) + ' m ***' : mean < -.2 ? '   *** SUNK ***' : ''));
+      a.stop();
+    }
+    mx.stopAllAction();
+  }
   const idle = clips.find(c => c.name === 'idle_neutral');
   const a = mixer.clipAction(idle); a.play(); a.setEffectiveWeight(1);
   mixer.update(0);
