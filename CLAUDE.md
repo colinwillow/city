@@ -560,6 +560,24 @@ playwright unless he asks for it by name.
   walks. Two rigs out of eight come back nonsense, so a per-character scale has to be measured
   off the skinned mesh's GEOMETRY bounds — and never off `Box3.setFromObject`, for the reason
   three hundred lines up.
+  **THE ONE CORRECTION THAT IS NEEDED IS AT THE ROOT, AND IT IS EXACT THERE.** Measured in
+  WORLD space, Colin, the robot and Moussa stand identically — Hips 0.7° apart, the same
+  left-right axis, head above hips. The 90° is entirely in how each file splits it between
+  the armature and the Hips: Colin's armature is turned a quarter turn and his Hips undoes it
+  locally (90.7°); the robits rigs do neither. So Colin's raw Hips track would lay a robot on
+  its side every frame. `skinClips` premultiplies that ONE track by `K = A_skin⁻¹ · A_colin`
+  (the Hips' parents' world rotations, captured with the model at identity BEFORE it goes
+  under `colin.root`, whose yaw would pollute it). That is the rest-pose delta *with* its
+  parent term, which at the root is the static armature and therefore free — and it
+  reproduces the skin's own rest exactly at Colin's rest. The alien shares Colin's bind pose
+  and K is the identity. Every bone below stays rotation-only, as robits ships it.
+  **`GLTFLoader` binds every skin with the IDENTITY matrix**, so at rest a vertex's world
+  position IS its geometry position for any file it opens — the Colin measurement in
+  `buildSkin` generalises with nothing typed per rig. Everyone is scaled to `COLIN_HEIGHT`
+  (`CHARS.h` per key to change that): the collider, the camera, the deck and the hand grip
+  are all tuned to him.
+  `models/chars/` holds the borrowed skins and is in `bump.mjs`'s `DIRS`. The chip shows the
+  worn skin's key when it is not Colin, and `NO SKIN n` when a load failed.
   **`tools/rigs.mjs` measures the hips off the WORLD MATRIX.** Its first version summed the
   local translations up the parent chain, which ignores every rotation and scale on the way:
   it put Colin's hips at 52.8 and three candidates at a NEGATIVE height, and that number was

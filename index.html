@@ -66,6 +66,15 @@
     box-shadow:0 10px 30px rgba(8,18,38,.45),0 0 30px rgba(120,238,255,.45);animation:startPulse 2.4s ease-in-out infinite}
   #startB:active{animation:none;transform:scale(.97)}
   @keyframes startPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
+  /* the character row: who he is, chosen on the card where it can be SEEN */
+  #chars{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;pointer-events:none}
+  #chars button{touch-action:manipulation;cursor:pointer;font-family:var(--disp);font-weight:600;font-size:12px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--ink);background:rgba(10,22,40,.45);border:1.5px solid var(--rim);border-radius:999px;padding:9px 16px;
+    opacity:.75;transition:opacity .2s,border-color .2s,box-shadow .2s}
+  #chars button.on{opacity:1;border-color:rgba(157,247,255,.95);box-shadow:0 0 18px rgba(120,238,255,.45),inset 0 0 14px rgba(120,238,255,.15);color:#fff}
+  #chars button.busy{opacity:.5;animation:startPulse 1s ease-in-out infinite}
+  #title.on #chars button{pointer-events:auto}
+  #title.go #chars button{pointer-events:none}
   /* THE HUD DOES NOT EXIST UNTIL HE HAS PRESSED IT -- except the build badge, which is how he
      tells one build from the one before it and is wanted MOST on the first screen. */
   body.title #sticks,body.title .key,body.title #map,body.title #speed,body.title #help{opacity:0;pointer-events:none}
@@ -117,7 +126,7 @@
 </head>
 <body class="title">
 <div id="boot"><h1>City</h1><div class="bar"><i id="bootBar"></i></div><div class="msg" id="bootMsg">loading the city</div><div class="err" id="bootErr"></div></div>
-<div id="title"><h1 class="word">Skate<i>City</i></h1><div class="sub">low poly &middot; two thumbs</div><button id="startB">Start</button></div>
+<div id="title"><h1 class="word">Skate<i>City</i></h1><div id="chars"></div><div class="sub">low poly &middot; two thumbs</div><button id="startB">Start</button></div>
 <div id="sticks">
   <div class="stick" id="stkL"><div class="knob"></div><div class="lbl">MOVE</div></div>
   <div class="stick" id="stkR"><div class="knob"></div><div class="lbl">LOOK</div></div>
@@ -126,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c68</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c69</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -138,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c68';
+const BUILD = 'c69';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -370,6 +379,32 @@ const TITLE = {
   yaw: Math.PI / 2,        // which way the grip tape faces. One sign is against his leg, the other out
 };
 TITLE.face = TITLE.az + Math.PI + TITLE.turn;   // facing back down the barrel, turned off square
+// WHO HE IS. Every one of these is rigged to a Mixamo skeleton, so Colin's clips are worn by
+// all of them and nothing is re-exported. `npm run rigs` is the measurement behind that:
+// every bone a candidate lacks is a FINGER, and the body bones are all there.
+// THE RETARGET IS ROTATION-ONLY, WITH ONE CORRECTION AT THE ROOT. Robits shipped the full
+// rest-pose delta and turned it OFF (its index.html:4627): per bone it ignores the parent
+// chain and the error compounds down each limb. What ships there, and here, is a track
+// filter -- keep .quaternion, drop .position and .scale, because a position track bakes the
+// SOURCE's bone lengths. The one place the parent term is trivially available is the Hips,
+// whose parent is the static armature: Colin's armature is turned a quarter turn and his
+// Hips undoes it locally (90.7 deg), the robits rigs do neither, and in WORLD space all three
+// stand identically (0.7 deg apart -- measured). So Colin's raw Hips track would lay a robot
+// on its side every frame, and `K = A_target^-1 * A_colin` premultiplied onto that one track
+// puts it back. The alien shares Colin's bind pose exactly and K is the identity.
+const CHARS = {
+  list: [
+    { key: 'colin',  name: 'Colin',  url: 'models/colin.glb' },            // the clips come from him
+    { key: 'robot',  name: 'Robit',  url: 'models/chars/robot.glb' },
+    { key: 'moussa', name: 'Moussa', url: 'models/chars/moussa_robit.glb' },
+    { key: 'alien',  name: 'Alien',  url: 'models/chars/alien_orange.glb' },
+  ],
+  cur: 'colin', want: 'colin', skins: {}, loading: {},
+  h: { robot: 1.0, moussa: 1.0, alien: 1.0 },   // height as a multiple of Colin's. Everyone is
+                                                // Colin-sized until told otherwise: the collider,
+                                                // the camera and the deck are all tuned to him.
+  key: 'city.char',                              // localStorage
+};
 const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rim0: .26, rimP: 3.4, rimCol: new THREE.Color('#dcefff'),
   spec: 1, specG: .06,     // how much specular survives overall, and at the GRAZING end
   // 1 = the rim takes the colour of the surface it is on, 0 = flat white on everything.
@@ -428,7 +463,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1230,6 +1265,8 @@ function missing() {
   if (!clouds.length) m += ' · NO CLOUD GLB';
   if (!ENV.tex) m += ' · NO SKY JPG';
   if (SFX.miss.length) m += ' · NO SND ' + SFX.miss.length;
+  if (CHARS.cur !== 'colin') m += ' · ' + CHARS.cur;
+  if (CHARS.miss) m += ' · NO SKIN ' + CHARS.miss;
   return m;
 }
 function census() {
@@ -2350,24 +2387,36 @@ function drawMap(dt) {
 const pendingCars = [];
 
 // ---------- Colin ----------
-const colin = { root: new THREE.Group(), model: null, mixer: null, actions: {}, cur: null, ready: false };
+const colin = { root: new THREE.Group(), model: null, mixer: null, actions: {}, clips: [], hand: null, cur: null, ready: false };
 scene.add(colin.root);
-function buildColin(gltf) {
+// A SKIN IS A MODEL PLUS THE ACTIONS THAT DRIVE IT. Colin is one skin among several; what
+// makes him special is only that the CLIPS come from his file. buildSkin measures, dresses
+// and records a skin; wear() puts one on.
+function buildSkin(gltf, key) {
+  const isColin = key === 'colin';
   const model = gltf.scene; model.updateMatrixWorld(true);
+  // THE ROOT CORRECTION'S INPUT: the Hips' parent, in world, with the model at identity --
+  // captured BEFORE the model goes under colin.root, whose yaw would pollute it.
+  const hips = model.getObjectByName('mixamorig_Hips');
+  const armQ = new THREE.Quaternion(); if (hips && hips.parent) hips.parent.getWorldQuaternion(armQ);
   // HIS FEET WERE THROUGH THE FLOOR BECAUSE THIS WAS MEASURED WRONG. Box3.setFromObject
   // multiplies a mesh's bounds by its world matrix, and his sit under an Armature scaled
   // by 0.01 and turned a quarter turn -- but a SKINNED mesh IGNORES its node transform,
   // its vertices are already in metres. So the box came back a hundredth of his size and
   // on its side, and both the fit and the floor offset were derived from it.
   // The geometry's own bounds are the space the vertices actually live in: 0.003 to 1.312.
+  // AND THAT GENERALISES: GLTFLoader binds every skin with the IDENTITY matrix, so at the
+  // rest pose a vertex's world position IS its geometry position for any file it opens.
+  // The same loop measures the robot and the alien; nothing per-rig is typed.
   let lo = Infinity, hi = -Infinity;
   model.traverse(o => {
     if (!o.isMesh || !o.geometry) return;
     if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
     lo = Math.min(lo, o.geometry.boundingBox.min.y); hi = Math.max(hi, o.geometry.boundingBox.max.y);
   });
-  const k = (hi > lo) ? COLIN_HEIGHT / (hi - lo) : 1;
+  const k = (hi > lo) ? COLIN_HEIGHT * (CHARS.h[key] || 1) / (hi - lo) : 1;
   model.scale.multiplyScalar(k); model.position.y = -lo * k; model.updateMatrixWorld(true);
+  console.log('[skin] ' + key + ' geometry ' + lo.toFixed(3) + '..' + hi.toFixed(3) + ' -> x' + k.toFixed(3));
   // He is authored for the kitchen: every material carries an emissive map at .1-.4 (his
   // Blender look feeds the diffuse back in as emission) and KHR_materials_specular at 2x.
   // Under a baked room that is his shading; under a 3.4 sun it is a surface that starts
@@ -2383,10 +2432,14 @@ function buildColin(gltf) {
   // Material.00N, so a lookup keyed on the name 'head' silently found nothing and the
   // teeth went back to pure white. The MESH names are the stable thing in this file.
   // Last resort is any material carrying a texture, so this cannot fail silently again.
+  // COLIN ONLY. A robot whose plain-coloured plates have no map would otherwise all be
+  // handed one texture.
   let headMat = null;
-  const byName = model.getObjectByName('head');
-  if (byName && byName.material && byName.material.map) headMat = byName.material;
-  if (!headMat) model.traverse(o => { if (!headMat && o.isMesh && o.material && o.material.map) headMat = o.material; });
+  if (isColin) {
+    const byName = model.getObjectByName('head');
+    if (byName && byName.material && byName.material.map) headMat = byName.material;
+    if (!headMat) model.traverse(o => { if (!headMat && o.isMesh && o.material && o.material.map) headMat = o.material; });
+  }
   const mats = new Set();
   model.traverse(o => {
     if (!o.isMesh) return;
@@ -2395,7 +2448,7 @@ function buildColin(gltf) {
     // HIS HEAD IS A BLEND SHAPE. The mesh in the file is a generic base; Colin_Head_MIX
     // is the target that makes it his head, so it rides at full weight rather than at
     // zero like the 41 visemes and expressions beside it.
-    if (o.morphTargetDictionary && o.morphTargetInfluences) {
+    if (isColin && o.morphTargetDictionary && o.morphTargetInfluences) {
       const i = o.morphTargetDictionary[HEAD_SHAPE];
       if (i !== undefined) o.morphTargetInfluences[i] = 1;
     }
@@ -2418,30 +2471,96 @@ function buildColin(gltf) {
     // HIS OWN HOOK, WHICH IS WHY HE IS NEVER CUT. An instance onBeforeCompile shadows the
     // prototype's completely, so Colin misses holePatch -- and he is the one thing the hole
     // exists to reveal, so that is exactly right. Do not "fix" it by chaining holePatch here.
+    // Every skin is the player, so every skin gets this and none of them is ever cut.
     m.onBeforeCompile = sh => { toonPatch(sh); sh.uniforms.uSpec = { value: COLINM.spec }; };
     m.needsUpdate = true;
   }
-  colin.model = model; colin.root.add(model);
   // the title card hangs his deck off this. Named, not guessed: the rig is Mixamo's.
-  colin.hand = model.getObjectByName(TITLE.hand) || model.getObjectByName('mixamorig_LeftHand') || null;
-  if (!colin.hand) console.warn('[colin] no hand bone ' + TITLE.hand + ' -- the title board will stand beside him');
-  colin.mixer = new THREE.AnimationMixer(model);
-  for (const clip of gltf.animations) {
-    const a = colin.mixer.clipAction(clip); a.enabled = true; a.setEffectiveWeight(0);
-    if (ONCE.indexOf(clip.name) >= 0) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
-    colin.actions[clip.name] = a;
+  const hand = model.getObjectByName(TITLE.hand) || model.getObjectByName('mixamorig_LeftHand') || null;
+  if (!hand) console.warn('[skin] ' + key + ': no hand bone ' + TITLE.hand + ' -- the title board will stand beside him');
+  const names = new Set(); model.traverse(o => { if (o.name) names.add(o.name); });
+  const skin = { key, model, hand, armQ, names, mixer: null, actions: null };
+  CHARS.skins[key] = skin;
+  return skin;
+}
+// COLIN'S CLIPS, CUT TO FIT SOMEBODY ELSE. Three things, in order:
+//  1. drop every track whose target the skin does not have (the fingers, mostly);
+//  2. keep ONLY the .quaternion tracks -- a .position track bakes Colin's bone lengths and
+//     would stretch the skin to his proportions; .scale likewise. Locomotion is code-driven
+//     and the clips animate in place, so losing the hips translation costs nothing;
+//  3. premultiply the Hips track by K = A_skin^-1 * A_colin, the one place the parent term
+//     of the rest-pose delta is both needed and trivially available (see CHARS).
+// It is a filter plus one quaternion multiply per Hips key: no resampling, no cost.
+function skinClips(skin) {
+  if (skin.key === 'colin') return colin.clips;
+  const K = skin.armQ.clone().invert().multiply(CHARS.skins.colin.armQ);
+  const _q = new THREE.Quaternion();
+  const out = [];
+  for (const src of colin.clips) {
+    const tracks = [];
+    for (const t of src.tracks) {
+      const dot = t.name.indexOf('.'); const node = dot > 0 ? t.name.slice(0, dot) : t.name;
+      if (!skin.names.has(node)) continue;
+      if (!/\.quaternion$/.test(t.name)) continue;
+      const c = t.clone();
+      if (node === 'mixamorig_Hips') {
+        const v = c.values;
+        for (let i = 0; i + 3 < v.length; i += 4) { _q.set(v[i], v[i + 1], v[i + 2], v[i + 3]).premultiply(K); v[i] = _q.x; v[i + 1] = _q.y; v[i + 2] = _q.z; v[i + 3] = _q.w; }
+      }
+      tracks.push(c);
+    }
+    const c = new THREE.AnimationClip(src.name, src.duration, tracks); out.push(c);
   }
+  return out;
+}
+// PUT A SKIN ON. The previous one keeps its mixer and actions and simply leaves the root, so
+// switching back is instant. CW is emptied because the new actions all start at weight 0 and
+// stopped: a stale 1.0 in it would tell colinSet the idle was already playing.
+function wear(key) {
+  const skin = CHARS.skins[key]; if (!skin) return false;
+  if (colin.model && colin.model !== skin.model) { colin.root.remove(colin.model); if (colin.mixer) colin.mixer.stopAllAction(); }
+  if (!skin.mixer) {
+    skin.mixer = new THREE.AnimationMixer(skin.model); skin.actions = {};
+    for (const clip of skinClips(skin)) {
+      const a = skin.mixer.clipAction(clip); a.enabled = true; a.setEffectiveWeight(0);
+      if (ONCE.indexOf(clip.name) >= 0) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+      skin.actions[clip.name] = a;
+    }
+  }
+  colin.model = skin.model; colin.mixer = skin.mixer; colin.actions = skin.actions; colin.hand = skin.hand;
+  if (skin.model.parent !== colin.root) colin.root.add(skin.model);
+  for (const k in CW) delete CW[k];
+  const a0 = colin.actions['idle_neutral']; if (a0) { a0.reset(); a0.play(); a0.setEffectiveWeight(1); CW['idle_neutral'] = 1; }
+  CHARS.cur = key; try { localStorage.setItem(CHARS.key, key); } catch (e) {}
+  document.querySelectorAll('#chars button').forEach(b => b.classList.toggle('on', b.dataset.key === key));
+  return true;
+}
+// Ask for a skin by key: loads it the first time, wears it when it arrives. The title card's
+// chips call this; so does boot, for whatever was worn last time.
+function wearWhenReady(key) {
+  CHARS.want = key;
+  if (CHARS.skins[key]) { wear(key); return; }
+  const ch = CHARS.list.find(c => c.key === key); if (!ch || CHARS.loading[key]) return;
+  CHARS.loading[key] = true;
+  document.querySelectorAll('#chars button').forEach(b => b.classList.toggle('busy', b.dataset.key === key));
+  loadGLB(ch.url, 'loading ' + ch.name).then(g => { buildSkin(g, key); if (CHARS.want === key) wear(key); })
+    .catch(e => { console.warn('[skin] ' + key + ' failed', e); CHARS.miss = (CHARS.miss || 0) + 1; })
+    .finally(() => { CHARS.loading[key] = false; document.querySelectorAll('#chars button').forEach(b => b.classList.remove('busy')); });
+}
+function buildColin(gltf) {
+  colin.clips = gltf.animations;
   // A tail is taken by shortening the clip's own duration, which is all the mixer reads to
   // know when a LoopOnce action is done. A head is taken by starting the action late --
   // the frames are still in the file, nothing ever reaches them.
+  // ON THE CLIP OBJECTS, before any skin clones them, so every skin inherits the cut.
   for (const nm in TRIM) {
-    const a = colin.actions[nm];
-    if (!a) { console.warn('[trim] no clip named ' + nm); continue; }
-    const c = a.getClip(), t = TRIM[nm];
+    const c = colin.clips.find(x => x.name === nm), t = TRIM[nm];
+    if (!c) { console.warn('[trim] no clip named ' + nm); continue; }
     if (t.end) c.duration = Math.max(.05, c.duration - t.end / FPS);
     if (t.start) TRIM_IN[nm] = Math.min(t.start / FPS, c.duration - .05);
   }
-  const a0 = colin.actions['idle_neutral']; if (a0) { a0.play(); a0.setEffectiveWeight(1); CW['idle_neutral'] = 1; }
+  buildSkin(gltf, 'colin');
+  wear('colin');
   colin.ready = true;
 }
 // EVERY CLIP IS A WEIGHT, and the weights are eased rather than crossfaded. A state
@@ -3246,6 +3365,15 @@ function startGame() {
   document.body.classList.remove('title');
 }
 document.getElementById('startB').addEventListener('click', startGame);
+{
+  const row = document.getElementById('chars');
+  for (const ch of CHARS.list) {
+    const b = document.createElement('button'); b.textContent = ch.name; b.dataset.key = ch.key;
+    if (ch.key === CHARS.cur) b.classList.add('on');
+    b.addEventListener('click', e => { e.preventDefault(); wearWhenReady(ch.key); });
+    row.appendChild(b);
+  }
+}
 
 function stepCam(dt) {
   // in the air on the board that pad is spending its travel on tricks, not on the lens
@@ -3363,9 +3491,12 @@ frame();
     ready = true;
     document.getElementById('boot').classList.add('off');
     titleEl.classList.add('on');
+    // whoever he was last time, fetched now rather than on the boot path: the card shows
+    // Colin until it arrives, and the chip stays lit for the one it is waiting on.
+    try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) wearWhenReady(k); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, startGame, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, startGame, CHARS, wearWhenReady, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
