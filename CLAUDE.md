@@ -1553,6 +1553,33 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
       · gun93cm          right size, so the fault is placement or culling and not this
   Same rule as `cloud0` / `cloud28 vis0` / `env0`: **put the number that tells them apart on
   the screen, because a console warning is invisible on a phone.**
+- **EVERY SLOT IS ITS OWN SWITCH (c113). THE KIT WAS A RADIO BUTTON AND IT SHOULD NEVER HAVE
+  BEEN ONE.** `cur` + `on` meant one thing in his hand and whether it was out, so taking the
+  blaster put the jetpack away and no sequence of presses gave you both. *"I want to be able to
+  use the accessories at the same time."* There is no current slot now — three booleans and a
+  key each, and **nothing is put away on your behalf**.
+  That also deletes a whole class of bug by construction: `KIT.on` was the variable
+  `toggleBoard` and `dropBoard` kept writing to, and **a variable that no longer exists cannot
+  have three owners**. The board's state is still DERIVED from `player.board` rather than
+  stored beside the other two — one fact, one place, which is the c89 rule surviving the
+  rewrite.
+  **THE BLASTER FIRES FROM THE BOARD, AND THE ONE THING THAT HAD TO GIVE IS THE STEERING.**
+  `stepSkate` owns the heading while riding — the wheels are what steer — so a second writer
+  would carve him toward whatever he looked at. The aim still drives the shot and the camera;
+  it just stops driving the body. (There is no riding-and-shooting POSE, so he holds the
+  ordinary board stance: the mechanic works, the animation is a gap.)
+  **THE JETPACK IS WORN ON THE BOARD AND BURNED ON FOOT**, and that is the one honest limit in
+  this build. Thrust writes `p.vel.y` and `p.grounded`, which `stepSkate` also owns; a
+  hoverboard is a mechanic rather than a toggle.
+  **AND `p.rHold` MEANS ONE THING AGAIN.** c108 put the aim test in `rHold` itself, which was
+  the right rule in the wrong place: with both out it also cut the THRUST the instant you
+  pushed up to charge, and dropping out of the sky because you aimed is not a trade anybody
+  asked for. `rHold` is how long the pad has been down, full stop; the sprint applies its own
+  condition where the sprint is computed. **A shared quantity with a caller's condition baked
+  into it is the same mistake as a variable with three owners, one level down.**
+  **The old `localStorage` value was a slot NAME and the new one is three flags**, so a phone
+  upgrading into this build hands back a bare string. Parsed defensively rather than migrated:
+  worst case he starts with nothing deployed, which is one press to fix and cannot throw.
 - **THE KIT IS THREE PLAIN KEYS IN A ROW NOW, NOT A RADIAL MENU.** The fan was one button doing
   two jobs — tap to toggle, press-and-hold to choose — and *"let's just get rid of the Swiss
   Army button thing"*. A long press is a gesture you have to be told about; three keys say what

@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c112</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c113</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c112';
+const BUILD = 'c113';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -643,9 +643,15 @@ const MELEE = {
 // the thumb is OVER the arc rather than on it, and hit-testing the rects is what "over" means.
 // A ring winds round the key while the hold counts, because otherwise a long press and a slow
 // tap are the same thing right up until one of them surprises you.
+// EVERY SLOT IS ITS OWN SWITCH. It used to be `cur` + `on` -- one thing in his hand and
+// whether it was out -- which made the kit a RADIO BUTTON: taking the blaster put the jetpack
+// away, and there was no arrangement of presses that gave you both.
+// *"I want to be able to use the accessories at the same time."* So there is no current slot
+// any more; there are three booleans and a key each. That also deletes a whole class of bug by
+// construction, because `cur` was the thing `toggleBoard` and `dropBoard` kept writing to (see
+// below) -- a variable that no longer exists cannot have three owners.
 const KIT = {
-  cur: 'board',       // what is in his hand
-  on: 0,              // and whether it is deployed -- the TAP toggles this, not the pick
+  out: { board: 0, blaster: 0, jet: 0 },
   slots: [
     { k: 'board', label: 'Board', ico: '\u{1F6F9}' },
     { k: 'blaster', label: 'Blaster', ico: '⚡' },
@@ -1937,9 +1943,8 @@ function weapFit() {
            hand: !!gear.hand, spine: gear.spine ? gear.spine.name : null, fit: WEAP.fit, at: JET.at };
 }
 function gearShow() {
-  const out = KIT.cur !== 'board' && KIT.on;
-  if (gear.blaster) gear.blaster.g.visible = !!(out && KIT.cur === 'blaster');
-  if (gear.jet) gear.jet.g.visible = !!(out && KIT.cur === 'jet');
+  if (gear.blaster) gear.blaster.g.visible = !!kitOut('blaster');
+  if (gear.jet) gear.jet.g.visible = !!kitOut('jet');
 }
 // SWITCHING SKIN MOVES THE KIT WITH HIM. Every character owns his own root (see PARADE), so a
 // piece parented to Colin's hand stays on Colin's hand when the robot walks on -- which reads
@@ -1989,7 +1994,10 @@ function gunSize() {
 // the convention this file already has, and the camera target is `aimH` rather than `aimH+PI`.
 function stepAim(dt) {
   const p = player;
-  const has = KIT.on && KIT.cur === 'blaster' && !p.board && !p.hit && !p.mel && !p.hang && !p.lad;
+  // ON THE BOARD TOO. The gun is a held object and riding is a locomotion mode, so there is no
+  // reason they cannot happen at once -- the one thing that has to give is the STEERING, see
+  // where `p.heading` is written below.
+  const has = KIT.out.blaster && !p.hit && !p.mel && !p.hang && !p.lad;
   // OUTSIDE the armed gate: a recoil that only ticks while the gun is out welds itself on at
   // full weight the moment he stows it mid-shot.
   p.fireT = Math.max(0, (p.fireT || 0) - dt);
@@ -2042,7 +2050,10 @@ function stepAim(dt) {
     cam.idle = 0;
     // ARMED HE DOES NOT TURN TO WALK: he faces where he is aiming and travels wherever the
     // LEFT stick says, which is what makes the strafe clips mean something.
-    p.heading = p.aimH;
+    // ON THE BOARD IT MUST NOT. `stepSkate` owns the heading there -- the wheels are what
+    // steer -- and a second writer would carve him toward whatever he looked at. The aim still
+    // drives the SHOT and the camera; it just stops driving the body.
+    if (!p.board) p.heading = p.aimH;
     p.aim = armed ? 1 : 0;
     if (!armed) p.chg = 0;                         // out of the arc: whatever was spun up is let go
     else p.chg = Math.min(1, p.chg + dt / WEAP.chargeT);
@@ -2416,7 +2427,11 @@ function stepBolts(dt) {
 // and not a launch, out of a tank that fills again on the ground.
 function stepJet(dt) {
   const p = player;
-  const on = KIT.on && KIT.cur === 'jet' && !p.board && !p.hit && !p.hang && !p.lad && !p.mel;
+  // WORN ON THE BOARD, BURNED ON FOOT. The pack co-exists with everything -- it is on his back
+  // and it is visible -- but the thrust writes `p.vel.y` and `p.grounded`, which `stepSkate`
+  // also owns, and a hoverboard is a mechanic rather than a toggle. `!p.board` is the one
+  // honest limit in this build and it is here rather than spread about.
+  const on = KIT.out.jet && !p.board && !p.hit && !p.hang && !p.lad && !p.mel;
   if (p.fuel === undefined) p.fuel = 1;
   if (!on) { p.jetK = 0; p.fuel = Math.min(1, p.fuel + JET.fill * dt); return; }
   // Past the jump's own tap, so a tap still jumps and a HOLD is what lights it.
@@ -2945,10 +2960,17 @@ function missing() {
   if (HEAT.n > .05) m += ' · ' + '\u2605'.repeat(Math.max(1, Math.ceil(HEAT.n)));
   // WHAT IS IN HIS HAND, because "the blaster doesn't work" and "the blaster is not equipped"
   // are different bugs and they look identical from a phone.
-  if (KIT.cur !== 'board') m += ' · ' + KIT.cur + (kitOut() ? ' OUT' : ' away');
+  // WHAT IS ACTUALLY OUT, and it is a LIST now rather than one name. "The blaster doesn't
+  // work" and "the blaster is not equipped" are different bugs that look identical from a
+  // phone, and with three independent slots so is "I thought I had both".
+  {
+    const on = [];
+    for (const q of KIT.slots) if (q.k !== 'board' && kitOut(q.k)) on.push(q.k);
+    if (on.length) m += ' · ' + on.join('+') + ' OUT';
+  }
   // WHICH PLACEMENT THE BLASTER GOT. "It is in the wrong place" and "his rig has no weapon
   // joint yet" are different problems and they look identical from a phone.
-  if (KIT.cur === 'blaster' && kitOut() && !gear.mount) m += ' · NO WEAPON JOINT';
+  if (kitOut('blaster') && !gear.mount) m += ' · NO WEAPON JOINT';
   // AND HOW BIG IT ACTUALLY IS, IN CENTIMETRES, MEASURED OFF ITS WORLD BOUNDS.
   // "Still no blaster" is THREE different bugs that look identical from a phone: it never
   // loaded, it loaded and is the wrong size, or it is the right size and in the wrong place.
@@ -2957,7 +2979,7 @@ function missing() {
   //     NO BLASTER GLB   the file never arrived
   //     gun1cm           still double-scaled
   //     gun93cm          right size -- so the fault is placement or culling, not this
-  if (KIT.cur === 'blaster' && kitOut()) {
+  if (kitOut('blaster')) {
     const gs = gunSize();
     m += gs < 0 ? ' · NO BLASTER GLB' : ' · gun' + (gs * 100).toFixed(0) + 'cm';
   }
@@ -5695,6 +5717,10 @@ document.getElementById('resetB').addEventListener('pointerdown', e => { e.preve
 // IS THE THING IN HIS HAND OUT? The board's answer is `player.board` and nothing else --
 // deriving it rather than mirroring it is the whole fix for c84's worst bug.
 // `KIT.on` USED TO BE WRITTEN BY `toggleBoard` AND `dropBoard`, AND IT IS NOT THEIRS.
+// (c113 DELETED THE VARIABLE. Every slot is its own flag now, so there is nothing shared left
+// to have three owners -- but the failure is worth keeping, because it is what a one-of-three
+// kit cost and the reasoning below is why the board's state is still DERIVED rather than
+// stored beside the others.)
 // It means "the CURRENT slot is deployed", and those two mean "he is on a skateboard" -- two
 // different facts sharing one variable, which went wrong three ways at once:
 //   * equipping the blaster WHILE ON THE BOARD called `toggleBoard` to dismount, which then
@@ -5704,45 +5730,38 @@ document.getElementById('resetB').addEventListener('pointerdown', e => { e.preve
 //   * and because `gearShow` reads `KIT.on`, the piece that WAS visible went invisible on the
 //     same press, which reads as "I picked the blaster and it took the jetpack away".
 // One variable, three symptoms, and every one of them looks like a different bug.
-function kitOut() { return KIT.cur === 'board' ? (player.board ? 1 : 0) : KIT.on; }
+// THE BOARD'S STATE IS STILL DERIVED AND NEVER MIRRORED -- `player.board` is the one fact, and
+// the slot is a view of it. That is the c89 rule and it survives the rewrite unchanged.
+function kitOut(k) { return k === 'board' ? (player.board ? 1 : 0) : (KIT.out[k] ? 1 : 0); }
 // IS THE BLASTER ACTUALLY IN HIS HANDS. Not `KIT.on` on its own -- that is true for the
 // jetpack too -- and not `p.aim`, which is only live from the moment the trigger arms. The
 // armed gait belongs to the whole time he is carrying it, and every state that takes the body
 // away (the board, a knock-down, a strike, a ledge, a ladder) hands the gait back.
 function gunOut() {
   const p = player;
-  return !!(KIT.on && KIT.cur === 'blaster' && !p.board && !p.hit && !p.mel && !p.hang && !p.lad);
-}
-function kitUse() {
-  // THE TAP TAKES THE CURRENT THING OUT OR PUTS IT AWAY. The board keeps its own code path --
-  // it is a whole locomotion mode rather than a held object -- so the key routes to it.
-  if (KIT.cur === 'board') toggleBoard();
-  else {
-    const want = KIT.on ? 0 : 1;
-    if (want && player.board) toggleBoard();   // dismount first; it no longer touches KIT.on
-    KIT.on = want;
-  }
-  gearShow(); kitPaint(); kitSave();
+  return !!(KIT.out.blaster && !p.board && !p.hit && !p.mel && !p.hang && !p.lad);
 }
 // ONE TAP, AND IT MEANS THE OBVIOUS THING. Press the key for what you want: if it is already
 // what you are holding, the press puts it away or takes it back out; if it is not, the press
 // takes it out and whatever was out goes away. There is no second gesture to learn and no
 // state where a press appears to do nothing.
 function kitTap(k) {
-  if (k === KIT.cur) { kitUse(); return; }
-  // Putting one away and taking another out is one motion: whatever was deployed goes.
-  if (KIT.cur === 'board' && player.board) toggleBoard();
-  KIT.cur = k; KIT.on = 0;
-  player.aim = 0; player.chg = 0; player.fireT = 0; player.jetK = 0;
-  player.turning = 0; player.lock = null; player.aimAdj = 0; player.armT = 0; player.aimH = player.heading;
-  kitUse();                     // ...and pressing a key means you want the thing, so deploy it
+  // ONE KEY, ONE SLOT, AND NOTHING ELSE MOVES. The board keeps its own path -- it is a whole
+  // locomotion mode rather than a held object -- so that key routes to `toggleBoard` and the
+  // rest just flip. Nothing is put away on your behalf any more.
+  if (k === 'board') toggleBoard();
+  else {
+    KIT.out[k] = KIT.out[k] ? 0 : 1;
+    // stowing the gun mid-charge must not leave the aim live behind it
+    if (k === 'blaster' && !KIT.out[k]) { player.aim = 0; player.chg = 0; player.armT = 0; player.lock = null; player.turning = 0; }
+  }
+  gearShow(); kitPaint(); kitSave();
 }
-function kitSave() { try { localStorage.setItem(KIT.key, KIT.cur); } catch (e) {} }
+function kitSave() { try { localStorage.setItem(KIT.key, JSON.stringify(KIT.out)); } catch (e) {} }
 function kitPaint() {
   const r = document.getElementById('kitRow');
   if (!r) return;
-  const out = !!kitOut();
-  for (const el of r.children) el.classList.toggle('on', el.dataset.k === KIT.cur && out);
+  for (const el of r.children) el.classList.toggle('on', !!kitOut(el.dataset.k));
 }
 function kitBuild() {
   const r = document.getElementById('kitRow');
@@ -5758,7 +5777,13 @@ function kitBuild() {
     r.appendChild(el);
   }
 }
-try { const k = localStorage.getItem(KIT.key); if (k && KIT.slots.some(s => s.k === k)) KIT.cur = k; } catch (e) {}
+// THE OLD KEY HELD A SLOT NAME AND THE NEW ONE HOLDS THREE FLAGS, so a phone upgrading into
+// this build hands back a bare string. Parsed defensively rather than migrated: the worst case
+// is he starts with nothing deployed, which is one press to fix and cannot throw.
+try {
+  const v = JSON.parse(localStorage.getItem(KIT.key) || 'null');
+  if (v && typeof v === 'object') for (const s of KIT.slots) if (s.k !== 'board') KIT.out[s.k] = v[s.k] ? 1 : 0;
+} catch (e) {}
 // NOT `kitPaint()` AT MODULE LEVEL, AND THAT ONE LINE WAS A BLANK PAGE ONCE. `kitPaint` asks
 // `kitOut()` whether the current thing is deployed, and for the board that is `player.board` --
 // a `const` declared hundreds of lines further down and therefore in its temporal dead zone up
@@ -6215,7 +6240,12 @@ function stepFoot(dt) {
   // It does not and never did: `rHold` is counted here off `stick.R.down` and has never once
   // looked at the aim. A protection asserted only in a comment is not a protection.
   // A TAP IS STILL A JUMP -- that is a separate event and it is not gated here.
-  p.rHold = (stick.R.down && !p.aim) ? p.rHold + dt : 0;
+  // AND `rHold` MEANS ONE THING AGAIN: how long that pad has been down, full stop. c108 put
+  // the aim test HERE, which was the right rule in the wrong place -- with the jetpack and the
+  // blaster out at once it also cut the THRUST the instant you pushed up to charge, and
+  // dropping out of the sky because you aimed is not a trade anybody asked for.
+  // The sprint applies its own condition where the sprint is computed, a few lines down.
+  p.rHold = stick.R.down ? p.rHold + dt : 0;
   if (p.rollT > 0) { stepRoll(dt); return; }
   if (p.mel) { stepMelee(dt); return; }
   if (p.hang) { stepHang(dt); return; }
@@ -6258,7 +6288,9 @@ function stepFoot(dt) {
   // in the hold kills the charge for the rest of it and the ceiling never leaves 9 m/s.
   // Raising `MOVE.sprint` could never have fixed that, and did not.
   // `p.rHold` is already "how long the right pad has been down", with no `far` test on it.
-  const chg = clamp(p.rHold / MOVE.chargeMax, 0, 1);
+  // A COMMITTED SHOT PLANTS HIM. Carrying the gun does not, and neither does flying -- this is
+  // the sprint's own gate and it belongs to the sprint, not to `rHold`.
+  const chg = p.aim ? 0 : clamp(p.rHold / MOVE.chargeMax, 0, 1);
   const want = s.mag > .1 ? MOVE.max * lerp(1, MOVE.sprint, chg) * s.mag * brake : 0;
   const tvx = dvx * want, tvz = dvz * want;
   // how long he has been asking, and how much of his legs that has bought him
@@ -6304,7 +6336,7 @@ function stepFoot(dt) {
   // spend the second jump on a flip at the exact moment the hold is meant to be lighting the
   // motor, and the two would fight every time you tried to fly out of a jump. While the pack
   // is out the second jump is simply not there -- the pack IS the air move.
-  const packed = KIT.cur === 'jet' && KIT.on && !p.board;
+  const packed = !!KIT.out.jet && !p.board;
   const again = !p.grounded && p.jumps > 0 && p.jumps < AIR.jumps && !p.mel && !p.hit && !packed;
   if (p.jump && (p.coyote > 0 || again)) {
     if (p.coyote > 0) {
@@ -7024,7 +7056,7 @@ function frame() {
     // looks identical armed and unarmed, and "the blaster doesn't work at all" is what an
     // invisible control reads as. Dim the moment it is out, full while the charge builds.
     const el = document.getElementById('stkRChg');
-    const out = KIT.on && KIT.cur === 'blaster' && !player.board;
+    const out = !!KIT.out.blaster;
     const k = player.aim ? (WEAP.min + (1 - WEAP.min) * player.chg) : 0;
     if (el) { el.style.opacity = player.aim ? '1' : (out ? '.34' : '0'); el.style.setProperty('--c', (k || 1).toFixed(3)); }
   }
