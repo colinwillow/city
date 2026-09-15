@@ -524,6 +524,46 @@ playwright unless he asks for it by name.
       charge  50%   top 11.5      jump 4.11 m       1.28 s, 17.9 m
       charge 100%   top 14.0      jump 5.66 m       1.51 s, 28.5 m
   On the board that thumb is still the ollie, so the wind-up is on foot only.
+- **BORROWED CHARACTERS: THE RETARGET IS ROTATION-ONLY, AND THE CLEVERER ONE IS A TRAP.**
+  Every candidate in `robits/` and `plutopia/` is rigged to a Mixamo skeleton, so Colin's 40
+  clips can be worn by them without re-exporting anything. `npm run rigs [glb ...]` measures
+  whether that will work before any of it is built — bone overlap against the 65 bones Colin's
+  clips actually drive, the rest-pose offset per bone, and the hip height:
+      robot (robits hero)   25/65   rest offset mean 12.4 deg, worst 91 (Hips)   hips 0.74 m
+      moussa_robit          41/65   mean 15.6, worst 91 (Hips)                   hips 0.57 m
+      alien_robit           49/65   mean 11.0                                    hips 0.73 m
+      cybergirl             41/65   mean 10.1                                    hips 0.86 m
+      alien_orange (pluto)  65/65   mean  0.0 — the same bind pose as Colin
+      creature_green        57/65   mean  0.0
+                                                          (Colin's own hips: 0.528 m)
+  **EVERY MISSING BONE IS A FINGER.** Not one candidate lacks a spine, arm, leg or head bone,
+  which is why this works at all: `_filterClipToScene` drops the tracks whose target is not in
+  the skin and nobody will ever see a finger curl on a skateboard at eight metres.
+  **ROBITS ALREADY PAID FOR THE HARD PART — READ ITS NOTE AT `index.html:4627` BEFORE
+  IMPROVING ANYTHING.** The obvious retarget, and the one that sounds right, is the rest-pose
+  delta `q_target = q_restT · inv(q_restS) · q_animS`. Robits shipped it, A/B'd it and turned
+  it **off**: the per-bone form ignores the PARENT-CHAIN term (`inv(restParentT)·restParentS`),
+  so the correction compounds down each limb — it splayed Moussa bow-legged and twisted his
+  arms inward, **arm divergence 4.6° → 33°**, even though the spine and thigh improved. What
+  actually ships there is `_retargetRotationOnly`: keep the `.quaternion` tracks, drop every
+  `.position` and `.scale` one, because a position track bakes the SOURCE's bone lengths and
+  applied to another skeleton it stretches it. That is a track filter — no resampling, no
+  per-keyframe maths — so it costs nothing at load, which is the other reason to prefer it.
+  Locomotion here is code-driven and the clips animate in place, so dropping the hips
+  translation is free.
+  **AND THE MEASUREMENT AGREES WITH THE VERDICT:** the Plutopia characters read 0.0° of
+  rest-pose offset from Colin, so for them a rest-delta would be a no-op anyway; the robits
+  ones read 10–19° with 91° at the Hips, and robits drives those rotation-only and it works.
+  **Do not re-derive the rest-delta without the parent term.**
+  **The hips are NOT a reliable scale reference for every rig.** `alien_orange` reports its
+  hips at −0.02 m because that rig's scaling lives somewhere other than the chain the tool
+  walks. Two rigs out of eight come back nonsense, so a per-character scale has to be measured
+  off the skinned mesh's GEOMETRY bounds — and never off `Box3.setFromObject`, for the reason
+  three hundred lines up.
+  **`tools/rigs.mjs` measures the hips off the WORLD MATRIX.** Its first version summed the
+  local translations up the parent chain, which ignores every rotation and scale on the way:
+  it put Colin's hips at 52.8 and three candidates at a NEGATIVE height, and that number was
+  about to pick the scale every character is drawn at.
 - **THE TITLE CARD IS THE GAME, NOT A SECOND SCENE (`TITLE`, `titleFrame`, `camAim`).**
   Plutopia builds a whole disposable planet for its card (`DIO.*`) because its world is
   procedural and the shot wants something that does not exist in play. This one already has
