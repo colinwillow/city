@@ -95,7 +95,31 @@
     background:radial-gradient(circle at 40% 32%,rgba(157,247,255,.13),rgba(10,14,40,.52) 62%,rgba(10,14,40,.62));
     box-shadow:0 4px 16px rgba(0,0,0,.45),inset 0 0 18px rgba(120,238,255,.06);cursor:pointer;-webkit-tap-highlight-color:transparent}
   .key.on{border-color:rgba(157,247,255,.95);box-shadow:0 0 22px rgba(120,238,255,.5),inset 0 0 22px rgba(120,238,255,.2);color:#fff}
-  #boardB{right:calc(166px + env(safe-area-inset-right));bottom:calc(61px + env(safe-area-inset-bottom))}
+  #kitB{right:calc(166px + env(safe-area-inset-right));bottom:calc(61px + env(safe-area-inset-bottom));
+    flex-direction:column;gap:2px;overflow:visible}
+  #kitB i{font-style:normal;font-size:21px;line-height:1}
+  #kitB u{text-decoration:none;font-size:8px;letter-spacing:.14em;opacity:.7}
+  /* THE HOLD RING. A long press and a slow tap are the same thing right up until one of them
+     surprises you, so the press that is about to open something says so before it does. */
+  #kitB.hold::after{content:'';position:absolute;inset:-5px;border-radius:50%;pointer-events:none;
+    background:conic-gradient(rgba(157,247,255,.85) calc(var(--h,0) * 360deg),rgba(157,247,255,0) 0);
+    -webkit-mask:radial-gradient(circle,transparent 61%,#000 64%);mask:radial-gradient(circle,transparent 61%,#000 64%)}
+  #kitR{position:fixed;inset:0;z-index:8;pointer-events:none}
+  #kitR[hidden]{display:none}
+  .kslot{position:fixed;width:58px;height:58px;border-radius:50%;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:1px;pointer-events:none;color:var(--ink);
+    border:1.5px solid rgba(157,247,255,.34);background:rgba(8,12,34,.92);
+    box-shadow:0 6px 20px rgba(0,0,0,.55);font:600 8px/1 var(--disp);letter-spacing:.12em;text-transform:uppercase}
+  .kslot i{font-style:normal;font-size:20px;line-height:1}
+  .kslot u{text-decoration:none;opacity:.65}
+  .kslot.has{border-color:rgba(157,247,255,.6)}
+  .kslot.over{border-color:rgba(157,247,255,1);background:rgba(20,44,70,.96);color:#fff;
+    box-shadow:0 0 22px rgba(120,238,255,.55);transform:scale(1.12)}
+  /* The charge, wound round the right stick: it is the one thing on screen that says how big
+     the shot you are about to take is, and it belongs where the thumb already is. */
+  #sticks .stick .chg{position:absolute;inset:-6px;border-radius:50%;pointer-events:none;opacity:0;
+    background:conic-gradient(rgba(198,156,255,.9) calc(var(--c,0) * 360deg),rgba(198,156,255,0) 0);
+    -webkit-mask:radial-gradient(circle,transparent 66%,#000 69%);mask:radial-gradient(circle,transparent 66%,#000 69%)}
   #resetB{top:calc(14px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));width:40px;height:40px;font-size:16px}
   #soundB{top:calc(14px + env(safe-area-inset-top));right:calc(62px + env(safe-area-inset-right));width:40px;height:40px;font-size:15px}
   #map{position:fixed;top:calc(62px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));
@@ -158,15 +182,16 @@
 <div id="title"><h1 class="word">Skate<i>City</i></h1><div id="chars"></div><div class="sub">swipe to change &middot; two thumbs</div><button id="startB">Start</button></div>
 <div id="sticks">
   <div class="stick" id="stkL"><div class="knob"></div><div class="lbl">MOVE</div></div>
-  <div class="stick" id="stkR"><div class="knob"></div><div class="lbl">LOOK</div></div>
+  <div class="stick" id="stkR"><div class="chg" id="stkRChg"></div><div class="knob"></div><div class="lbl">LOOK</div></div>
 </div>
-<div class="key" id="boardB">Board</div>
+<div class="key" id="kitB"><i>🛹</i><u>Board</u></div>
+<div id="kitR" hidden></div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c83</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c84</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -179,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c83';
+const BUILD = 'c84';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -498,6 +523,77 @@ const MELEE = {
   rollV: 9.5,
   hold: .55,         // of each strike he cannot steer out of; after that the stick has him back
 };
+// ---------- THE KIT, THE BLASTER AND THE JETPACK ----------
+// ONE BUTTON, NOT THREE. Plutopia's arrangement, and the reason it is worth copying: a phone
+// has two thumbs and a HUD full of them is a HUD you cannot play through. The key does what
+// the Board key used to do -- TAP and the thing in your hand goes on or off -- and PRESS AND
+// HOLD fans the rest of the kit out round it on an arc. Slide onto one, let go, and that is
+// what is in your hand; no second tap, and no lifting off in between. The whole gesture is
+// ONE pointer stream on the key, captured, so the slots never receive an event of their own:
+// the thumb is OVER the arc rather than on it, and hit-testing the rects is what "over" means.
+// A ring winds round the key while the hold counts, because otherwise a long press and a slow
+// tap are the same thing right up until one of them surprises you.
+const KIT = {
+  hold: 340,          // ms before the arc opens
+  r: 78,              // how far out the slots sit, in px
+  arc: [-2.45, -.70], // and the span they are spread over, in radians (up and to the left)
+  cur: 'board',       // what is in his hand
+  on: 0,              // and whether it is deployed -- the TAP toggles this, not the pick
+  slots: [
+    { k: 'board', label: 'Board', ico: '\u{1F6F9}' },
+    { k: 'blaster', label: 'Blaster', ico: '⚡' },
+    { k: 'jet', label: 'Jetpack', ico: '\u{1F680}' },
+  ],
+  key: 'city.kit',
+};
+// THE BLASTER. Plutopia's trigger, whole, because three separate things in it each rule out a
+// different way of firing by accident and dropping any one of them brings that way back:
+//   fireAt   how far up the pad it arms -- a long way, so a nudge cannot reach it
+//   keepAt   and how far back DOWN it has to slide to stand down again. The gap between the
+//            two is hysteresis: a thumb rolling inward as it lifts off must not cancel the
+//            shot you meant, and without it a full pull only fires if you let go at exactly
+//            full stretch, which nobody does
+//   armT     and how long it has to be up there. A flick to the top and straight back is not
+//            a shot however far it went -- which is also what keeps the melee flick alive
+//   fireArc  how far off straight up the stick may be and still be a trigger
+// That last one is what lets this share the pad with everything already on it: a TAP is still
+// a jump (`far` never reaches .80), a hold near the middle is still the sprint and the
+// charge-jump, and only a deliberate push UP is the trigger.
+const WEAP = {
+  url: 'models/alien_blaster.glb',
+  fireAt: .80, keepAt: .50, armT: .10, fireArc: 1.05,
+  cool: .42,            // seconds between shots
+  chargeT: .9,          // a full charge takes this long
+  min: .35,             // and a shot loosed early is this fraction of one
+  aimTurn: 2.6,         // while charging, left and right STEER him, in radians a second
+  len: .30,             // the blaster's length in his hand, measured to, not typed
+  // Where it sits in his hand. NOT derived: Colin has no weapon bone (his rig is 66 joints and
+  // every one of them mixamorig), so nothing in either file says where the grip goes. The
+  // barrel runs along -X in the blaster's own file -- measured, geometry -74.9..25.0 on X --
+  // and a hand joint's forward is +Z, which is the quarter turn `ry` starts at.
+  fit: { x: 0, y: 0, z: 0, rx: 0, ry: Math.PI / 2, rz: 0, s: 1 },
+  clip: '',             // the hook for a shoot clip the day there is one; see GAIT.sprint
+};
+// THE BOLT. It rides a fixed height above whatever is under it rather than flying a straight
+// line, which is Plutopia's rule and the reason a shot goes over a kerb instead of burying
+// itself in the first one. `stun` is the plasma part: a car it touches is dead in the road
+// for that long, lights arcing over it, and the traffic rules route round it because a
+// stopped car is something they already know how to handle.
+const BOLT = {
+  speed: 54, life: 2.2, rad: 1.5, ride: 1.1, climb: 30, fall: 11,
+  size: .30, stun: 2.6, n: 12,
+  hue0: '#7fe6ff', hue1: '#c69cff',
+};
+// THE JETPACK. Thrust against gravity while the pad is held, out of a tank that fills again
+// on the ground. `up` is deliberately over `MOVE.g` so he climbs while it burns, and `cap`
+// is what stops that being a launch: it is a ride.
+const JET = {
+  url: 'models/alien_jetpack.glb',
+  up: 34, cap: 9, burn: .55, fill: .42, from: .10, ease: .16,
+  size: .30, at: [0, .02, -.11], rot: [0, 0, 0],
+  bone: [/spine2$/i, /spine1$/i, /upperchest/i, /chest/i, /spine$/i],
+};
+
 // THE RIGHT STICK ORBITS, IT DOES NOT PITCH. Up and down on that pad are spent the
 // moment they move the lens, and they are worth more as verbs -- jump, and whatever
 // comes after it. So the elevation is a constant: a shallow look-down that keeps him
@@ -654,7 +750,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"7a8f51c7","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"7a8f51c7","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1178,6 +1274,229 @@ function stepSlash(dt) {
     m.material.opacity = SLASH.peak * (t < .14 ? t / .14 : (1 - (t - .14) / .86) ** 1.3);
   }
 }
+// ---------- the kit: gear on the body ----------
+const gear = { blaster: null, jet: null, hand: null, spine: null, key: '', bolts: [], boltGeo: null, boltMat: null };
+// EVERY PIECE IS PARENTED TO A BONE, AND THAT IS THE RIGHT CALL HERE FOR THE REASON THE TITLE
+// CARD'S BOARD IS NOT. The board is hung off the hand's WORLD MATRIX because there is no
+// holding clip and it has to be placed, scaled and turned by hand every frame anyway. A piece
+// of kit is different: it is authored to be held, and parenting means it follows every clip
+// for free -- the arm swing of the run, the tuck of a flip -- which a world matrix would have
+// to be told about. The 0.01 armature scale is not a problem as long as the thing hung on it
+// is sized in the BONE's units, which is what `fitGear` measures.
+function attachGear(gl, kind) {
+  if (!gl) return;
+  const model = gl.scene.clone(true);
+  model.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = true; o.frustumCulled = false;
+    o.material = o.material.clone();
+    o.material.roughness = 1; o.material.metalness = 0; o.material.envMapIntensity = 0;
+    // His own hook, which shadows the prototype's see-through hole entirely -- the same as
+    // Colin's own materials, and right for the same reason: the hole exists to reveal him.
+    o.material.onBeforeCompile = sh => { toonPatch(sh); sh.uniforms.uSpec = { value: COLINM.spec }; };
+    o.material.needsUpdate = true;
+  });
+  const g = new THREE.Group(); g.add(model); g.visible = false;
+  gear[kind] = { g, model };
+  return g;
+}
+// WHICH BONE, FOUND BY PATTERN RATHER THAN BY NAME. Every skin in here is a Mixamo rig but
+// they do not all spell the spine the same way, and a name that is merely absent gives a
+// silent no-jetpack rather than an error.
+function gearBone(root, pats) {
+  let bone = null, best = -1;
+  root.traverse(o => {
+    if (!o.isBone) return;
+    const nm = o.name.toLowerCase();
+    for (let i = 0; i < pats.length; i++) {
+      if (!pats[i].test(nm)) continue;
+      if (best < 0 || i < best) { best = i; bone = o; }   // earlier patterns win: the list is preference order
+      break;
+    }
+  });
+  return bone;
+}
+// SIZED AGAINST THE BONE'S OWN SCALE, NEVER THE WORLD'S. A joint in these exports carries a
+// hundredth-scale of its own and a child of it inherits that, so a metre in world space is a
+// hundred units here. Measured off the geometry and divided, the skateboard's rule -- a
+// re-export at any size lands right with no edit.
+const _gs = new THREE.Vector3(), _gb = new THREE.Box3();
+function fitOne(slot, bone, want, fit) {
+  if (!slot || !bone) return;
+  const m = slot.model;
+  m.position.set(0, 0, 0); m.rotation.set(0, 0, 0); m.scale.setScalar(1);
+  m.updateMatrixWorld(true);
+  _gb.setFromObject(m);
+  const len = Math.max(_gb.max.x - _gb.min.x, _gb.max.y - _gb.min.y, _gb.max.z - _gb.min.z);
+  bone.updateWorldMatrix(true, false);
+  const bs = bone.getWorldScale(_gs).x || 1;
+  const k = want / Math.max(1e-6, len * bs) * (fit.s === undefined ? 1 : fit.s);
+  m.scale.setScalar(k);
+  // Re-centre on the grip: the blaster's origin is not its middle (geometry -74.9..25.0 on X),
+  // so without this the offsets would be nudging a point outside the model.
+  m.position.set(-(_gb.min.x + _gb.max.x) / 2 * k, -(_gb.min.y + _gb.max.y) / 2 * k, -(_gb.min.z + _gb.max.z) / 2 * k);
+  slot.g.position.set(fit.x / bs, fit.y / bs, fit.z / bs);
+  slot.g.rotation.set(fit.rx || 0, fit.ry || 0, fit.rz || 0);
+  if (slot.g.parent !== bone) bone.add(slot.g);
+  return k;
+}
+// `city.weapFit()` -- the offsets are applied once when the gear is parented, so typing a new
+// one at the console would otherwise do nothing and read as the setting not existing. That
+// hole has been fallen into twice now (SHADE.k inside applyDbg, COP.gun at parent time), so
+// every hand-placed thing in this file gets a re-apply next to it.
+function weapFit() {
+  const root = colin.root && colin.model ? colin.model : null;
+  if (!root) return 'no skin yet';
+  gear.hand = null; gear.spine = null;
+  root.traverse(o => { if (o.name === 'mixamorig_RightHand') gear.hand = o; });
+  gear.spine = gearBone(root, JET.bone);
+  if (gear.blaster && gear.hand) fitOne(gear.blaster, gear.hand, WEAP.len, WEAP.fit);
+  if (gear.jet && gear.spine) {
+    fitOne(gear.jet, gear.spine, JET.size * COLIN_HEIGHT,
+      { x: JET.at[0], y: JET.at[1], z: JET.at[2], rx: JET.rot[0], ry: JET.rot[1], rz: JET.rot[2], s: 1 });
+  }
+  gearShow();
+  return { hand: !!gear.hand, spine: gear.spine ? gear.spine.name : null, fit: WEAP.fit, at: JET.at };
+}
+function gearShow() {
+  if (gear.blaster) gear.blaster.g.visible = KIT.on && KIT.cur === 'blaster';
+  if (gear.jet) gear.jet.g.visible = KIT.on && KIT.cur === 'jet';
+}
+// SWITCHING SKIN MOVES THE KIT WITH HIM. Every character owns his own root (see PARADE), so a
+// piece parented to Colin's hand stays on Colin's hand when the robot walks on -- which reads
+// as the gun being left behind on a man who has gone. `wear` calls this.
+function gearRehome() { if (gear.blaster || gear.jet) weapFit(); }
+
+// ---------- the trigger, the bolt and the thrust ----------
+// THE TRIGGER IS A FULL PULL, HELD -- see WEAP for why each of the four gates is there. This
+// runs BEFORE `stepFoot` reads the pad, so a charging thumb is not also a sprint.
+function stepAim(dt) {
+  const p = player;
+  const armed = KIT.on && KIT.cur === 'blaster' && !p.board && !p.hit && !p.mel && !p.hang && !p.lad;
+  if (!armed) { p.aim = 0; p.aimT = 0; p.chg = 0; return; }
+  p.shotT = Math.max(0, (p.shotT || 0) - dt);
+  const sx = stick.R.x, sy = -stick.R.y, mag = Math.hypot(sx, sy);
+  // UP, inside a cone. `atan2(x, y)` is the angle off straight up, so the cone is one test.
+  const up = sy, off = Math.abs(Math.atan2(sx, Math.max(1e-4, sy)));
+  const inCone = up > 0 && off < WEAP.fireArc;
+  if (!p.aim) {
+    // arming: far enough up, inside the cone, for long enough
+    if (stick.R.down && inCone && mag > WEAP.fireAt) { p.aimT += dt; if (p.aimT >= WEAP.armT) { p.aim = 1; p.chg = 0; } }
+    else p.aimT = 0;
+  } else {
+    p.chg = Math.min(1, p.chg + dt / WEAP.chargeT);
+    // WHILE CHARGING, LEFT AND RIGHT STEER HIM. The whole pad is the aim once it is committed,
+    // which is what makes "hold up, sweep to aim, let go" one gesture rather than three.
+    p.heading -= sx * WEAP.aimTurn * dt;
+    p.faceH += wrapAngle(p.heading - p.faceH) * Math.min(1, MOVE.face0 * dt);
+    // LETTING GO IS THE SHOT, and so is sliding back down past `keepAt` -- the hysteresis gap
+    // between that and `fireAt` is what stops a thumb rolling inward on the way off cancelling
+    // the shot you meant.
+    if (!stick.R.down || mag < WEAP.keepAt || !inCone) {
+      if (p.shotT <= 0) { boltFire(WEAP.min + (1 - WEAP.min) * p.chg); p.shotT = WEAP.cool; }
+      p.aim = 0; p.aimT = 0; p.chg = 0;
+    }
+  }
+}
+// ONE POOL, NEVER AN ALLOCATION PER SHOT. `n` of them, recycled, exactly the way the slash
+// marks and the contact blobs are.
+function boltMake() {
+  if (!gear.boltGeo) {
+    gear.boltGeo = new THREE.SphereGeometry(1, 10, 8);
+    gear.boltMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(BOLT.hue0), transparent: true,
+      opacity: .95, depthWrite: false, fog: false });
+  }
+  const m = new THREE.Mesh(gear.boltGeo, gear.boltMat.clone());
+  m.visible = false; m.renderOrder = 3; m.userData.noHole = true; m.frustumCulled = false;
+  scene.add(m); gear.bolts.push(m); return m;
+}
+function boltFire(k) {
+  const p = player;
+  let m = gear.bolts.find(b => !b.visible);
+  if (!m && gear.bolts.length < BOLT.n) m = boltMake();
+  if (!m) m = gear.bolts[0];
+  // OUT OF THE MUZZLE IF THERE IS ONE. The blaster is parented to his hand, so its own world
+  // matrix already knows where the barrel is and which way it points -- nothing about that is
+  // typed here. Without the model it leaves his chest along his facing, which is where a shot
+  // comes from on a man who is miming it.
+  const fx = Math.sin(p.faceH), fz = Math.cos(p.faceH);
+  let ox = p.pos.x + fx * .5, oy = p.pos.y + COLIN_HEIGHT * .62, oz = p.pos.z + fz * .5;
+  if (gear.blaster && gear.blaster.g.visible) {
+    gear.blaster.g.updateWorldMatrix(true, false);
+    gear.blaster.g.getWorldPosition(_gs); ox = _gs.x; oy = _gs.y; oz = _gs.z;
+  }
+  m.visible = true;
+  m.position.set(ox, oy, oz);
+  m.scale.setScalar(BOLT.size * (.7 + .6 * k));
+  m.material.color.set(k > .8 ? BOLT.hue1 : BOLT.hue0);
+  m.material.opacity = .95;
+  m.userData.vx = fx * BOLT.speed; m.userData.vz = fz * BOLT.speed;
+  m.userData.t = 0; m.userData.k = k;
+  slashArc(ox, oy, oz, Math.random() * 3, .6 + k * .5, 1);
+  snd.trick();
+}
+const _bz = new THREE.Vector3();
+function stepBolts(dt) {
+  for (const m of gear.bolts) {
+    if (!m.visible) continue;
+    const u = m.userData;
+    u.t += dt;
+    if (u.t > BOLT.life) { m.visible = false; continue; }
+    m.position.x += u.vx * dt; m.position.z += u.vz * dt;
+    // IT RIDES THE GROUND RATHER THAN FLYING A LINE. `ride` metres over whatever is under it,
+    // climbing at `climb` and settling at `fall` -- so it goes over a kerb and down into a dip
+    // and carries on, instead of burying itself in the first thing that is not flat. A slope
+    // steeper than it can climb still stops it, which is right: plasma should splash on a wall.
+    const g = groundAt(m.position.x, m.position.z, m.position.y + 3, 3);
+    const fy = (g.hit ? g.floor : hmAt(m.position.x, m.position.z)) + BOLT.ride;
+    m.position.y += clamp(fy - m.position.y, -BOLT.fall * dt, BOLT.climb * dt);
+    m.material.opacity = .95 * (1 - Math.max(0, (u.t - BOLT.life * .7) / (BOLT.life * .3)));
+    if (Math.abs(m.position.y - fy) > 2.2) { boltPop(m); continue; }   // it could not climb that
+    // A CAR IS DEAD IN THE ROAD FOR `stun`, WHICH IS THE PLASMA PART. The traffic rules need
+    // no new case for it: a stopped car is exactly what `blocked` and the stuck failsafe
+    // already know how to route round, so one field on the car is the whole mechanic.
+    let hit = 0;
+    for (const c of carsNear(m.position.x, m.position.z, 6, _cn)) {
+      if (Math.hypot(c.x - m.position.x, c.z - m.position.z) > BOLT.rad + c.hl) continue;
+      c.zap = BOLT.stun; c.speed = 0; hit = 1; break;
+    }
+    if (!hit) for (const c of cops) {
+      if (Math.hypot(c.x - m.position.x, c.z - m.position.z) > BOLT.rad + COP.r) continue;
+      if (Math.abs(c.y + COLIN_HEIGHT * .5 - m.position.y) > 1.6) continue;
+      c.hp = 0; copHit(c, Math.atan2(m.position.x - c.x, m.position.z - c.z) + Math.PI);
+      hit = 1; break;
+    }
+    if (hit) boltPop(m);
+  }
+}
+function boltPop(m) {
+  m.visible = false;
+  slashArc(m.position.x, m.position.y, m.position.z, Math.random() * 3, 1.4, 1);
+  slashArc(m.position.x, m.position.y + .3, m.position.z, Math.random() * 3, 1.0, 1);
+  snd.hit(1, m.position.x, m.position.z);
+}
+// THE THRUST. Held pad while the jetpack is out: up against gravity, capped so it is a ride
+// and not a launch, out of a tank that fills again on the ground.
+function stepJet(dt) {
+  const p = player;
+  const on = KIT.on && KIT.cur === 'jet' && !p.board && !p.hit && !p.hang && !p.lad && !p.mel;
+  if (p.fuel === undefined) p.fuel = 1;
+  if (!on) { p.jetK = 0; p.fuel = Math.min(1, p.fuel + JET.fill * dt); return; }
+  // Past the jump's own tap, so a tap still jumps and a HOLD is what lights it.
+  // `stick.R.far` IS A HIGH-WATER MARK FOR THE WHOLE TOUCH and must not be used here: one
+  // look anywhere in the hold would kill the thrust for the rest of it. That is exactly what
+  // held the sprint at 9 m/s for three builds. The INSTANTANEOUS magnitude is the test.
+  const rm = Math.hypot(stick.R.x, stick.R.y);
+  const want = stick.R.down && p.rHold > JET.from && rm < .55 && p.fuel > 0 ? 1 : 0;
+  p.jetK = damp(p.jetK || 0, want, JET.ease, dt);
+  if (want && p.fuel > 0) {
+    p.fuel = Math.max(0, p.fuel - JET.burn * dt);
+    p.vel.y = Math.min(JET.cap, p.vel.y + JET.up * p.jetK * dt);
+    p.grounded = false; p.jumps = 1;          // he does not also get a double jump out of it
+    if (p.jetK > .3) { p.airT = 0; p.landT = 0; }
+  } else if (p.grounded) p.fuel = Math.min(1, p.fuel + JET.fill * dt);
+}
+
 // ---------- contact blobs ----------
 // THE PART A SHADOW MAP IS GENUINELY BAD AT IS THE CONTACT UNDER HIS FEET, and it is the part
 // that does the most work: what grounds a thing is the dark under it. Plutopia stopped
@@ -2315,7 +2634,7 @@ function dropBoard() {
   if (!player.board) return;
   player.turnT = 0; player.turnRem = 0; player.rail = null;
   player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0;
-  player.board = false; board.visible = false; document.getElementById('boardB').classList.remove('on');
+  player.board = false; board.visible = false; KIT.on = 0; kitPaint();
 }
 // one integration, shared by all three stages; only the gravity and the damping differ
 function hitMove(dt, gk, half) {
@@ -2394,6 +2713,10 @@ function stepTraffic(dt) {
     // roughly the way I am?`) threw every crossing car away. That is why they drove through
     // each other: they were never looking.
     let cap = c.top; const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), rx = -fz, rz = fx;
+    // SHOT WITH THE PLASMA. It needs no new case anywhere in the crossing rules: a stopped car
+    // is exactly what `blocked` and the stuck failsafe already know how to route round, so
+    // one field on the car is the whole mechanic.
+    if (c.zap > 0) { c.zap -= dt; cap = 0; c.speed = Math.max(0, c.speed - TRAF.brake * 2 * dt); }
     c.stop = c.speed < .5 ? c.stop + dt : 0;
     let qd = 1e9, qv = 0;                      // the nearest car ahead IN MY LANE, and its speed
     _cf.length = 0;
@@ -2617,7 +2940,7 @@ function buildCity(gltf, ramps) {
     pc.mesh.geometry.computeBoundingBox(); const bb = pc.mesh.geometry.boundingBox;
     const hy = (/^truck/.test(pc.name) ? 9 : 12) + (hmAt(tile.cx, tile.cz) > 4 ? 5 : 0);   // m/s; the highway is faster
     const car = { g, id: cars.length, x: pc.pos.x, z: pc.pos.z, y: pc.pos.y, yaw, lift: Math.max(0, lift), from: tile, to, s: 0, lane: Math.random() < .5 ? 0 : 1,
-      speed: 5 + Math.random() * 4, top: hy * (0.8 + Math.random() * .4), stop: 0,
+      speed: 5 + Math.random() * 4, top: hy * (0.8 + Math.random() * .4), stop: 0, zap: 0,
       hw: (bb.max.x - bb.min.x) / 2 * sx, hl: (bb.max.y - bb.min.y) / 2 * sx, hh: (bb.max.z - bb.min.z) * sx, box: { minx: 0, maxx: 0, minz: 0, maxz: 0, miny: 0, maxy: 0 } };
     g.position.set(car.x, car.y, car.z); g.rotation.y = yaw; cityGroup.add(g); cars.push(car);
   }
@@ -3079,6 +3402,10 @@ function wear(key) {
   readySkin(skin);
   colin.model = skin.model; colin.mixer = skin.mixer; colin.actions = skin.actions;
   colin.hand = skin.hand; colin.root = skin.root; colin.cw = skin.cw;
+  // EVERY CHARACTER OWNS HIS OWN ROOT (see PARADE), so a piece parented to Colin's hand stays
+  // on Colin's hand when the robot walks on -- which reads as the gun being left behind on a
+  // man who has gone. The kit moves with whoever is current.
+  gearRehome();
   // everybody who is not him and not mid-walk goes away
   for (const k in CHARS.skins) { const o = CHARS.skins[k]; o.root.visible = (o === skin) || PARADE.walk.some(w => w.skin === o); }
   CHARS.cur = key; try { localStorage.setItem(CHARS.key, key); } catch (e) {}
@@ -3701,6 +4028,11 @@ function boardFlick(dx, dy) {
   // wind up; a flick is the one move left in it, and it costs no new control.
   if (!p.board) {
     if (p.hit) return;
+    // A CHARGE IS NOT A FLICK. The trigger is a long push UP and holding it there travels far
+    // enough, fast enough, to arm the flick detector too -- so without this every shot also
+    // threw a punch. `p.aim` is live from the moment the trigger arms, which is before any
+    // release can happen, so one test covers it.
+    if (p.aim || KIT.on && KIT.cur === 'blaster') return;
     if (p.grounded) meleeGo('hit');
     // IN THE AIR THE SAME FLICK PICKS WHICH WAY HE GOES OVER, and spends the second jump to
     // do it -- it is the tap with a direction on it, not a separate move. Up is a front flip
@@ -3718,8 +4050,100 @@ function boardFlick(dx, dy) {
   }
   snd.trick();
 }
-document.getElementById('boardB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleBoard(); });
 document.getElementById('resetB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); respawn(); });
+// ---------- the kit key ----------
+function kitUse() {
+  // THE TAP TOGGLES WHAT IS IN HIS HAND. The board keeps its own code path -- it is a whole
+  // locomotion mode rather than a held object -- so the key routes to it and the rest are gear.
+  if (KIT.cur === 'board') { toggleBoard(); KIT.on = player.board ? 1 : 0; }
+  else { KIT.on = KIT.on ? 0 : 1; if (KIT.on && player.board) toggleBoard(); }
+  gearShow(); kitPaint(); kitSave();
+}
+function kitPick(k) {
+  if (k === KIT.cur) return;
+  // Putting one away and taking another out is one motion: whatever was deployed goes.
+  if (KIT.cur === 'board' && player.board) toggleBoard();
+  KIT.cur = k; KIT.on = 0;
+  player.aim = 0; player.chg = 0; player.jetK = 0;
+  gearShow(); kitPaint(); kitSave();
+}
+function kitSave() { try { localStorage.setItem(KIT.key, KIT.cur); } catch (e) {} }
+function kitPaint() {
+  const b = document.getElementById('kitB'), s = KIT.slots.find(q => q.k === KIT.cur) || KIT.slots[0];
+  if (!b) return;
+  b.innerHTML = '<i>' + s.ico + '</i><u>' + s.label + '</u>';
+  b.classList.toggle('on', !!KIT.on);
+  const r = document.getElementById('kitR');
+  if (r) for (const el of r.children) el.classList.toggle('has', el.dataset.k === KIT.cur);
+}
+function kitBuild() {
+  const r = document.getElementById('kitR');
+  if (!r || r.children.length) return;
+  const kb = document.getElementById('kitB').getBoundingClientRect();
+  for (let i = 0; i < KIT.slots.length; i++) {
+    const s = KIT.slots[i];
+    const a = KIT.arc[0] + (KIT.arc[1] - KIT.arc[0]) * (KIT.slots.length === 1 ? .5 : i / (KIT.slots.length - 1));
+    const el = document.createElement('div');
+    el.className = 'kslot'; el.dataset.k = s.k;
+    el.innerHTML = '<i>' + s.ico + '</i><u>' + s.label + '</u>';
+    el.style.left = (kb.left + kb.width / 2 + Math.cos(a) * KIT.r - 29) + 'px';
+    el.style.top = (kb.top + kb.height / 2 + Math.sin(a) * KIT.r - 29) + 'px';
+    r.appendChild(el);
+  }
+}
+{
+  const key = document.getElementById('kitB'), ring = document.getElementById('kitR');
+  let t0 = 0, timer = 0, raf = 0, down = false, opened = false, over = null;
+  const tick = () => { if (!down) return; key.style.setProperty('--h', Math.min(1, (performance.now() - t0) / KIT.hold).toFixed(3)); raf = requestAnimationFrame(tick); };
+  const clear = () => { down = false; clearTimeout(timer); cancelAnimationFrame(raf); key.classList.remove('hold'); key.style.setProperty('--h', '0'); };
+  // WHICH SLOT THE THUMB IS ON, BY TRUE DISTANCE, because they sit on an ARC and two of them
+  // can share an x -- the horizontal-gap test that is right for a row picks the wrong one on a
+  // curve. Sliding back onto the key itself keeps whatever was already marked, so there is
+  // never a moment where letting go does nothing and you cannot tell why.
+  const hit = (x, y) => {
+    if (ring.hidden) return null;
+    const kb = key.getBoundingClientRect();
+    if (Math.hypot(x - (kb.left + kb.width / 2), y - (kb.top + kb.height / 2)) < kb.width * .6) return null;
+    let best = null, bd = 1e9;
+    for (const s of ring.children) {
+      const b = s.getBoundingClientRect();
+      const d = Math.hypot(x - (b.left + b.width / 2), y - (b.top + b.height / 2));
+      if (d < bd) { bd = d; best = s; }
+    }
+    return bd < 70 ? best : null;
+  };
+  const mark = s => { if (s === over) return; if (over) over.classList.remove('over'); over = s; if (s) s.classList.add('over'); };
+  const open = () => {
+    kitBuild(); ring.hidden = false;
+    // Opening highlights what is already in his hand, so it reads as "here is what you have,
+    // and here is the other one" rather than as an empty menu.
+    for (const b of ring.children) if (b.dataset.k === KIT.cur) { mark(b); return; }
+    mark(ring.children[0] || null);
+  };
+  const close = () => { ring.hidden = true; mark(null); };
+  key.addEventListener('pointerdown', e => {
+    e.stopPropagation(); e.preventDefault();
+    down = true; opened = false; t0 = performance.now();
+    key.setPointerCapture(e.pointerId);          // the slide has to keep arriving HERE
+    key.classList.add('hold'); raf = requestAnimationFrame(tick);
+    timer = setTimeout(() => { if (!down) return; opened = true; open(); clear(); down = true; key.classList.remove('hold'); }, KIT.hold);
+  });
+  key.addEventListener('pointermove', e => { if (!down || !opened) return; const s = hit(e.clientX, e.clientY); if (s) mark(s); });
+  const end = e => {
+    e.stopPropagation();
+    const was = down, chose = over && over.dataset.k;
+    clear();
+    if (!was) { close(); return; }
+    if (opened) { if (chose) kitPick(chose); close(); }
+    else { mark(null); kitUse(); }
+  };
+  key.addEventListener('pointerup', end);
+  key.addEventListener('pointercancel', e => { e.stopPropagation(); clear(); close(); });
+  addEventListener('pointerdown', e => { if (!ring.hidden && e.target !== key) close(); });
+  try { const k = localStorage.getItem(KIT.key); if (k && KIT.slots.some(s => s.k === k)) KIT.cur = k; } catch (e) {}
+  kitPaint();
+}
+
 // One switch for all of it. The master gain is where it lands, so the music and the wheel
 // loop -- which are not `play` calls and would otherwise carry on underneath -- go with it.
 document.getElementById('soundB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleSound(); });
@@ -3839,9 +4263,9 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
-function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
+function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; KIT.on = player.board ? 1 : 0; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
@@ -4885,7 +5309,10 @@ function frame() {
   toonSync();
   // The card runs the WHOLE scene -- traffic, clouds, his mixer, the post chain. Only the
   // player is suspended, and only because he is being posed rather than driven.
+  // BEFORE `stepPlayer`, so a thumb holding a charge is not also read as a sprint.
+  if (!TITLE.on) { stepAim(dt); stepJet(dt); }
   if (TITLE.on) titleFrame(dt); else stepPlayer(dt);
+  stepBolts(dt);
   stepTraffic(dt);
   stepCops(dt);      // ALWAYS. Skipping it on the title card leaves six men in the T-pose on
                      // the street behind the logo -- a mixer that never updates is a bind pose,
@@ -4896,6 +5323,10 @@ function frame() {
   stepHole();
   blobStep();
   stepSlash(dt);
+  {
+    const el = document.getElementById('stkRChg'), k = player.aim ? (WEAP.min + (1 - WEAP.min) * player.chg) : 0;
+    if (el) { el.style.opacity = k ? '1' : '0'; el.style.setProperty('--c', k.toFixed(3)); }
+  }
   jamScan(dt);
   drawMap(dt);
   if (colin.mixer) colin.mixer.update(dt);
@@ -4923,7 +5354,14 @@ frame();
     catch (e) { console.warn('[cop] no police_officer.glb', e); }
     try { gunGlb = await loadGLB(COP.gunUrl, 'issuing sidearms'); }
     catch (e) { console.warn('[cop] no pistol.glb -- they will chase you unarmed', e); }
-      buildCity(city, ramps);
+    try { attachGear(await loadGLB(WEAP.url, 'charging the blaster'), 'blaster'); }
+    catch (e) { console.warn('[kit] no blaster', e); }
+    try { attachGear(await loadGLB(JET.url, 'fuelling the jetpack'), 'jet'); }
+    catch (e) { console.warn('[kit] no jetpack', e); }
+    // NOT `weapFit()` HERE. Colin has not loaded yet at this point -- he is three awaits
+    // further down -- so there is no hand to hang anything on. `wear` calls `gearRehome` for
+    // the first skin and for every change after it, which is the one place that knows.
+    buildCity(city, ramps);
     buildLadders();
     if (copGlb) buildCops(copGlb, gunGlb);
     {
@@ -4951,7 +5389,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, gear, weapFit, kitPick, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

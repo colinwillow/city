@@ -941,6 +941,76 @@ playwright unless he asks for it by name.
   **Placed by `npm run spots 4`**, not by eye — same rule as the ramps.
   **The chip says `· NO COP GLB` / `· NO PISTOL GLB` unasked**, because a console warning is
   invisible on a phone.
+- **THE KIT IS ONE BUTTON, NOT THREE (`KIT`, the key where Board used to be).** A phone has two
+  thumbs and a HUD full of keys is a HUD you cannot play through, so Plutopia's arrangement
+  ports whole: **TAP** and the thing in your hand goes on or off, **PRESS AND HOLD** and the
+  rest of the kit fans out round it on an arc — slide onto one, let go, that is what you have.
+  No second tap and no lifting off in between.
+  **The whole gesture is ONE pointer stream on the key, captured**, so the slots never receive
+  an event of their own: the thumb is OVER the arc rather than on it, and hit-testing the
+  rects is what "over" means. **By TRUE DISTANCE, because they sit on an arc** — the
+  horizontal-gap test that is right for a row picks the wrong slot on a curve, where two of
+  them can share an x. Sliding back onto the key keeps whatever was marked, so there is never
+  a moment where letting go does nothing and you cannot tell why, and opening highlights what
+  is already in his hand so it reads as a branch rather than an empty menu.
+  **A ring winds round the key while the hold counts**, because a long press and a slow tap are
+  otherwise the same thing right up until one of them surprises you.
+  The board keeps its own code path — it is a whole locomotion mode, not a held object — so
+  the key routes to `toggleBoard` for that slot and to the gear for the rest.
+- **THE BLASTER'S TRIGGER IS A FULL PULL, HELD (`WEAP`, `stepAim`), AND ALL FOUR GATES EARN
+  THEIR KEEP.** Plutopia's, whole, because each one rules out a different way of firing by
+  accident and dropping any of them brings that way back:
+      fireAt  .80   how far up the pad it arms -- a nudge cannot reach it
+      keepAt  .50   and how far back DOWN to stand down. The GAP is hysteresis: a thumb
+                    rolling inward as it lifts must not cancel the shot you meant, and
+                    without it a full pull only fires from exactly full stretch
+      armT    .10   how long it has to be up there -- a flick to the top and straight back
+                    is not a shot however far it went
+      fireArc 1.05  how far off straight up it may be and still be a trigger
+  **That last one is what lets this share a pad that is already full.** A tap is still a jump
+  (`far` never reaches .80), a hold near the middle is still the sprint and the charge-jump,
+  and only a deliberate push UP is the trigger. **While charging, left and right STEER him** —
+  the whole pad becomes the aim once it is committed, which is what makes "hold up, sweep,
+  let go" one gesture instead of three.
+  **`stepAim` RUNS BEFORE `stepPlayer`**, so a thumb holding a charge is not also read as a
+  sprint. And **the melee flick had to be gated on it**: the trigger is a long push up, which
+  travels far enough and fast enough to arm the flick detector too, so without `p.aim` every
+  shot also threw a punch.
+  **Colin has no weapon bone and no shoot clip** — `WEAP.fit` is the hand offset, hand-placed
+  because nothing in either file says where the grip goes, and **`city.weapFit()` re-applies
+  it**. `WEAP.clip` is the hook for a shoot animation the day there is one.
+- **THE BOLT RIDES THE GROUND, IT DOES NOT FLY A LINE (`BOLT`, `stepBolts`).** `ride` metres
+  over whatever is under it, climbing at `climb` and settling at `fall`, so a shot goes over a
+  kerb and down into a dip and carries on instead of burying itself in the first thing that is
+  not flat. A slope steeper than it can climb still stops it, which is right — plasma should
+  splash on a wall.
+  **A ZAPPED CAR NEEDED NO NEW CASE ANYWHERE IN THE TRAFFIC RULES.** `car.zap` caps its speed
+  at zero for `BOLT.stun` seconds and that is the whole mechanic: a stopped car is exactly
+  what `blocked` and the stuck failsafe already know how to route round. One field.
+- **THE JETPACK (`JET`, `stepJet`) HANGS OFF THE SPINE BONE, FOUND BY PATTERN.** Every skin
+  here is a Mixamo rig but they do not all spell the spine the same way, and a name that is
+  merely absent gives a silent no-jetpack rather than an error, so `JET.bone` is an ordered
+  list of patterns and the earliest match wins.
+  **`up` is deliberately over `MOVE.g`** so he climbs while it burns, and `cap` is what stops
+  that being a launch: it is a ride.
+  **IT MUST NOT READ `stick.R.far`.** That is a HIGH-WATER MARK for the whole touch, so one
+  look anywhere in the hold would kill the thrust for the rest of it — which is precisely what
+  held the sprint at 9 m/s for three builds. The instantaneous magnitude is the test.
+- **EVERY PIECE OF KIT IS PARENTED TO A BONE, AND THAT IS RIGHT HERE FOR THE REASON THE TITLE
+  CARD'S BOARD IS NOT.** The board is hung off the hand's WORLD MATRIX because there is no
+  holding clip and it has to be placed, scaled and turned by hand every frame anyway. A piece
+  of kit is authored to be held, and parenting means it follows every clip for free — the arm
+  swing of the run, the tuck of a flip — which a world matrix would have to be told about.
+  The 0.01 armature scale is not a problem as long as the thing hung on it is **sized in the
+  BONE's units**, which `fitOne` measures off the geometry and divides, the skateboard's rule.
+  **And the model is re-centred on its own bounds first**: the blaster's origin is not its
+  middle (geometry −74.9..25.0 on X, barrel along −X), so without that the offsets would be
+  nudging a point outside the model.
+  **`wear` calls `gearRehome`.** Every character owns his own root, so a piece parented to
+  Colin's hand stays on Colin's hand when the robot walks on — which reads as the gun being
+  left behind on a man who has gone.
+  **`weapFit()` is NOT called at load time**: the gear finishes loading three awaits before
+  Colin does, so there is no hand to hang it on yet. `wear` is the one place that knows.
 - **THE TITLE CARD IS THE GAME, NOT A SECOND SCENE (`TITLE`, `titleFrame`, `camAim`).**
   Plutopia builds a whole disposable planet for its card (`DIO.*`) because its world is
   procedural and the shot wants something that does not exist in play. This one already has
