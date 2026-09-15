@@ -95,7 +95,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c63</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c64</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -107,7 +107,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c63';
+const BUILD = 'c64';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1586,15 +1586,43 @@ function segTarget(car, s, out) {
   const o = laneOffset(a, b, dx, dz, car.lane); const rx = -dz * o, rz = dx * o;   // right = (-fz, fx)
   out.x = a.cx + rx + dx * l * s; out.z = a.cz + rz + dz * l * s; out.len = l; return out;
 }
-const _tg = { x: 0, z: 0, len: 1 }, _cn = [];
+const _tg = { x: 0, z: 0, len: 1 }, _cn = [], _cf = [];
 const TRAF = {
   r: 2.4,          // the circle a car is treated as, for the PREDICTION only
   look: 2.2,       // how many seconds ahead it looks
   gap: 6.5,        // the following distance in a queue
-  stuck: 2.5,      // stopped this long and it takes priority whatever give-way says
+  stuck: 3.5,      // stopped this long and it takes priority whatever the order says
   sep: .92,        // how much of (hl + hl) two cars are pushed back out to
   brake: 14, acc: 4,
+  // --- the crossing rules (see CROSSING POINTS below) ---
+  reach: 26,       // metres of path ahead a crossing is looked for at all
+  zone: 4.6,       // how far SHORT of the crossing a yielding car puts its stop line
+  yieldA: 5.5,     // the deceleration that stop line is planned against
+  commit: 3.2,     // inside this of the crossing he is committed and never stops
+  clear: 8.0,      // road that must be free PAST the crossing before he may enter it
+  slot: .5,        // seconds of headway inside which two arrivals count as a tie
+  vmin: 3,         // the speed a stopped car is credited with, so its arrival time is finite
+  para: .25,       // |sin| between two headings under which they are not crossing at all
 };
+// WHO GOES FIRST AT A CROSSING. Pulled out as its own function because it is the whole
+// algorithm and `npm run cross` runs THIS TEXT, not a copy of it, against the standoffs.
+// FIRST COME, FIRST SERVED, ON PREDICTED ARRIVAL TIME -- which is a TOTAL ORDER, and that
+// is the entire point. Give-way-to-the-right is anti-symmetric on a PAIR and that is all it
+// is: four cars meeting at a four-way each have a car on their right, so all four yield,
+// all four stop, and the only thing that moves is the clock. That is the pile-up. An order
+// that is total cannot close a cycle, so somebody always has the right of way.
+// Ties inside `slot` go to the lower id, which is arbitrary and stable -- and stable is the
+// property that matters, because a tiebreak that flips is two cars alternately lurching.
+/* CROSS:START */
+function crossGive(myD, myV, hisD, hisV, myId, hisId, myStop, hisStop, blocked, T) {
+  if (myD < T.commit) return false;              // already in it: stopping here IS the pile-up
+  if (blocked) return true;                      // no room on the far side, so it cannot be entered
+  if (myStop > T.stuck && myStop >= hisStop) return false;   // the failsafe, if the order ever jams
+  const mt = Math.max(0, myD) / Math.max(myV, T.vmin);
+  const ht = Math.max(0, hisD) / Math.max(hisV, T.vmin);
+  return Math.abs(mt - ht) > T.slot ? mt > ht : myId > hisId;
+}
+/* CROSS:END */
 // A car that reaches him throws him. Its own speed decides how far; HIS FACING decides
 // which way he goes over, which is the only thing the two clips differ by.
 // A CAR HIT IS A SEQUENCE, NOT A TIMER. Flying, then the road, then lying on it, then
@@ -1793,34 +1821,47 @@ function stepTraffic(dt) {
     // each other: they were never looking.
     let cap = c.top; const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), rx = -fz, rz = fx;
     c.stop = c.speed < .5 ? c.stop + dt : 0;
-    for (const o of carsNear(c.x, c.z, 18, _cn)) {
+    let qd = 1e9, qv = 0;                      // the nearest car ahead IN MY LANE, and its speed
+    _cf.length = 0;
+    for (const o of carsNear(c.x, c.z, 28, _cn)) {
       if (o === c) continue;
       const ox = o.x - c.x, oz = o.z - c.z, d2 = ox * ox + oz * oz;
-      if (d2 > 324 || d2 < 1e-4) continue;
-      const d = Math.sqrt(d2);
+      if (d2 > 784 || d2 < 1e-4) continue;
       const ahead = ox * fx + oz * fz, side = ox * rx + oz * rz;
       const ofx = Math.sin(o.yaw), ofz = Math.cos(o.yaw);
       if (ofx * fx + ofz * fz > .55 && ahead > 0 && Math.abs(side) < 2.6) {
-        cap = Math.min(cap, Math.max(0, o.speed + (ahead - TRAF.gap) * .9));   // queue behind him
+        if (d2 < 324) cap = Math.min(cap, Math.max(0, o.speed + (ahead - TRAF.gap) * .9));  // queue behind him
+        if (ahead < qd) { qd = ahead; qv = o.speed; }
         continue;
       }
-      // PREDICT instead of guessing from headings. Constant velocity, closest approach, and
-      // if the two would come inside a car's width of each other within TRAF.look seconds,
-      // it is a conflict worth slowing for.
-      const vx = ofx * o.speed - fx * c.speed, vz = ofz * o.speed - fz * c.speed;
-      const vv = vx * vx + vz * vz; if (vv < .05) continue;
-      const t = -(ox * vx + oz * vz) / vv;
-      if (t < 0 || t > TRAF.look) continue;
-      const mx = ox + vx * t, mz = oz + vz * t;
-      if (mx * mx + mz * mz > 4 * TRAF.r * TRAF.r) continue;
-      // GIVE WAY TO THE RIGHT. It settles a pair without either car having to know what the
-      // other decided, which is the whole trick -- two cars that both yield is a deadlock
-      // and two that both go is a crash. The stuck timer is the escape hatch: a car that has
-      // sat still long enough takes priority whatever the rule says, so a four-way standoff
-      // creeps out of itself instead of sitting there for ever.
-      if (c.stop > TRAF.stuck) continue;
-      if (side <= 0 && o.stop < TRAF.stuck) continue;
-      cap = Math.min(cap, Math.max(0, (d - 2 * TRAF.r) * .8));
+      // CROSSING POINTS, NOT CROSSING CARS -- and that is the fix for the pile-up.
+      // The old test found the moment of closest approach and then capped the speed by the
+      // distance to the OTHER CAR. So a car giving way crept forward until it was right on
+      // top of the one it was yielding to, which means it stopped IN the junction. Every
+      // car doing the correct thing ends up parked in the box. That is what he is seeing.
+      // Two cars on fixed paths do not need 2D avoidance: they need the one point where
+      // their paths cross, and a decision about who reaches it first. Solve the two rays
+      // for that point, take each car's distance ALONG ITS OWN PATH to it, and the yielder
+      // brakes to a stop line SHORT of it -- so the box stays empty and the other car has
+      // somewhere to be. This is how traffic microsimulation does it; it is not a heuristic.
+      const den = fx * ofz - fz * ofx;
+      if (Math.abs(den) < TRAF.para) continue;   // parallel or head-on: separate lanes, never a crossing
+      const ta = (ox * ofz - oz * ofx) / den;    // how far I drive to reach the crossing
+      const tb = (ox * fz - oz * fx) / den;      // how far he drives to reach it
+      if (ta < -TRAF.r || tb < -TRAF.r) continue;            // one of us is already through it
+      if (ta > TRAF.reach || tb > TRAF.reach) continue;      // too far off to be anyone's problem yet
+      _cf.push(ta, tb, o.speed, o.stop, o.id);
+    }
+    for (let i = 0; i < _cf.length; i += 5) {
+      const ta = _cf[i];
+      // DO NOT BLOCK THE BOX. Right of way is permission to cross, never permission to stop
+      // halfway across: if the queue ahead is stationary and its tail is inside the junction,
+      // entering it strands a car in everybody else's path and the jam stops being local.
+      const blocked = qv < 1.6 && qd - ta < TRAF.clear;
+      if (!crossGive(ta, c.speed, _cf[i + 1], _cf[i + 2], c.id, _cf[i + 4], c.stop, _cf[i + 3], blocked, TRAF)) continue;
+      // v = sqrt(2 a d) is the fastest he can be going and still stop on the line. A linear
+      // taper either slams on at the last moment or rolls through; this is just the physics.
+      cap = Math.min(cap, Math.sqrt(2 * TRAF.yieldA * Math.max(0, ta - TRAF.zone)));
     }
     c.speed = cap < c.speed ? Math.max(cap, c.speed - TRAF.brake * dt) : Math.min(cap, c.speed + TRAF.acc * dt);
     c.x += fx * c.speed * dt; c.z += fz * c.speed * dt;
@@ -1997,7 +2038,7 @@ function buildCity(gltf, ramps) {
     const lift = pc.pos.y - hmAt(pc.pos.x, pc.pos.z);
     pc.mesh.geometry.computeBoundingBox(); const bb = pc.mesh.geometry.boundingBox;
     const hy = (/^truck/.test(pc.name) ? 9 : 12) + (hmAt(tile.cx, tile.cz) > 4 ? 5 : 0);   // m/s; the highway is faster
-    const car = { g, x: pc.pos.x, z: pc.pos.z, y: pc.pos.y, yaw, lift: Math.max(0, lift), from: tile, to, s: 0, lane: Math.random() < .5 ? 0 : 1,
+    const car = { g, id: cars.length, x: pc.pos.x, z: pc.pos.z, y: pc.pos.y, yaw, lift: Math.max(0, lift), from: tile, to, s: 0, lane: Math.random() < .5 ? 0 : 1,
       speed: 5 + Math.random() * 4, top: hy * (0.8 + Math.random() * .4), stop: 0,
       hw: (bb.max.x - bb.min.x) / 2 * sx, hl: (bb.max.y - bb.min.y) / 2 * sx, hh: (bb.max.z - bb.min.z) * sx, box: { minx: 0, maxx: 0, minz: 0, maxz: 0, miny: 0, maxy: 0 } };
     g.position.set(car.x, car.y, car.z); g.rotation.y = yaw; cityGroup.add(g); cars.push(car);

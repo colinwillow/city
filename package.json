@@ -14,7 +14,9 @@
     "spots": "node tools/spots.mjs",
     "rails": "node tools/rails.mjs",
     "normals": "node tools/normals.mjs",
-    "sky": "node tools/sky.mjs"
+    "sky": "node tools/sky.mjs",
+    "junc": "node tools/junc.mjs",
+    "cross": "node tools/cross.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

@@ -216,23 +216,65 @@ playwright unless he asks for it by name.
   436 down, which looked like a broken mesh. It is not: it is MIRRORED (determinant −1124), and
   `rasterMesh`'s determinant flip two lines further down already puts it the right way up. The
   exclusion took the hills away for a problem that was already solved.
-- **FOLLOWING AND CROSSING ARE TWO DIFFERENT PROBLEMS AND ONLY ONE WAS SOLVED.** Following is
-  longitudinal — a car in my lane going my way, match its speed at a gap. Crossing is not: at
-  a junction the other car is at ninety degrees and its heading says nothing about whether we
-  are going to meet, so the old test ("is he pointing roughly the way I am?") threw away every
-  crossing car. That is why they drove through each other — they were never looking. It
-  PREDICTS now: constant velocity, closest approach, conflict if the two would come inside a
-  car's width within `TRAF.look`.
-  **Priority is GIVE WAY TO THE RIGHT**, which settles a pair without either car knowing what
-  the other decided — two that both yield is a deadlock and two that both go is a crash. The
-  rule is anti-symmetric on a real crossing (verified numerically, not argued: exactly one of
-  each pair yields). `TRAF.stuck` is the escape hatch — a car sat still that long takes
-  priority whatever give-way says, so a four-way standoff creeps out of itself.
-  A second pass pushes overlapping cars apart, because the rule above is a driver and drivers
-  get it wrong; each pair is seen from both sides so each pushes half.
-  Cars have **their own grid cell (`CARCELL` 16)**, not the solids' 8: four hundred cars each
+- **FOLLOWING AND CROSSING ARE TWO DIFFERENT PROBLEMS.** Following is longitudinal — a car
+  in my lane going my way, match its speed at a gap. Crossing is not: at a junction the other
+  car is at ninety degrees and its heading says nothing about whether we are going to meet.
+- **CARS ON FIXED PATHS DO NOT NEED 2D AVOIDANCE. THEY NEED THE POINT WHERE THE PATHS CROSS.**
+  The old code found the moment of closest approach and then capped speed by the distance to
+  the OTHER CAR — so a car giving way crept forward until it was on top of the car it was
+  yielding to, which means **it stopped inside the junction**. Every car doing the correct
+  thing ended up parked in the box, and that is the pile-up he reported.
+  Solve the two rays instead. With `den = fx*ofz - fz*ofx` (which is `sin` of the angle
+  between them, so `|den| < TRAF.para` means they are not crossing at all — head-on and
+  same-direction both fall out here, and they are in different lanes anyway):
+      ta = (ox*ofz - oz*ofx) / den     my distance ALONG MY PATH to the crossing
+      tb = (ox*fz  - oz*fx ) / den     his, along his
+  The yielder brakes to a stop line `TRAF.zone` SHORT of it on `v = sqrt(2·a·d)` — the
+  physics, not a linear taper that either slams on late or rolls through. The box stays
+  empty, so the car with right of way has somewhere to be.
+  **The planning decel (`yieldA` 5.5) is deliberately under the real one (`brake` 14)**, which
+  is what makes the profile self-correcting: a highway car too fast to plan a comfortable stop
+  inside `reach` still makes the line, just harder.
+- **PRIORITY MUST BE A TOTAL ORDER. GIVE WAY TO THE RIGHT IS NOT ONE.** It is anti-symmetric
+  on a PAIR and that is all it is — which the old note in this file claimed as proof and which
+  proves nothing about three cars or eight. Four cars at a four-way each have a car on their
+  right, so all four yield and nothing moves; the stuck timer then releases them all at once.
+  `crossGive` is **first come, first served on predicted arrival time**, ties inside
+  `TRAF.slot` broken by the lower `car.id`. Arbitrary, but *stable* — and stable is the
+  property that matters, because a tiebreak that flips is two cars alternately lurching.
+  A total order cannot close a cycle, so somebody always has the right of way.
+  It is also self-reinforcing: a yielder that slows raises its own arrival time and goes on
+  yielding, while the car with priority accelerates and keeps it.
+- **RIGHT OF WAY IS PERMISSION TO CROSS, NEVER PERMISSION TO STOP HALFWAY (`TRAF.clear`).**
+  If the queue ahead is stationary and its tail is inside the junction, entering strands a car
+  in everybody else's path and the jam stops being local. `blocked` outranks even the stuck
+  failsafe. And `ta < TRAF.commit` is checked FIRST: once he is that close he is already in
+  it, and stopping there IS the pile-up.
+- **`npm run cross` RUNS THE SHIPPED RULE, NOT A RESTATEMENT OF IT.** It lifts `crossGive`
+  and `TRAF` out of `index.html` between the `CROSS:START/END` markers and evaluates that
+  text — because a tool that measures a copy of the code is the mistake `normals.mjs` made
+  about `normGeo`, and it cost a build. Eight standoffs, old rule against new:
+      EIGHT, two per approach     old NEVER clears, 45.5 s stopped in the box -> 7.3 s, 0.00
+      TWELVE, three per approach  old NEVER clears, 45.7 s in the box         -> 9.3 s, 0.00
+      four-way jittered           old min gap 1.23 m (a near miss)            -> 5.10 m
+  **Two things in that harness are load-bearing and were both wrong first time.** Cars must be
+  placed IN THEIR LANE (`laneOffset` is 2.88 m on a 12 m road) — without the offset the N and
+  S cars share one line, every head-on reads as a collision, and the four-way deadlocked for
+  a reason that does not exist. And "in the box" must mean **stopped on somebody's crossing
+  point**, not merely near the middle: a car halted on its own stop line is doing the right
+  thing and must not be counted.
+- **`npm run junc` SAYS WHY THERE ARE NO TRAFFIC LIGHTS.** A junction-reservation or signal
+  scheme — the obvious answer, and a real one — needs junctions, and this road graph has none
+  to find. 489 road slabs, 171 of them with both axes present, and **99% of those touch
+  another**: cluster them and you get 40 boxes whose radii run to 135 m, one of them 38 tiles,
+  with 27 of the 40 having under 12 m of clear road to the next. A signal on that is one car
+  at a time across a third of the city. The graph is a soup of 12 m slabs, not a set of
+  intersections, which is exactly why the algorithm has to be per-pair and geometric.
+- Cars have **their own grid cell (`CARCELL` 16)**, not the solids' 8: four hundred cars each
   asking their neighbours twice a frame is the one place in this file where the bucket size
-  shows up in the frame time.
+  shows up in the frame time. **The crossing query is 28 m, not 18** — it has to see far
+  enough to stop (17.7 m at top speed plus the stop line) — and that is roughly 25 cells
+  against 16, the one deliberate cost of all this.
 - **Ground is a REAL triangle collider now (`TRI`, `groundAt`), not the heightmap.** Every
   ground triangle — roads, land, grass, sand, parking, bridge, courts — is stored in world
   space in a 4 m grid and queried by point-in-triangle. It returns TWO answers: the highest
