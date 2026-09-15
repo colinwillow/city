@@ -1568,9 +1568,28 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   would carve him toward whatever he looked at. The aim still drives the shot and the camera;
   it just stops driving the body. (There is no riding-and-shooting POSE, so he holds the
   ordinary board stance: the mechanic works, the animation is a gap.)
-  **THE JETPACK IS WORN ON THE BOARD AND BURNED ON FOOT**, and that is the one honest limit in
-  this build. Thrust writes `p.vel.y` and `p.grounded`, which `stepSkate` also owns; a
-  hoverboard is a mechanic rather than a toggle.
+  **AND THE PACK BURNS ON THE BOARD TOO (c114) — THE HOVERBOARD.** The worry was that the
+  thrust writes `p.vel.y` and `p.grounded` while `stepSkate` also owns them. **The ORDER is
+  what makes it safe**: `stepJet` runs BEFORE `stepPlayer`, so the lift is added to the
+  velocity and `stepSkate` then integrates it with its own gravity and its own ground snap.
+  The jet proposes, the skate physics disposes, and there is no second integrator anywhere.
+  **A hover landing is safe because a skate landing does not BAIL** — it scrubs speed on a
+  sideways or half-finished one and hands him back. Checked before enabling it rather than
+  after: a hoverboard that drops the deck every time you set down is not a hoverboard.
+  **`JET.board` IS TWO MULTIPLIERS, NOT A SECOND TUNING PASS.** A jetpack on foot is a CLIMB;
+  under a board it wants to be a HOVER, or the deck becomes a lift and the skating stops being
+  the point. `up` x.78 keeps the thrust above gravity (22.5 against `SK8.g` 20, a ratio of 1.12
+  against the 1.44 he gets on foot) so he still climbs, slowly, and `cap` x.55 holds the top of
+  that climb to a drift. Multipliers rather than their own numbers, so the day `up` is retuned
+  the hoverboard follows it instead of quietly falling out of agreement with it.
+  **`SK8.g` IS 20, THE SAME AS `MOVE.g`** — which is the only reason this is two multipliers
+  and not a re-derivation. Check that before copying any other airborne number across.
+  **The second jump stays a foot thing.** `p.jumps = 1` spends the double so a tap cannot also
+  flip him; riding, that tap is the ollie and the rail catch, which `stepSkate` owns.
+  **THE BLASTER ALREADY FIRED WHILE FLYING** and needed nothing — `stepAim`'s gate never
+  mentioned the jetpack, which is what independent slots buys. Releasing the trigger does end
+  the thrust, because the release IS the thumb leaving the pad; `JET.ease` makes that a .16 s
+  fade rather than a cut, so a shot costs a little altitude instead of dropping him.
   **AND `p.rHold` MEANS ONE THING AGAIN.** c108 put the aim test in `rHold` itself, which was
   the right rule in the wrong place: with both out it also cut the THRUST the instant you
   pushed up to charge, and dropping out of the sky because you aimed is not a trade anybody

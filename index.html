@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c113</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c114</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c113';
+const BUILD = 'c114';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -773,6 +773,17 @@ const JET = {
   // number copied across two different gravities means something else. Lengths take the same
   // .625 the bolt does: cap 15 -> 9.4, drift 5.5 -> 3.4, puff 2.3 -> 1.44, blast 3.4 -> 2.1.
   up: 28.8, cap: 9.4, burn: .62, fill: .38, from: .12, ease: .16,
+  // THE HOVERBOARD (c114). The pack burns while he is RIDING, and the only thing that changes
+  // is how hard: a jetpack on foot is a climb, a jetpack under a board wants to be a HOVER, or
+  // the deck simply becomes a lift and the skating stops being the point.
+  // `board.up` keeps the thrust ABOVE gravity -- 28.8 x .78 = 22.5 against `SK8.g` 20, a ratio
+  // of 1.12 against the 1.44 he gets on foot -- so he still climbs, slowly, and `board.cap`
+  // holds the top of that climb to a drift rather than a launch. Multipliers rather than their
+  // own numbers, so the day `up` is retuned the hoverboard follows it instead of drifting out
+  // of agreement with it.
+  // `SK8.g` IS 20, THE SAME AS `MOVE.g`, so the ratio carries over with nothing re-derived --
+  // which is the only reason this is two multipliers and not a second tuning pass.
+  board: { up: .78, cap: .55 },
   // PUTT, PUTT, PUTT. `every` is the gap between cards, and it is what makes a jetpack read as
   // a motor rather than as a jet of gas: a continuous stream is a shader effect, a rhythm of
   // discrete puffs is drawn animation. The FIRST one is the ignition bank (a crack), every one
@@ -2427,11 +2438,15 @@ function stepBolts(dt) {
 // and not a launch, out of a tank that fills again on the ground.
 function stepJet(dt) {
   const p = player;
-  // WORN ON THE BOARD, BURNED ON FOOT. The pack co-exists with everything -- it is on his back
-  // and it is visible -- but the thrust writes `p.vel.y` and `p.grounded`, which `stepSkate`
-  // also owns, and a hoverboard is a mechanic rather than a toggle. `!p.board` is the one
-  // honest limit in this build and it is here rather than spread about.
-  const on = KIT.out.jet && !p.board && !p.hit && !p.hang && !p.lad && !p.mel;
+  // IT BURNS ON THE BOARD TOO. The worry was that the thrust writes `p.vel.y` and `p.grounded`
+  // while `stepSkate` also owns them -- but the ORDER is what makes it safe: `stepJet` runs
+  // BEFORE `stepPlayer`, so the lift is added to the velocity and `stepSkate` then integrates
+  // it with its own gravity and its own ground snap. The jet proposes, the skate physics
+  // disposes, and there is no second integrator.
+  // And a hover landing is safe because a skate landing does not BAIL -- it scrubs speed on a
+  // sideways or half-finished one and hands him back. Checked before enabling this rather
+  // than after: a hoverboard that drops the deck every time you set down is not a hoverboard.
+  const on = KIT.out.jet && !p.hit && !p.hang && !p.lad && !p.mel;
   if (p.fuel === undefined) p.fuel = 1;
   if (!on) { p.jetK = 0; p.fuel = Math.min(1, p.fuel + JET.fill * dt); return; }
   // Past the jump's own tap, so a tap still jumps and a HOLD is what lights it.
@@ -2468,8 +2483,15 @@ function stepJet(dt) {
   } else { p.jetLit = 0; p.jetT = 0; }
   if (want && p.fuel > 0) {
     p.fuel = Math.max(0, p.fuel - JET.burn * dt);
-    p.vel.y = Math.min(JET.cap, p.vel.y + JET.up * p.jetK * dt);
-    p.grounded = false; p.jumps = 1;          // he does not also get a double jump out of it
+    // A HOVER UNDER THE BOARD, A CLIMB ON FOOT -- see `JET.board` for why those are two
+    // strengths of one thing rather than two mechanics.
+    const B = p.board ? JET.board : null;
+    p.vel.y = Math.min(JET.cap * (B ? B.cap : 1), p.vel.y + JET.up * (B ? B.up : 1) * p.jetK * dt);
+    p.grounded = false;
+    // THE SECOND JUMP IS THE PACK'S ON FOOT AND THE BOARD'S OWN OLLIE IS NOT ITS BUSINESS.
+    // `p.jumps = 1` spends the double so a tap cannot also flip him; riding, the tap is the
+    // ollie and the rail catch, which `stepSkate` owns and which must be left alone.
+    if (!p.board) p.jumps = 1;
     if (p.jetK > .3) { p.airT = 0; p.landT = 0; }
   } else if (p.grounded) p.fuel = Math.min(1, p.fuel + JET.fill * dt);
 }
