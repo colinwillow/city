@@ -126,7 +126,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c66</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c67</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -138,7 +138,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c66';
+const BUILD = 'c67';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -314,6 +314,19 @@ const TRICK = {
   bail: .45,         // what an unlanded trick costs him
   pivot: .95,        // the height a body flip turns about, which carries the board round
   rest: .14,         // how fast the board settles back under him after a landing
+  // A BARREL ROLL IS GEOMETRY TOO -- there is no clip for one, so he holds the ordinary air
+  // pose and the WHOLE of him turns about his own forward axis, the board carried round with
+  // him. `colin.root.rotation.z` is already that axis: the root is Euler XYZ, so Z is applied
+  // innermost, in his own frame, and he faces +Z in his file. It is the same channel `lean`
+  // uses, which is the proof it is the right one -- leaning into a turn IS a roll about
+  // forward, only smaller.
+  roll: true,
+  // A ROLL OWNS THE AIR. Hold left or right and he spins (a yaw); FLICK it and he rolls --
+  // but the pad's history is seeded at the CENTRE on pointerdown, so a thumb SLAMMED to the
+  // edge to start a hard spin is, by the detector's own definition, also a flick. That is
+  // not a bug to work around, it is the same gesture: so the roll goes first and the yaw is
+  // held off until it finishes, after which the still-held thumb spins him as it always did.
+  rollLock: true,
 };
 // THE RIGHT STICK ORBITS, IT DOES NOT PITCH. Up and down on that pad are spent the
 // moment they move the lens, and they are worth more as verbs -- jump, and whatever
@@ -2485,7 +2498,9 @@ function colinAnim(dt) {
     // no grind clip yet, so the crouch stands in: it is the only board pose with his knees
     // bent and it reads far better on a rail than the ollie hang does.
     if (p.rail) { colinScale('skate_idol_crouch', 1); t['skate_idol_crouch'] = 1; }
-    else if (!p.grounded) t[p.trick ? (p.trick === 'front' ? 'front_flip' : 'back_flip')
+    // A ROLL HAS NO CLIP AND MUST NOT BORROW ONE: he holds the ordinary air pose and the
+    // geometry turns him. Asking for a flip clip here would flip him INSIDE the roll.
+    else if (!p.grounded) t[p.trick === 'front' ? 'front_flip' : p.trick === 'back' ? 'back_flip'
                        : p.airT < .28 ? 'skate_ollie_init_air' : 'skate_ollie_air'] = 1;
     else if (p.popT > 0) { colinScale('skate_idol_crouch', 2.8); t['skate_idol_crouch'] = 1; }   // the compression
     else if (p.landT > 0) t['skate_ollie_landing'] = 1;
@@ -2604,9 +2619,12 @@ function bindStick(el, out, onTap, onFlick, rel, onRel) {
 bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
   const p = player;
   if (!p.board || p.grounded || p.hit || p.trick) return;
-  if (Math.abs(dy) <= Math.abs(dx)) return;             // left/right is the held spin
-  const nm = dy < 0 ? 'front_flip' : 'back_flip';
-  if (!colin.actions[nm]) return;
+  // SIDEWAYS IS A BARREL ROLL. It used to bail out here -- left and right were the held spin
+  // and nothing else -- but a fast sweep and a hold are two different gestures on the same
+  // axis, and the pad has always been able to tell them apart.
+  const side = Math.abs(dy) <= Math.abs(dx);
+  const nm = side ? null : dy < 0 ? 'front_flip' : 'back_flip';
+  if (nm && !colin.actions[nm]) return;
   // THE TRICK FILLS THE JUMP, so the clip is stretched to the air he has left rather than
   // the other way round. It has to be: an ollie is 1.26 s of air and back_flip is 1.77 s
   // of clip, so at 1x he could never once have landed it, while front_flip at .80 would
@@ -2614,9 +2632,13 @@ bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
   const gy = groundAt(p.pos.x, p.pos.z, p.pos.y, SK8.step);
   const h = Math.max(0, p.pos.y - (gy.hit ? gy.floor : p.pos.y));
   const air = (p.vel.y + Math.sqrt(p.vel.y * p.vel.y + 2 * SK8.g * h)) / SK8.g;
-  p.trick = dy < 0 ? 'front' : 'back'; p.trickT = 0;
+  // ROLLING RIGHT IS A POSITIVE ANGLE. Rz(a) takes his local up (0,1,0) to (-sin a, cos a),
+  // and his local +X is his LEFT (he faces +Z, so Ry(faceH) sends +X to (cos h, -sin h),
+  // which is -right) -- so a > 0 tips his head toward his right. Derived, not felt: if it
+  // comes out mirrored on the phone this is the one sign to flip.
+  p.trick = side ? (dx > 0 ? 'rollR' : 'rollL') : dy < 0 ? 'front' : 'back'; p.trickT = 0;
   p.trickDur = clamp(air * .88, .42, 1.7);
-  colinScale(nm, clipLen(nm, p.trickDur) / p.trickDur);
+  if (nm) colinScale(nm, clipLen(nm, p.trickDur) / p.trickDur);
   snd.flip();
 }, false);
 // A TAP AND A HELD CROUCH ARE THE SAME GESTURE, released. The pad still orbits: push it
@@ -2958,7 +2980,11 @@ function stepSkate(dt) {
   // most of the old speed range. It would now be a rail for everything above half throttle.
   const rate = speed < .4 ? SK8.pivot : lerp(SK8.turnLo, SK8.turnHi, clamp(speed / 20, 0, 1));
   const airX = clamp(stick.L.x + ((keys.d || keys.arrowright) ? 1 : 0) - ((keys.a || keys.arrowleft) ? 1 : 0), -1, 1);
-  const turn = p.turnT ? 0 : p.grounded ? steer * rate * dt
+  // A ROLL OWNS THE AIR (`TRICK.rollLock`). The thumb slam that fires a barrel roll is still
+  // sitting on the edge of the pad, and without this it would yaw him through his own roll --
+  // two rotations at once, which reads as neither. The hold takes over the moment it lands.
+  const rolling = TRICK.rollLock && (p.trick === 'rollL' || p.trick === 'rollR');
+  const turn = p.turnT || rolling ? 0 : p.grounded ? steer * rate * dt
     // NEGATED. Heading grows from +Z toward +X, which reads as anticlockwise from behind
     // him -- so a thumb pushed right was spinning him left. Checked on the device, not
     // derived: the handedness argument is the kind that comes out backwards half the time.
@@ -3062,11 +3088,28 @@ function stepPlayer(dt) {
   if (player.grounded && player.safeT > 2 && hmAt(player.pos.x, player.pos.z) > -.5 && !player.wall) { player.safe.copy(player.pos); player.safeT = 0; }
   poseColin(dt);
 }
+const _roll = new THREE.Vector3();   // the barrel roll's pivot offset, shared by Colin and the deck
 function poseColin(dt) {
   colin.root.position.copy(player.pos); if (player.board) colin.root.position.y += BOARD.deck;
   colin.root.rotation.set(0, player.faceH, 0);
   const lean = damp(player.lean, player.board ? -player.steer * SK8.lean : 0, .1, dt); player.lean = lean;
-  colin.root.rotation.z = lean * .6;
+  // THE BARREL ROLL. No clip: the whole of him turns about his own forward axis, which is
+  // `rotation.z` on a root whose Euler order is XYZ -- Z applied innermost, in his own frame.
+  // It turns about his WAIST, not his feet (`TRICK.pivot`, the same height the body flip
+  // turns about): about the origin his head would sweep a 1.7 m circle and he would orbit
+  // rather than roll. The offset is the pivot point held still while the body comes round
+  // it -- Rz(a) applied to (0, -pivot, 0) less where it started -- and it has to be added to
+  // COLIN AND THE BOARD ALIKE, or the deck stays behind while he goes round it.
+  const rollA = player.trick === 'rollL' || player.trick === 'rollR'
+    ? (player.trick === 'rollR' ? 1 : -1) * Math.PI * 2 * clamp(player.trickT / Math.max(.05, player.trickDur), 0, 1) : 0;
+  colin.root.rotation.z = lean * .6 + rollA;
+  _roll.set(0, 0, 0);
+  if (rollA) {
+    const sa = Math.sin(rollA), h = player.faceH, k = TRICK.pivot;
+    // his local +X is his left: Ry(h) sends (1,0,0) to (cos h, 0, -sin h)
+    _roll.set(k * sa * Math.cos(h), k * (1 - Math.cos(rollA)), -k * sa * Math.sin(h));
+    colin.root.position.add(_roll);
+  }
   if (player.board) {
     // YXZ: Z is applied in the board's own frame, and the deck runs along its local Z, so
     // rotation.z IS the kickflip axis. Y is world yaw, which is the shove-it. They stack.
@@ -3076,7 +3119,7 @@ function poseColin(dt) {
     const lag = player.turnT > 0 ? -player.turnSide * Math.sin(Math.PI * clamp(1 - player.turnT / Math.max(.05, player.turnFull), 0, 1)) * SK8.turnLag * clamp(player.turnFull / SK8.turnDur, .25, 1) : 0;
     board.position.copy(player.pos); board.rotation.set(0, player.heading + player.bYawA + lag, 0, 'YXZ');
     if (player.grounded) { groundNormal(player.pos.x, player.pos.z, player.pos.y, gN); const fx = Math.sin(player.heading), fz = Math.cos(player.heading); const pitch = Math.atan2(gN.x * fx + gN.z * fz, gN.y); board.rotation.x = pitch; }
-    else if (player.trick) {
+    else if (player.trick === 'front' || player.trick === 'back') {
       // His feet stay on it, so it turns about the same point his body does rather than
       // about itself: offset (0,-pivot,0) taken round by the same angle and added back.
       // +rotation.x tips his local up toward his local forward, which is the front flip.
@@ -3085,7 +3128,8 @@ function poseColin(dt) {
       board.position.x -= cy * sa * fx; board.position.z -= cy * sa * fz; board.position.y += cy * (1 - Math.cos(a));
       board.rotation.x = a;
     }
-    board.rotation.z = lean + player.bRollA; board.position.y += player.pushK * .01;
+    board.rotation.z = lean + player.bRollA + rollA; board.position.add(_roll);
+    board.position.y += player.pushK * .01;
   }
 }
 
