@@ -1072,6 +1072,23 @@ playwright unless he asks for it by name.
   otherwise the same thing right up until one of them surprises you.
   The board keeps its own code path — it is a whole locomotion mode, not a held object — so
   the key routes to `toggleBoard` for that slot and to the gear for the rest.
+  **`KIT.on` HAS EXACTLY ONE OWNER, AND c84 GAVE IT THREE.** It means "the CURRENT slot is
+  deployed". `toggleBoard` and `dropBoard` were also writing it, and they mean "he is on a
+  skateboard" — two different facts sharing one variable, which went wrong three ways at once
+  and looked like three separate bugs:
+      * equipping the blaster WHILE ON THE BOARD called `toggleBoard` to dismount, which then
+        set `KIT.on = 0` and un-equipped the thing just equipped;
+      * `dropBoard` runs on every knock-down — a car, a bullet, a bail — so being hit put the
+        blaster or the jetpack away;
+      * and `gearShow` reads `KIT.on`, so whatever WAS visible went invisible on that press,
+        which reads as "I picked the blaster and it took the jetpack away".
+  **The board's deployed state is DERIVED, never mirrored**: `kitOut()` returns `player.board`
+  for that slot and `KIT.on` for the rest. One fact, one place.
+  **The chip says what is in his hand** (`· blaster OUT` / `· blaster away`), because "the
+  blaster doesn't work" and "the blaster is not equipped" are different bugs that look
+  identical from a phone. **And the charge ring shows dim the moment it is out**, not only
+  while charging — a pad that looks identical armed and unarmed is a control nobody finds, and
+  an invisible control reads exactly as a broken one.
 - **THE BLASTER'S TRIGGER IS A FULL PULL, HELD (`WEAP`, `stepAim`), AND ALL FOUR GATES EARN
   THEIR KEEP.** Plutopia's, whole, because each one rules out a different way of firing by
   accident and dropping any of them brings that way back:
@@ -1108,9 +1125,17 @@ playwright unless he asks for it by name.
   list of patterns and the earliest match wins.
   **`up` is deliberately over `MOVE.g`** so he climbs while it burns, and `cap` is what stops
   that being a launch: it is a ride.
-  **IT MUST NOT READ `stick.R.far`.** That is a HIGH-WATER MARK for the whole touch, so one
-  look anywhere in the hold would kill the thrust for the rest of it — which is precisely what
-  held the sprint at 9 m/s for three builds. The instantaneous magnitude is the test.
+  **HOLD THE PAD AND HE FLIES, WHEREVER THE THUMB IS.** The first version also wanted the
+  thumb near the middle, which is the wrong test twice over: `stick.R.far` is a HIGH-WATER MARK
+  for the whole touch, so one look would have killed the thrust for the rest of it (the bug
+  that held the sprint at 9 m/s for three builds) — and even the *instantaneous* magnitude
+  fights the camera, because that pad is still the look and you cannot fly and see where you
+  are going at once. The gate is just "held past the tap": a TAP still jumps, a HOLD flies, and
+  a drag does both, which is what flying wants.
+  **AND IT REPLACES THE DOUBLE JUMP.** One thumb cannot mean both — a tap in the air would
+  spend the second jump on a flip at the exact moment the hold is meant to be lighting the
+  motor, and the two would fight every time you flew out of a jump. While the pack is out the
+  second jump is simply not there: the pack IS the air move.
 - **EVERY PIECE OF KIT IS PARENTED TO A BONE, AND THAT IS RIGHT HERE FOR THE REASON THE TITLE
   CARD'S BOARD IS NOT.** The board is hung off the hand's WORLD MATRIX because there is no
   holding clip and it has to be placed, scaled and turned by hand every frame anyway. A piece

@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c88</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c89</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c88';
+const BUILD = 'c89';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -596,7 +596,10 @@ const JET = {
   // after it is `puff` -- which is the same drawings two frames in, so the crack is simply not
   // played. No word on any of them: a motor running is not a punchline.
   every: .085, puff: 1.5, blast: 2.2, drift: 4.2,
-  size: .30, at: [0, .02, -.11], rot: [0, 0, 0],
+  // `at` is in the SPINE BONE's own frame: across, along, and out from his back. Clear of him
+  // rather than in him -- "it fits decent but could move backwards a little bit".
+  // `city.JET.at[2] = -.19; city.weapFit()` nudges it live.
+  size: .30, at: [0, .02, -.15], rot: [0, 0, 0],
   bone: [/spine2$/i, /spine1$/i, /upperchest/i, /chest/i, /spine$/i],
 };
 
@@ -1666,8 +1669,9 @@ function weapFit() {
   return { hand: !!gear.hand, spine: gear.spine ? gear.spine.name : null, fit: WEAP.fit, at: JET.at };
 }
 function gearShow() {
-  if (gear.blaster) gear.blaster.g.visible = KIT.on && KIT.cur === 'blaster';
-  if (gear.jet) gear.jet.g.visible = KIT.on && KIT.cur === 'jet';
+  const out = KIT.cur !== 'board' && KIT.on;
+  if (gear.blaster) gear.blaster.g.visible = !!(out && KIT.cur === 'blaster');
+  if (gear.jet) gear.jet.g.visible = !!(out && KIT.cur === 'jet');
 }
 // SWITCHING SKIN MOVES THE KIT WITH HIM. Every character owns his own root (see PARADE), so a
 // piece parented to Colin's hand stays on Colin's hand when the robot walks on -- which reads
@@ -1793,11 +1797,15 @@ function stepJet(dt) {
   if (p.fuel === undefined) p.fuel = 1;
   if (!on) { p.jetK = 0; p.fuel = Math.min(1, p.fuel + JET.fill * dt); return; }
   // Past the jump's own tap, so a tap still jumps and a HOLD is what lights it.
-  // `stick.R.far` IS A HIGH-WATER MARK FOR THE WHOLE TOUCH and must not be used here: one
-  // look anywhere in the hold would kill the thrust for the rest of it. That is exactly what
-  // held the sprint at 9 m/s for three builds. The INSTANTANEOUS magnitude is the test.
-  const rm = Math.hypot(stick.R.x, stick.R.y);
-  const want = stick.R.down && p.rHold > JET.from && rm < .55 && p.fuel > 0 ? 1 : 0;
+  // HOLD THE PAD AND HE FLIES, WHEREVER THE THUMB IS. The first version also wanted the thumb
+  // near the middle (`rm < .55`), which is the wrong test twice over: `stick.R.far` is a
+  // HIGH-WATER MARK for the whole touch, so one look would have killed the thrust for the rest
+  // of it -- the bug that held the sprint at 9 m/s for three builds -- and even the
+  // instantaneous magnitude fights the camera, because the pad is still the look and you
+  // cannot fly and see where you are going at the same time.
+  // So the gate is just "held past the tap". A TAP still jumps (`onRel` needs `far < .42` and
+  // `from` is .10 s), a HOLD flies, and a drag does both, which is what flying wants.
+  const want = stick.R.down && p.rHold > JET.from && p.fuel > 0 ? 1 : 0;
   const lit = p.jetK > .12;
   p.jetK = damp(p.jetK || 0, want, JET.ease, dt);
   // The puffs come out of the nozzle, which is the pack on his back, and are thrown DOWN and
@@ -2304,6 +2312,9 @@ function missing() {
   // THE STARS. A wanted level you cannot see is a wanted level you cannot play around, and
   // "why is everyone shooting me" is the question it exists to answer before it is asked.
   if (HEAT.n > .05) m += ' · ' + '\u2605'.repeat(Math.max(1, Math.ceil(HEAT.n)));
+  // WHAT IS IN HIS HAND, because "the blaster doesn't work" and "the blaster is not equipped"
+  // are different bugs and they look identical from a phone.
+  if (KIT.cur !== 'board') m += ' · ' + KIT.cur + (kitOut() ? ' OUT' : ' away');
   if (!cops.length) m += ' · NO COP GLB';
   else if (!cops[0].gun) m += ' · NO PISTOL GLB';
   if (JAM.n) m += ' · JAM ' + JAM.n + '@' + JAM.x.toFixed(0) + ',' + JAM.z.toFixed(0);
@@ -2960,7 +2971,7 @@ function dropBoard() {
   if (!player.board) return;
   player.turnT = 0; player.turnRem = 0; player.rail = null;
   player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0;
-  player.board = false; board.visible = false; KIT.on = 0; kitPaint();
+  player.board = false; board.visible = false; kitPaint();
 }
 // one integration, shared by all three stages; only the gravity and the damping differ
 function hitMove(dt, gk, half) {
@@ -4646,11 +4657,28 @@ function boardFlick(dx, dy) {
 }
 document.getElementById('resetB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); respawn(); });
 // ---------- the kit key ----------
+// IS THE THING IN HIS HAND OUT? The board's answer is `player.board` and nothing else --
+// deriving it rather than mirroring it is the whole fix for c84's worst bug.
+// `KIT.on` USED TO BE WRITTEN BY `toggleBoard` AND `dropBoard`, AND IT IS NOT THEIRS.
+// It means "the CURRENT slot is deployed", and those two mean "he is on a skateboard" -- two
+// different facts sharing one variable, which went wrong three ways at once:
+//   * equipping the blaster WHILE ON THE BOARD called `toggleBoard` to dismount, which then
+//     set `KIT.on = 0` and un-equipped the thing you had just equipped;
+//   * `dropBoard` runs on every knock-down -- a car, a bullet, a bail -- so being hit put your
+//     blaster or jetpack away;
+//   * and because `gearShow` reads `KIT.on`, the piece that WAS visible went invisible on the
+//     same press, which reads as "I picked the blaster and it took the jetpack away".
+// One variable, three symptoms, and every one of them looks like a different bug.
+function kitOut() { return KIT.cur === 'board' ? (player.board ? 1 : 0) : KIT.on; }
 function kitUse() {
-  // THE TAP TOGGLES WHAT IS IN HIS HAND. The board keeps its own code path -- it is a whole
-  // locomotion mode rather than a held object -- so the key routes to it and the rest are gear.
-  if (KIT.cur === 'board') { toggleBoard(); KIT.on = player.board ? 1 : 0; }
-  else { KIT.on = KIT.on ? 0 : 1; if (KIT.on && player.board) toggleBoard(); }
+  // THE TAP TAKES THE CURRENT THING OUT OR PUTS IT AWAY. The board keeps its own code path --
+  // it is a whole locomotion mode rather than a held object -- so the key routes to it.
+  if (KIT.cur === 'board') toggleBoard();
+  else {
+    const want = KIT.on ? 0 : 1;
+    if (want && player.board) toggleBoard();   // dismount first; it no longer touches KIT.on
+    KIT.on = want;
+  }
   gearShow(); kitPaint(); kitSave();
 }
 function kitPick(k) {
@@ -4666,7 +4694,7 @@ function kitPaint() {
   const b = document.getElementById('kitB'), s = KIT.slots.find(q => q.k === KIT.cur) || KIT.slots[0];
   if (!b) return;
   b.innerHTML = '<i>' + s.ico + '</i><u>' + s.label + '</u>';
-  b.classList.toggle('on', !!KIT.on);
+  b.classList.toggle('on', !!kitOut());
   const r = document.getElementById('kitR');
   if (r) for (const el of r.children) el.classList.toggle('has', el.dataset.k === KIT.cur);
 }
@@ -4862,7 +4890,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
   speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
-function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; KIT.on = player.board ? 1 : 0; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
+function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
@@ -5227,7 +5255,12 @@ function stepFoot(dt) {
   if (p.grounded) { p.jumps = 0; p.air = ''; }
   // THE SECOND ONE IS THE SAME TAP. `coyote` is what says the ground is still his; past that
   // he has one more in him, and that one goes over.
-  const again = !p.grounded && p.jumps > 0 && p.jumps < AIR.jumps && !p.mel && !p.hit;
+  // THE JETPACK REPLACES THE DOUBLE JUMP. One thumb cannot mean both: a tap in the air would
+  // spend the second jump on a flip at the exact moment the hold is meant to be lighting the
+  // motor, and the two would fight every time you tried to fly out of a jump. While the pack
+  // is out the second jump is simply not there -- the pack IS the air move.
+  const packed = KIT.cur === 'jet' && KIT.on && !p.board;
+  const again = !p.grounded && p.jumps > 0 && p.jumps < AIR.jumps && !p.mel && !p.hit && !packed;
   if (p.jump && (p.coyote > 0 || again)) {
     if (p.coyote > 0) {
       // A CHARGE JUMP. Held, it is higher AND longer -- the forward part goes along his TRAVEL
@@ -5923,8 +5956,13 @@ function frame() {
   stepSlash(dt);
   fxStep(dt);
   {
-    const el = document.getElementById('stkRChg'), k = player.aim ? (WEAP.min + (1 - WEAP.min) * player.chg) : 0;
-    if (el) { el.style.opacity = k ? '1' : '0'; el.style.setProperty('--c', k.toFixed(3)); }
+    // THE RING IS ALSO HOW HE FINDS THE CONTROL. Showing it only while charging means the pad
+    // looks identical armed and unarmed, and "the blaster doesn't work at all" is what an
+    // invisible control reads as. Dim the moment it is out, full while the charge builds.
+    const el = document.getElementById('stkRChg');
+    const out = KIT.on && KIT.cur === 'blaster' && !player.board;
+    const k = player.aim ? (WEAP.min + (1 - WEAP.min) * player.chg) : 0;
+    if (el) { el.style.opacity = player.aim ? '1' : (out ? '.34' : '0'); el.style.setProperty('--c', (k || 1).toFixed(3)); }
   }
   jamScan(dt);
   drawMap(dt);
