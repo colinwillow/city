@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c87</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c88</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c87';
+const BUILD = 'c88';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -590,6 +590,12 @@ const BOLT = {
 const JET = {
   url: 'models/alien_jetpack.glb',
   up: 34, cap: 9, burn: .55, fill: .42, from: .10, ease: .16,
+  // PUTT, PUTT, PUTT. `every` is the gap between cards, and it is what makes a jetpack read as
+  // a motor rather than as a jet of gas: a continuous stream is a shader effect, a rhythm of
+  // discrete puffs is drawn animation. The FIRST one is the ignition bank (a crack), every one
+  // after it is `puff` -- which is the same drawings two frames in, so the crack is simply not
+  // played. No word on any of them: a motor running is not a punchline.
+  every: .085, puff: 1.5, blast: 2.2, drift: 4.2,
   size: .30, at: [0, .02, -.11], rot: [0, 0, 0],
   bone: [/spine2$/i, /spine1$/i, /upperchest/i, /chest/i, /spine$/i],
 };
@@ -1181,6 +1187,287 @@ function holePatch(sh) {
 }
 // Follows his chest on screen. Everything here is in rtScene pixels, because that is the
 // buffer the scene pass writes and gl_FragCoord is measured in.
+// ---------- CARD EFFECTS ----------
+// PLUTOPIA'S, PORTED WHOLE, AND THE STUTTER IS THE STYLE. Flat cards that play a hand-drawn
+// sprite sheet at `fps` and HOLD each drawing for three film frames -- 24 over 3 -- which is
+// how animation has drawn smoke and impacts for eighty years and is the one thing a smooth
+// particle system cannot do. Some of them say a word, because a hit is an event worth naming.
+//
+// ONE SHEET, ONE MATERIAL, ONE DRAW CALL, and a "bank" is only a WINDOW into it: start two
+// frames in and the crack at the front is simply not played. So the same run of drawings gives
+// several effects and adding a look to a new weapon is a row of drawing in `fxTex` plus a line
+// in `FX.bank`, never a second particle system.
+//
+// AND THE WORD BELONGS WHERE THERE IS ONE EVENT TO NAME. Plutopia's own note: a motor running
+// is not a punchline, and an onomatopoeia four times a second is a joke told four times a
+// second. The jetpack has no word; a punch landing and a bolt arriving do.
+const FX = {
+  url: null,          // a PNG of his own, when there is one; null draws the placeholder below
+  cols: 7,            // a square sheet, 7 x 7: 49 cells
+  fps: 8,             // 24 over 3 -- the hold IS the look
+  size: 1.5,          // the card, in world metres
+  cell: 128,          // placeholder resolution per cell
+  n: 180,             // the pool. A spent one is discarded in the shader.
+  t: 0,               // its own clock, because the card's step needs a monotonic second count
+  on: 1,
+  // WHICH CELLS EACH EFFECT OWNS, as [first, count].
+  bank: {
+    jet:   [0, 12],   // the jetpack lighting: a crack, then flame going to smoke
+    puff:  [3, 9],    // every putt after it -- no crack, no word: a motor is not a punchline
+    flash: [0, 4],    // a muzzle: the crack and the first flame, and nothing after it
+    pow:   [14, 10],  // a punch landing: spark, POW, and a little smoke
+    boom:  [24, 12],  // a bolt arriving: the star, BOOM, and debris going grey
+    hit:   [29, 7],   // a smaller one -- the same debris with no star and no word
+    zap:   [36, 12],  // the plasma on a car: a crackle, ZAP, and arcs fading cold
+  },
+};
+FX.life = Object.keys(FX.bank).reduce((m, k) => Math.max(m, FX.bank[k][1]), 1) / FX.fps;
+let _fx = null;
+function fxTex() {
+  const S = FX.cell, N = FX.cols, cv = document.createElement('canvas');
+  cv.width = cv.height = S * N;
+  const g = cv.getContext('2d');
+  // A LUMPY BLOB: a ring of points at wobbling radii, FILLED ONCE. The edge has to read as
+  // drawn rather than as a circle, and one fill is what keeps the alpha uniform -- the same
+  // reason the slash mark traces both edges of its ribbon instead of stroking an arc.
+  const blob = (cx, cy, r, lumps, seed, fill) => {
+    g.beginPath();
+    for (let i = 0; i <= 48; i++) {
+      const a = i / 48 * Math.PI * 2;
+      const w = 1 + Math.sin(a * lumps + seed) * .17 + Math.sin(a * (lumps * 2 + 1) + seed * 2.3) * .09;
+      const x = cx + Math.cos(a) * r * w, y = cy + Math.sin(a) * r * w;
+      if (i) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+    g.closePath(); g.fillStyle = fill; g.fill();
+  };
+  const star = (cx, cy, r, pts, inner, seed, fill) => {
+    g.beginPath();
+    for (let i = 0; i < pts * 2; i++) {
+      const a = i / (pts * 2) * Math.PI * 2 + seed;
+      const rr = r * (i % 2 ? inner : 1) * (1 + Math.sin(i * 2.7 + seed) * .12);
+      const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+      if (i) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+    g.closePath(); g.fillStyle = fill; g.fill();
+  };
+  // A WORD, DRAWN RATHER THAN TYPESET: a fat dark outline under a hot fill, so it survives
+  // being forty pixels across on a phone and still reads as ink laid on top of the render.
+  const word = (txt, k, tilt, back) => {
+    const sc = .85 + k * .40;
+    g.rotate(tilt + k * .07); g.scale(sc, sc);
+    star(0, 0, S * .42, 9, .52, 2.2, back || 'rgba(255,168,64,' + (.55 - k * .38) + ')');
+    g.font = 'bold ' + (S * (txt.length > 3 ? .30 : .38)) + 'px Impact, Haettenschweiler, "Arial Black", sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineJoin = 'round'; g.lineWidth = S * .105;
+    g.strokeStyle = 'rgba(22,14,28,' + (.94 - k * .5) + ')'; g.strokeText(txt, 0, 0);
+    g.fillStyle = 'rgba(255,246,214,' + (1 - k * .55) + ')'; g.fillText(txt, 0, 0);
+  };
+  const flame = (r, k, f) => {
+    blob(0, 0, r, 3, f * .9, 'rgba(255,132,44,' + (.92 - k * .22) + ')');
+    blob(0, -r * .12, r * (.66 - k * .16), 4, f * 1.4, 'rgba(255,206,110,' + (.95 - k * .25) + ')');
+    if (k < .7) blob(0, -r * .2, r * (.36 - k * .2), 5, f * 2.1, 'rgba(255,250,238,1)');
+  };
+  const smoke = (c, k, f, warm) => {
+    const r = c * (.50 + k * .46), a = (1 - k) * .74;
+    const grey = (warm ? 238 : 226) - k * 76;
+    const rgb = d => ((grey - d) | 0) + ',' + ((grey - d - 8) | 0) + ',' + ((grey - d - 18) | 0);
+    blob(0, 0, r, 3, f * .7, 'rgba(' + rgb(0) + ',' + a + ')');
+    blob(-r * .34, r * .20, r * .62, 4, f * 1.3, 'rgba(' + rgb(26) + ',' + (a * .9) + ')');
+    blob(r * .30, -r * .16, r * .52, 4, f * 2.0, 'rgba(255,255,255,' + (a * .5) + ')');
+  };
+  // Cold arcs, for the plasma: thin forked lines rather than a blob, because electricity is a
+  // line and smoke is a mass, and drawing one as the other is what makes both read as neither.
+  const arcs = (c, k, f) => {
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (let n = 0; n < 5; n++) {
+      const a0 = (n / 5) * Math.PI * 2 + f * .7, len = c * (.35 + .55 * (1 - k));
+      g.beginPath(); g.moveTo(0, 0);
+      let x = 0, y = 0, a = a0;
+      for (let s = 0; s < 4; s++) {
+        a += Math.sin(n * 2.3 + s * 1.9 + f) * .7;
+        x += Math.cos(a) * len * .33; y += Math.sin(a) * len * .33;
+        g.lineTo(x, y);
+      }
+      g.lineWidth = c * (.075 - k * .045); g.strokeStyle = 'rgba(120,226,255,' + (.9 - k * .7) + ')'; g.stroke();
+      g.lineWidth = c * (.032 - k * .02); g.strokeStyle = 'rgba(246,253,255,' + (.95 - k * .7) + ')'; g.stroke();
+    }
+  };
+  for (let f = 0; f < N * N; f++) {
+    const ox = (f % N) * S, oy = ((f / N) | 0) * S, c = S * .5;
+    g.save(); g.beginPath(); g.rect(ox, oy, S, S); g.clip();
+    g.translate(ox + c, oy + c);
+    if (f < 12) {
+      // ---- 0..11  A BURN. No word: the jetpack and the muzzle both live here. ----
+      if (f < 3) {
+        const k = f / 2;
+        star(0, 0, c * (.50 + k * .34), 7 + f, .32, f * 1.7, 'rgba(255,214,150,' + (.95 - k * .3) + ')');
+        star(0, 0, c * (.32 + k * .22), 6, .34, f * 1.1 + .6, 'rgba(255,252,242,1)');
+      } else if (f < 6) { const k = (f - 3) / 2; g.translate(0, c * .10 * k); flame(c * (.74 - k * .16), k, f); }
+      else smoke(c, (f - 6) / 5, f, true);
+    } else if (f < 24) {
+      // ---- 12..23  A PUNCH LANDING. Spark, POW, and it is gone quickly. ----
+      const j = f - 12;
+      if (j < 2) {
+        const k = j;
+        star(0, 0, c * (.62 + k * .32), 9, .26, j * 2.1, 'rgba(255,190,92,' + (.96 - k * .28) + ')');
+        star(0, 0, c * (.40 + k * .22), 7, .30, j * 1.3, 'rgba(255,252,242,1)');
+      } else if (j < 5) word('POW', (j - 2) / 2, -.20);
+      else if (j < 8) { const k = (j - 5) / 2; flame(c * (.62 - k * .22), k, f); }
+      else smoke(c, (j - 8) / 3, f, true);
+    } else if (f < 36) {
+      // ---- 24..35  A HIT. The star, BOOM, and debris going grey. ----
+      const j = f - 24;
+      if (j < 3) {
+        const k = j / 2;
+        // Sharper and colder than the burn: many thin spikes, an impact rather than a flame.
+        star(0, 0, c * (.56 + k * .40), 12, .20, j * .9, 'rgba(255,236,190,' + (.95 - k * .25) + ')');
+        star(0, 0, c * (.34 + k * .26), 9, .24, j * 1.9, 'rgba(255,255,252,1)');
+      } else if (j < 5) word('BOOM', (j - 3), .16);
+      else smoke(c, (j - 5) / 6, f, false);
+    } else {
+      // ---- 36..48  THE PLASMA. A crackle, ZAP, and arcs fading cold. ----
+      const j = f - 36;
+      if (j < 2) {
+        const k = j;
+        star(0, 0, c * (.58 + k * .34), 11, .22, j * 1.5, 'rgba(146,232,255,' + (.95 - k * .25) + ')');
+        star(0, 0, c * (.34 + k * .22), 8, .26, j * 2.4, 'rgba(250,254,255,1)');
+      } else if (j < 5) word('ZAP', (j - 2) / 2, .12, 'rgba(120,196,255,' + (.6 - (j - 2) / 2 * .4) + ')');
+      else arcs(c, (j - 5) / 6, f);
+    }
+    g.restore();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = false; t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function fxInit() {
+  if (_fx) return _fx;
+  const N = FX.n;
+  const gm = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3), born = new Float32Array(N), seed = new Float32Array(N),
+        size = new Float32Array(N), f0 = new Float32Array(N), len = new Float32Array(N);
+  born.fill(-1e9);                     // everything starts spent
+  gm.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  gm.setAttribute('aBorn', new THREE.BufferAttribute(born, 1));
+  gm.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  gm.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+  gm.setAttribute('aF0', new THREE.BufferAttribute(f0, 1));
+  gm.setAttribute('aLen', new THREE.BufferAttribute(len, 1));
+  const tex = FX.url ? new THREE.TextureLoader().load(A(FX.url)) : fxTex();
+  tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, depthTest: true, fog: false,
+    uniforms: { uT: { value: 0 }, uSheet: { value: tex }, uScale: { value: 600 },
+      uCols: { value: FX.cols }, uFps: { value: FX.fps } },
+    vertexShader:
+      'attribute float aBorn; attribute float aSeed; attribute float aSize; attribute float aF0; attribute float aLen;\n' +
+      'uniform float uT, uScale;\n' +
+      'varying float vAge; varying float vSeed; varying float vF0; varying float vLen;\n' +
+      'void main(){\n' +
+      '  vAge = uT - aBorn; vSeed = aSeed; vF0 = aF0; vLen = aLen;\n' +
+      '  vec4 mv = modelViewMatrix * vec4(position, 1.0);\n' +
+      // POINT SIZE IN PIXELS FOR A CARD OF `aSize` WORLD METRES, done properly rather than
+      // tuned: half the framebuffer height over the tangent of half the vertical lens, which
+      // is `uScale`. A tuned constant is a card that changes size when the fov does -- and the
+      // fov here MOVES, because `CAM.rush` widens it with speed.
+      '  gl_PointSize = aSize * uScale / max(0.001, -mv.z);\n' +
+      '  gl_Position = projectionMatrix * mv;\n' +
+      '}',
+    fragmentShader:
+      'uniform sampler2D uSheet; uniform float uCols, uFps;\n' +
+      'varying float vAge; varying float vSeed; varying float vF0; varying float vLen;\n' +
+      'void main(){\n' +
+      // THE STEP, AND IT IS THE WHOLE POINT. floor(age * fps) holds each drawing for three
+      // film frames. The window is the BANK's, per point, so one sheet plays seven effects.
+      '  float f = vF0 + floor(vAge * uFps);\n' +
+      '  if (vAge < 0.0 || f >= vF0 + vLen) discard;\n' +
+      // The card's own UV, spun about its centre off the seed, so two puffs on one frame are
+      // not the same picture twice. `gl_PointCoord` runs top-down, so v is flipped to match
+      // the rows the canvas laid down.
+      '  vec2 uv = vec2(gl_PointCoord.x, 1.0 - gl_PointCoord.y) - 0.5;\n' +
+      '  float a = vSeed * 6.2831853;\n' +
+      '  uv = vec2(uv.x * cos(a) - uv.y * sin(a), uv.x * sin(a) + uv.y * cos(a));\n' +
+      '  uv += 0.5;\n' +
+      '  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;\n' +
+      '  vec2 cell = vec2(mod(f, uCols), floor(f / uCols));\n' +
+      '  vec2 t = (cell + vec2(uv.x, 1.0 - uv.y)) / uCols;\n' +
+      '  vec4 c = texture2D(uSheet, t);\n' +
+      '  if (c.a < 0.02) discard;\n' +
+      '  gl_FragColor = c;\n' +
+      '}',
+  });
+  const pts = new THREE.Points(gm, mat);
+  pts.frustumCulled = false;           // the buffer holds WORLD positions; its origin means nothing
+  pts.renderOrder = 4;                 // over the slash marks (3) and the contact blobs (2)
+  pts.userData.noHole = true;          // and the see-through hole must never dither an effect
+  scene.add(pts);
+  _fx = { pts, gm, pos, born, seed, size, f0, len, N, i: 0, vel: new Float32Array(N * 3), mat, tex };
+  return _fx;
+}
+// World position in, one card out. `bank` names which window of the sheet it plays, so adding
+// a look to a new weapon is a row of drawing in `fxTex` and a line in `FX.bank`.
+function fxPop(x, y, z, bank, sz, vx, vy, vz) {
+  if (!FX.on) return;
+  const bk = FX.bank[bank] || FX.bank.hit;
+  const P = fxInit(), i = P.i; P.i = (P.i + 1) % P.N;
+  P.pos[i * 3] = x; P.pos[i * 3 + 1] = y; P.pos[i * 3 + 2] = z;
+  P.vel[i * 3] = vx || 0; P.vel[i * 3 + 1] = vy || 0; P.vel[i * 3 + 2] = vz || 0;
+  P.born[i] = FX.t; P.seed[i] = Math.random();
+  P.size[i] = sz || FX.size; P.f0[i] = bk[0]; P.len[i] = bk[1];
+}
+function fxStep(dt) {
+  FX.t += dt;
+  const P = _fx; if (!P) return;
+  P.mat.uniforms.uT.value = FX.t;
+  P.mat.uniforms.uScale.value = renderer.domElement.height * .5 / Math.tan(camera.fov * Math.PI / 360);
+  P.mat.uniforms.uFps.value = FX.fps;
+  // The LONGEST bank decides when a slot is certainly spent -- cheaper than a per-point test,
+  // and it only ever holds a slot a little longer than it needed.
+  const life = FX.life;
+  let live = 0;
+  for (let i = 0; i < P.N; i++) {
+    const age = FX.t - P.born[i];
+    if (age < 0 || age > life) continue;
+    live++;
+    const k = 1 - age / life;
+    P.pos[i * 3] += P.vel[i * 3] * dt;
+    P.pos[i * 3 + 1] += P.vel[i * 3 + 1] * dt;
+    P.pos[i * 3 + 2] += P.vel[i * 3 + 2] * dt;
+    // SMOKE SLOWS AND LIFTS; it does not carry on at the speed it left the nozzle.
+    const drag = 1 - Math.min(1, dt * 1.8);
+    P.vel[i * 3] *= drag; P.vel[i * 3 + 2] *= drag;
+    P.vel[i * 3 + 1] = P.vel[i * 3 + 1] * drag + dt * 2.2 * (1 - k);
+    P.size[i] += dt * P.size[i] * .55;                   // it opens out as it goes
+  }
+  if (!live) return;
+  P.gm.attributes.position.needsUpdate = true;
+  P.gm.attributes.aBorn.needsUpdate = true;
+  P.gm.attributes.aSeed.needsUpdate = true;
+  P.gm.attributes.aSize.needsUpdate = true;
+  P.gm.attributes.aF0.needsUpdate = true;
+  P.gm.attributes.aLen.needsUpdate = true;
+}
+// `city.fx('boom')` -- one of each at head height, so the sheet can be looked at without
+// having to be shot. The same hook Plutopia's `isle.pop()` is, and for the same reason: a
+// drawn effect is a look-at-it decision and it should not need a fight to see one.
+function fxTry(bank, sz) {
+  const p = player, h = p.faceH;
+  fxPop(p.pos.x + Math.sin(h) * 1.6, p.pos.y + COLIN_HEIGHT * .7, p.pos.z + Math.cos(h) * 1.6,
+    bank || 'boom', sz || FX.size * 1.4);
+  return Object.keys(FX.bank);
+}
+// `city.fxSheet('art/fx.png')` swaps his own sheet in live and rebuilds; with no argument it
+// goes back to the drawn placeholder. The banks are cell WINDOWS, so a sheet laid out the same
+// way drops straight in.
+function fxSheet(url) {
+  FX.url = url || null;
+  if (_fx) { scene.remove(_fx.pts); _fx.gm.dispose(); _fx.mat.dispose(); _fx.tex.dispose(); _fx = null; }
+  return FX.url || 'drawn placeholder';
+}
+
 // ---------- the slash mark ----------
 // PLUTOPIA'S, PORTED WHOLE, AND ITS FIRST VERSION'S MISTAKE IS THE WHOLE LESSON. A ring in
 // the world was the obvious build and it is wrong: a `RingGeometry` lies in its own XY plane,
@@ -1452,7 +1739,7 @@ function boltFire(k) {
   m.material.opacity = .95;
   m.userData.vx = fx * BOLT.speed; m.userData.vz = fz * BOLT.speed;
   m.userData.t = 0; m.userData.k = k;
-  slashArc(ox, oy, oz, Math.random() * 3, .6 + k * .5, 1);
+  fxPop(ox, oy, oz, 'flash', .55 + k * .7, fx * 3, 1.2, fz * 3);
   snd.trick();
 }
 const _bz = new THREE.Vector3();
@@ -1478,7 +1765,10 @@ function stepBolts(dt) {
     let hit = 0;
     for (const c of carsNear(m.position.x, m.position.z, 6, _cn)) {
       if (Math.hypot(c.x - m.position.x, c.z - m.position.z) > BOLT.rad + c.hl) continue;
-      c.zap = BOLT.stun; c.speed = 0; hit = 1; heatAdd(HEAT.zap); break;
+      c.zap = BOLT.stun; c.speed = 0; hit = 1; heatAdd(HEAT.zap);
+      // ZAP, on the car rather than on the bolt: the event is the car being stopped.
+      fxPop(c.x, c.y + c.hh * .9, c.z, 'zap', 2.4);
+      break;
     }
     if (!hit) for (const c of cops) {
       if (Math.hypot(c.x - m.position.x, c.z - m.position.z) > BOLT.rad + COP.r) continue;
@@ -1492,8 +1782,7 @@ function stepBolts(dt) {
 }
 function boltPop(m) {
   m.visible = false;
-  slashArc(m.position.x, m.position.y, m.position.z, Math.random() * 3, 1.4, 1);
-  slashArc(m.position.x, m.position.y + .3, m.position.z, Math.random() * 3, 1.0, 1);
+  fxPop(m.position.x, m.position.y, m.position.z, 'boom', 1.9);
   snd.hit(1, m.position.x, m.position.z);
 }
 // THE THRUST. Held pad while the jetpack is out: up against gravity, capped so it is a ride
@@ -1509,7 +1798,20 @@ function stepJet(dt) {
   // held the sprint at 9 m/s for three builds. The INSTANTANEOUS magnitude is the test.
   const rm = Math.hypot(stick.R.x, stick.R.y);
   const want = stick.R.down && p.rHold > JET.from && rm < .55 && p.fuel > 0 ? 1 : 0;
+  const lit = p.jetK > .12;
   p.jetK = damp(p.jetK || 0, want, JET.ease, dt);
+  // The puffs come out of the nozzle, which is the pack on his back, and are thrown DOWN and
+  // BEHIND him -- a puff that hangs where it was born reads as a sticker rather than as
+  // exhaust. `gear.jet` knows where the pack actually is, so nothing about that is typed.
+  p.jetT = (p.jetT || 0) - dt;
+  if (p.jetK > .12 && p.jetT <= 0) {
+    p.jetT = JET.every;
+    let ox = p.pos.x, oy = p.pos.y + COLIN_HEIGHT * .55, oz = p.pos.z;
+    if (gear.jet && gear.jet.g.parent) { gear.jet.g.updateWorldMatrix(true, false); gear.jet.g.getWorldPosition(_gs); ox = _gs.x; oy = _gs.y; oz = _gs.z; }
+    const hx = Math.sin(p.faceH), hz = Math.cos(p.faceH);
+    fxPop(ox, oy - .2, oz, lit ? 'puff' : 'jet', lit ? JET.puff : JET.blast,
+      -hx * JET.drift * .4 - p.vel.x * .3, -JET.drift, -hz * JET.drift * .4 - p.vel.z * .3);
+  }
   if (want && p.fuel > 0) {
     p.fuel = Math.max(0, p.fuel - JET.burn * dt);
     p.vel.y = Math.min(JET.cap, p.vel.y + JET.up * p.jetK * dt);
@@ -3883,6 +4185,9 @@ function copHit(c, fromH) {
   if (c.st === 'down' || c.st === 'up') return false;
   c.hp--;
   c.alert = 1;
+  // POW, at his chest, on the frame the blow lands -- `copHit` is called from the contact
+  // frame in `stepMelee`, the same line that draws the slash mark.
+  fxPop(c.x, c.y + COLIN_HEIGHT * .62, c.z, 'pow', 1.4);
   snd.hit(1, c.x, c.z);
   heatAdd(c.hp > 0 ? HEAT.punch : HEAT.down);
   if (c.hp > 0) { c.clip = COP.clips.hits[(Math.random() * COP.clips.hits.length) | 0]; copSet(c, 'hit'); return true; }
@@ -4120,7 +4425,7 @@ function stepShots(dt) {
 }
 function shotPop(m) {
   m.visible = false;
-  slashArc(m.position.x, m.position.y, m.position.z, Math.random() * 3, .7, 1);
+  fxPop(m.position.x, m.position.y, m.position.z, 'hit', .75);
 }
 // WHAT IT IS INSIDE, AND WHICH WAY OUT. The city is axis-aligned boxes in a grid, so this is
 // three overlaps and a smallest-penetration test -- the axis it is LEAST deep into is the face
@@ -4135,7 +4440,7 @@ function shotBox(m, step) {
   for (const b of _sbox) {
     if (x < b.minx || x > b.maxx || z < b.minz || z > b.maxz || y < b.miny || y > b.maxy) continue;
     const px = Math.min(x - b.minx, b.maxx - x), py = Math.min(y - b.miny, b.maxy - y), pz = Math.min(z - b.minz, b.maxz - z);
-    slashArc(x, y, z, Math.random() * 3, .6, 1);
+    fxPop(x, y, z, 'hit', .55);
     if (++u.b > SHOT.ric) { m.visible = false; return true; }
     // back out of the face it went in by, then reflect about it
     if (px <= py && px <= pz) { u.dx = -u.dx; m.position.x += u.dx * step; }
@@ -4179,7 +4484,7 @@ function playerShot(dx, dz) {
   p.vel.x = dx * SHOT.push; p.vel.z = dz * SHOT.push; p.vel.y = SHOT.push * .45;
   if (p.board) dropBoard();
   snd.hit(2, p.pos.x, p.pos.z);
-  slashArc(p.pos.x, p.pos.y + COLIN_HEIGHT * .55, p.pos.z, Math.random() * 3, 1.1, 1);
+  fxPop(p.pos.x, p.pos.y + COLIN_HEIGHT * .55, p.pos.z, 'boom', 1.5);
 }
 // The clip's real length for THIS officer, read off his own action rather than Colin's pool.
 function clipLen2(c, nm) { const a = c.actions[nm]; return a ? Math.max(.05, a.getClip().duration) : .6; }
@@ -4207,7 +4512,10 @@ function copShoot(c) {
   const az = dz + p.vel.z * lead + (Math.random() - .5) * SHOT.spread * d;
   const al = Math.hypot(ax, ay, az) || 1;
   shotFire(from.x, from.y, from.z, ax / al, ay / al, az / al);
-  slashArc(from.x + dx / d * .35, from.y + dy / d * .35, from.z + dz / d * .35, Math.random() * 3, .5, 1);
+  // THE MUZZLE, at the muzzle -- `weapon_tip` is a bone, so it is right through the draw and
+  // the recoil without this knowing those clips exist.
+  fxPop(from.x + ax / al * .28, from.y + ay / al * .28, from.z + az / al * .28, 'flash', .62,
+    ax / al * 2.6, ay / al * 2.6 + .8, az / al * 2.6);
   snd.trick();
 }
 
@@ -4468,6 +4776,9 @@ const OPT_ROWS = [
   ['h', 'World'],
   ['tog', 'Map', () => MAP.on, v => { MAP.on = v; }],
   ['tog', 'Police', () => COP.on, v => { COP.on = v; }],
+  ['tog', 'Card effects', () => FX.on, v => { FX.on = v; }],
+  ['num', 'Card fps', () => FX.fps, v => { FX.fps = v; }, 4, 24, 1],
+  ['num', 'Card size', () => FX.size, v => { FX.size = v; }, .4, 4, .1],
   ['num', 'Sky exposure', () => SKY.envB, v => { SKY.envB = v; }, 0, 8, .1],
   ['num', 'Sprint x', () => MOVE.sprint, v => { MOVE.sprint = v; }, 1, 4, .05],
   ['num', 'Speed rush', () => CAM.fovRush, v => { CAM.fovRush = v; }, 0, 24, .5],
@@ -4549,7 +4860,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; KIT.on = player.board ? 1 : 0; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -5610,6 +5921,7 @@ function frame() {
   stepHole();
   blobStep();
   stepSlash(dt);
+  fxStep(dt);
   {
     const el = document.getElementById('stkRChg'), k = player.aim ? (WEAP.min + (1 - WEAP.min) * player.chg) : 0;
     if (el) { el.style.opacity = k ? '1' : '0'; el.style.setProperty('--c', k.toFixed(3)); }
@@ -5676,7 +5988,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, gear, weapFit, kitPick, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitPick, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

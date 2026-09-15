@@ -1010,6 +1010,45 @@ playwright unless he asks for it by name.
   pressed into costs him his speed, so he does not grind along it at a run with his legs going. A dodge roll's i-frames
   cover them like everything else. A hit goes straight into the car's own knock-down rather
   than opening a second damage system.
+- **THE CARD EFFECTS (`FX`, `fxTex`, `fxPop`), PLUTOPIA'S, PORTED WHOLE — AND THE STUTTER IS
+  THE STYLE.** Flat cards playing a hand-drawn sheet at `FX.fps` and HOLDING each drawing for
+  three film frames — 24 over 3 — which is how animation has drawn smoke and impacts for
+  eighty years and is the one thing a smooth particle system cannot do.
+  **ONE SHEET, ONE MATERIAL, ONE DRAW CALL, and a BANK IS ONLY A WINDOW INTO IT.** Start two
+  frames in and the crack at the front is simply not played, so the same run of drawings gives
+  several effects: `jet` and `puff` are the same twelve cells three frames apart, `boom` and
+  `hit` likewise. **Adding a look to a new weapon is a row of drawing in `fxTex` plus a line in
+  `FX.bank`, never a second particle system.** 7×7 = 49 cells: a burn (0–11, no word), a punch
+  (12–23, POW), a hit (24–35, BOOM), the plasma (36–48, ZAP and cold forked arcs).
+  **THE WORD BELONGS WHERE THERE IS ONE EVENT TO NAME.** Plutopia's own note, and it was learnt
+  by over-applying it there: a motor running is not a punchline, and an onomatopoeia four times
+  a second is a joke told four times a second. **The jetpack has no word**; a punch landing, a
+  bolt arriving and a car being stopped do.
+  **A word is DRAWN, not typeset** — a fat dark outline under a hot fill, so it survives being
+  forty pixels across on a phone and still reads as ink laid on top of the render.
+  **A blob is ONE FILL, not a run of strokes**, the slash mark's lesson again: overlapping
+  round caps accumulate alpha at every join and come out as a slab.
+  **AND ELECTRICITY IS A LINE, NOT A MASS.** The plasma's `arcs` are thin forked strokes rather
+  than blobs, because drawing one as the other makes both read as neither.
+  **`gl_PointSize` IS DERIVED, NOT TUNED**: half the framebuffer height over the tangent of
+  half the vertical lens, so a card is `aSize` world metres. A tuned constant would change size
+  whenever the fov does — and **the fov here MOVES**, because `CAM.rush` widens it with speed.
+  **`frustumCulled = false`** because the buffer holds WORLD positions and its origin means
+  nothing; **`userData.noHole`** because the see-through hole must never dither an effect.
+  **`city.fx('boom')` fires one at head height** so the sheet can be looked at without having
+  to be shot — the same hook Plutopia's `isle.pop()` is, and for the same reason: a drawn effect
+  is a look-at-it decision and it should not need a fight to see one. **`city.fxSheet(url)`**
+  swaps his own PNG in live and rebuilds; the banks are cell WINDOWS, so a sheet laid out the
+  same way drops straight in.
+  Wired to: the cop's muzzle (at `weapon_tip`, so it is right through the draw and the recoil),
+  a round stopping or ricocheting, a round hitting him, the blaster's muzzle, a bolt landing, a
+  car being zapped, a punch landing on an officer, and the jetpack's putt.
+- **THE JETPACK PUTTS, IT DOES NOT JET (`JET.every`).** A continuous stream is a shader effect;
+  a rhythm of discrete puffs is drawn animation, and that is the difference between a motor and
+  a jet of gas. The FIRST card is the ignition bank, every one after it is `puff` — the same
+  drawings three frames in, so the crack is not played twice. They come out of the PACK's own
+  world position (`gear.jet` knows where it is) and are thrown down and behind him, because a
+  puff that hangs where it was born reads as a sticker rather than as exhaust.
 - **`city.slash({roll, r, y, size})` FIRES ONE AND LETS HIM LOOK AT IT.** The melee marks came
   out "turned, and only going to the side instead of in front of him" — **which is the second
   game in a row that has happened in**, and both times the fix was to look at one and adjust,
