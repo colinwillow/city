@@ -870,6 +870,56 @@ playwright unless he asks for it by name.
   `weapon_direction`, which are not bones and which Colin has no equivalent of (66 of 68
   targets are shared). An unresolvable track is a console warning per clip per skin and no
   animation, so `buildColin` filters them once against Colin's own node names.
+- **THE POLICE (`COP`, `buildCops`, `stepCops`) HAVE THEIR OWN RIG AND THEIR OWN CLIPS, WHICH
+  IS WHY NONE OF THE BORROWED-CHARACTER MACHINERY IS INVOLVED.** Every other skin in this game
+  wears COLIN'S clips and needs `skinClips`, `HIPFIX`, `SPIN` and `sitSkin` to do it. The
+  officer arrived with sixteen animations of his own, so he needs none of that — and
+  **`npm run cop` says so with numbers rather than by assumption**, through the real vendored
+  loader, a real mixer and real skinned vertices:
+      height 0.868 in file units      -> x2.016 to reach COLIN_HEIGHT
+      soles at 0.000 in EVERY ground clip   -> no `sitSkin` lift to measure
+      travel 0.00 m in every clip           -> they animate IN PLACE; locomotion is code-driven
+      58 joints, all mixamorig, height on Y -> the same convention Colin uses, no HIPFIX
+  If a future export floats or walks away from itself, that tool is where it shows. It also
+  prints hand height and root motion per clip, which is what a new clip has to be checked for.
+  **THE PISTOL IS PARENTED TO THE HAND BONE, AND IT IS THE ONE PLACE THE BOARD'S RULE DOES NOT
+  APPLY.** The title card hangs the deck off the hand's WORLD MATRIX because parenting to a
+  bone scaled 0.01 would draw it a hundredth of its size. The pistol is already authored
+  inside a 0.01 armature of its own, so its mesh in bone-local space comes out at the size it
+  was drawn. Parenting also means it follows `draw_weapon` and `shoot_pistol` for free, which
+  a world matrix would not.
+  **ITS SIZE IS MEASURED, THE SKATEBOARD'S OWN RULE.** `npm run cop` reads the gun at 0.303 m
+  through the real loader, and against an officer scaled x2.016 that lands at 0.61 m — a
+  carbine. `COP.gunLen` is what a pistol is and `buildCops` divides to get there, so a
+  re-export at any size lands right with no edit.
+  **THE OFFICER'S RIG HAS NO WEAPON BONE.** 58 joints and every one of them `mixamorig_`; the
+  `weapon_root`/`weapon_tip` pair lives in `pistol.glb` only. So the two files do NOT share a
+  placement and nothing in either says where the grip goes — `COP.gun` is the offset, and
+  **`city.gunFit()` re-applies it**, because an offset applied once at parent time is a
+  write-only setting and reads exactly like the setting not existing. (`SHADE.k` fell into
+  that same hole one build earlier.)
+  **`weapon_tip` IS THE MUZZLE** and is in the file for exactly that, so nothing about where
+  the barrel points is typed in the game.
+  **EVERY STATE HAS AN END THAT DOES NOT DEPEND ON THE PLAYER** — `HIT`'s own rule for Colin.
+  `idle` → `chase` → `draw` → `armed` → shooting, with `hit` ×3 → `down` → `up` → back to the
+  chase. An officer you can wedge into a state he cannot leave is worse than one who gives up
+  too early.
+  **The gun appears when the hand gets to it**, part-way through `draw_weapon` — not on the
+  frame the state changed. Same rule as the slash mark and the melee blow.
+  **`get_up_front` is 7.67 s at 1x**, which is a nap; `COP.upRate` is the beat the state runs
+  at. **A bullet re-uses the car's own knock-down** (`p.hit = 'fly'`) rather than opening a
+  second damage system to keep in step with the first.
+  **A punch lands on the contact frame** — `copsPunched` is called from the same line in
+  `stepMelee` that draws the slash, because they are one event.
+  **`skinWeights`'s T-pose fallback had to stop being `idle_neutral`.** It now takes the
+  fallback as an argument: the police do not have that clip, so the escape hatch that exists
+  to prevent a T-pose would have landed straight in one.
+  **They are always stepped, including on the title card** — a mixer that never updates is a
+  bind pose, so skipping them there put six men in the T-pose on the street behind the logo.
+  `idle` refuses to notice the player while `TITLE.on`, which is the right way to do it.
+  **Placed by `npm run spots 4`**, not by eye — same rule as the ramps.
+  **The chip says `· NO COP GLB` / `· NO PISTOL GLB` unasked**, because a console warning is
+  invisible on a phone.
 - **THE TITLE CARD IS THE GAME, NOT A SECOND SCENE (`TITLE`, `titleFrame`, `camAim`).**
   Plutopia builds a whole disposable planet for its card (`DIO.*`) because its world is
   procedural and the shot wants something that does not exist in play. This one already has

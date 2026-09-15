@@ -159,7 +159,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c81</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c82</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -170,8 +170,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
+import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c81';
+const BUILD = 'c82';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -630,7 +631,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"7a8f51c7","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1633,6 +1634,10 @@ function missing() {
   if (SFX.miss.length) m += ' · NO SND ' + SFX.miss.length;
   if (CHARS.cur !== 'colin') m += ' · ' + CHARS.cur;
   if (CHARS.miss) m += ' · NO SKIN ' + CHARS.miss;
+  // The same question the cloud and sky lines answer: "did that asset arrive". `cop0` and a
+  // silent console warning are the same picture from a phone.
+  if (!cops.length) m += ' · NO COP GLB';
+  else if (!cops[0].gun) m += ' · NO PISTOL GLB';
   if (JAM.n) m += ' · JAM ' + JAM.n + '@' + JAM.x.toFixed(0) + ',' + JAM.z.toFixed(0);
   return m;
 }
@@ -3135,7 +3140,7 @@ const ONCE = ['jump_going_up', 'jump_coming_down', 'landing_roll', 'idle_jump_in
 function colinSet(t, dt) { skinWeights(colin, t, dt, player.hitSnap); player.hitSnap = false; }
 function skinScale(skin, name, s) { const a = skin.actions && skin.actions[name]; if (a) a.setEffectiveTimeScale(s); }
 // The same easing, against whichever skin is asked for -- the card walks two at once.
-function skinWeights(skin, t, dt, snap) {
+function skinWeights(skin, t, dt, snap, fb) {
   const acts = skin.actions, cw = skin.cw || (skin.cw = {});
   if (!acts) return;
   // THE T-POSE. If nothing in the table names a clip that actually exists, every bone ends
@@ -3145,7 +3150,10 @@ function skinWeights(skin, t, dt, snap) {
   // than to nothing, and says so in the console instead of failing silently.
   let tot = 0;
   for (const k in t) if (acts[k]) tot += t[k];
-  if (tot < .01) { console.warn('[skin] no live clip in', Object.keys(t).join(',') || '(empty)'); t = { idle_neutral: 1 }; }
+  // THE FALLBACK CANNOT BE COLIN'S OWN IDLE, because this now drives the police too and
+  // `idle_neutral` is not a clip they have -- which would take the T-pose escape hatch and
+  // land straight back in the T-pose it exists to prevent.
+  if (tot < .01) { const f = fb || 'idle_neutral'; console.warn('[skin] no live clip in', Object.keys(t).join(',') || '(empty)'); t = { [f]: 1 }; }
   for (const nm in acts) {
     const a = acts[nm], want = t[nm] || 0, cur = cw[nm] || 0;
     if (cur < .01 && want > .01) { a.reset(); a.play(); if (TRIM_IN[nm]) a.time = TRIM_IN[nm]; }
@@ -3252,6 +3260,311 @@ const board = new THREE.Group(); scene.add(board);
   }
   board.traverse(o => { if (o.isMesh) { o.castShadow = true; o.userData.proc = 1; } });
   board.visible = false;
+}
+
+// ---------- THE POLICE ----------
+// HIS OWN RIG AND HIS OWN CLIPS, WHICH IS WHY NONE OF THE BORROWED-CHARACTER MACHINERY IS
+// HERE. Every other skin in this game wears COLIN'S clips and needs `skinClips`, `HIPFIX`,
+// `SPIN` and `sitSkin` to do it. The officer arrived with sixteen animations of his own, so
+// he needs none of that -- and `npm run cop` says so with numbers rather than by assumption:
+//     height 0.868 in file units -> x2.016 to reach COLIN_HEIGHT
+//     soles at 0.000 in EVERY ground clip, so there is no `sitSkin` lift to measure
+//     travel 0.00 m in every clip, so they all animate IN PLACE and locomotion is code-driven
+//     58 joints, all mixamorig, hips height on Y -- the same convention Colin uses
+// If a future officer export floats or walks away from himself, that tool is where it shows.
+const COP = {
+  url: 'models/police_officer.glb', gunUrl: 'models/pistol.glb',
+  // WHERE THEY STAND. Measured with `npm run spots 4` rather than picked off a screenshot --
+  // flat, open, unbuilt squares near the spawn, which is the same rule the ramps are placed
+  // by and the reason none of them is inside a bank.
+  spots: [
+    { x: -94, z: 0 }, { x: -94, z: -8 }, { x: -94, z: 8 },
+    { x: -94, z: -16 }, { x: -90, z: -22 }, { x: -90, z: 22 },
+  ],
+  see: 24,          // he notices you inside this
+  lose: 46,         // and gives up outside it
+  range: 15,        // close enough to draw and shoot
+  hold: 7,          // once armed he stands his ground at about this range
+  walk: 1.7, run: 5.4, turn: 7,
+  hp: 3,            // punches before he goes down
+  stun: .62,        // of a hit clip he is held for; the tail blends back into whatever is next
+  fire: 1.7,        // seconds between shots
+  gunAt: .46,       // the fraction of `shoot_pistol` the round leaves on
+  r: .42,           // his own radius, for the punch test and for not standing inside a wall
+  reach: 2.4,       // how close one of his strikes has to be to land on the player
+  hitPush: 7.5,     // how hard a bullet shoves the player, m/s
+  // `get_up_front` is 7.67 s at 1x and `get_up_back` 2.75 -- measured, by `npm run cop`.
+  // Seven and a half seconds of a man standing up is a nap, so the get-up is played at a
+  // beat like every other one-shot in this game. It is a state TIMER rather than a clip
+  // time scale, so the pose still reads; he simply stops waiting through the tail.
+  upRate: 2.6,
+  // The gun is parented to his right hand and these three nudge it there. It is NOT derived:
+  // `models/pistol.glb` has its own `weapon_root`/`weapon_tip` at ITS armature origin and the
+  // officer's rig has no weapon bone at all (58 joints, every one of them mixamorig), so the
+  // two files do not share a placement and nothing in either says where the grip goes.
+  // Exposed on `city.COP.gun` so it is a three-second nudge on the phone rather than a push.
+  gun: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, s: 1 },
+  // AND ITS SIZE IS MEASURED, NOT TYPED -- the skateboard's own rule. `npm run cop` reads the
+  // pistol through the real loader at 0.303 m long in its own file, and the officer is scaled
+  // x2.016 to reach COLIN_HEIGHT, so parented to his hand it would come out 0.61 m: a carbine.
+  // `gunLen` is what a pistol is, and `buildCops` divides to get there, so a re-export at any
+  // size lands right with no edit here and `gun.s` stays a nudge rather than a correction.
+  gunLen: .22,
+  clips: { idle: 'idle_01', walk: 'walk_01', run: 'run_01', draw: 'draw_weapon', shoot: 'shoot_pistol',
+           hits: ['hit_body', 'hit_head', 'hit_ribs', 'hit_stomach'],
+           downF: 'knock_down_front', downB: 'knock_down_back', upF: 'get_up_front', upB: 'get_up_back' },
+  on: 1,
+};
+// One-shot clips, the same rule Colin's `ONCE` list follows: play through and hold the last
+// frame rather than loop, and rewind when the weight leaves zero.
+const COP_ONCE = new Set(['draw_weapon', 'shoot_pistol', 'hit_body', 'hit_head', 'hit_ribs', 'hit_stomach',
+  'knock_down_front', 'knock_down_back', 'get_up_front', 'get_up_back']);
+const cops = [];
+let copSrc = null, copGun = null;
+function buildCops(gltf, gunGltf) {
+  copSrc = gltf; copGun = gunGltf || null;
+  // MEASURED OFF THE GEOMETRY, NEVER OFF `Box3.setFromObject`. A skinned mesh ignores its node
+  // transform and setFromObject applies it anyway -- three hundred lines up, and it is the
+  // same trap here as it was for Colin.
+  let lo = 1e9, hi = -1e9;
+  gltf.scene.traverse(o => {
+    if (!o.isSkinnedMesh) return;
+    o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox;
+    if (b.min.y < lo) lo = b.min.y; if (b.max.y > hi) hi = b.max.y;
+  });
+  const h = Math.max(.2, hi - lo), sc = COLIN_HEIGHT / h;
+  console.log('[cop] geometry ' + lo.toFixed(3) + '..' + hi.toFixed(3) + ' -> x' + sc.toFixed(3));
+  for (let i = 0; i < COP.spots.length; i++) {
+    const sp = COP.spots[i];
+    const model = skelClone(gltf.scene);
+    dressCop(model);
+    model.scale.setScalar(sc);
+    const root = new THREE.Group();
+    root.add(model);
+    const g = groundAt(sp.x, sp.z, 40, 2);
+    root.position.set(sp.x, g.hit ? g.floor : hmAt(sp.x, sp.z), sp.z);
+    scene.add(root);
+    const mixer = new THREE.AnimationMixer(model);
+    const actions = {};
+    for (const c of gltf.animations) {
+      const a = mixer.clipAction(c);
+      if (COP_ONCE.has(c.name)) { a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true; }
+      a.enabled = true; a.setEffectiveWeight(0); actions[c.name] = a;
+    }
+    // THE GUN IS PARENTED TO THE HAND BONE, AND THAT IS THE ONE PLACE THE BOARD'S RULE DOES
+    // NOT APPLY. The title card hangs the deck off the hand's WORLD MATRIX because parenting
+    // it to a bone scaled 0.01 would draw it a hundredth of its size. The pistol is already
+    // authored inside a 0.01 armature of its own, so its mesh in bone-local space comes out
+    // at exactly the size it was drawn -- `npm run cop` measures 0.303 m through the real
+    // loader, which is a pistol. Parenting also means it follows `draw_weapon` and
+    // `shoot_pistol` for free, which hanging it off a matrix would not.
+    let gun = null, tip = null, hand = null;
+    model.traverse(o => { if (o.name === 'mixamorig_RightHand') hand = o; });
+    if (gunGltf && hand) {
+      gunGltf.scene.traverse(o => { if (o.isMesh && !gun) gun = o; if (o.name === 'weapon_tip') tip = o; });
+      if (gun) {
+        gun = gun.clone(); gun.material = gun.material.clone(); gun.castShadow = true;
+        dressCopMat(gun.material);
+        hand.add(gun); gun.visible = false;
+        hand.updateWorldMatrix(true, false);
+        gun.geometry.computeBoundingBox(); const gb = gun.geometry.boundingBox;
+        const glen = Math.max(gb.max.x - gb.min.x, gb.max.y - gb.min.y, gb.max.z - gb.min.z);
+        const hs = hand.getWorldScale(_cg).x || 1;
+        const k = COP.gunLen / Math.max(1e-6, glen * hs);
+        gun.scale.setScalar(k * COP.gun.s);
+        gun.position.set(COP.gun.x, COP.gun.y, COP.gun.z);
+        gun.rotation.set(COP.gun.rx, COP.gun.ry, COP.gun.rz);
+        if (i === 0) console.log('[cop] pistol ' + (glen * hs).toFixed(3) + ' m in the hand -> x' + k.toFixed(3) + ' for ' + COP.gunLen + ' m');
+      }
+    }
+    cops.push({ id: i, root, model, mixer, actions, cw: {}, key: 'cop', gun,
+      x: sp.x, z: sp.z, y: root.position.y, h: 0, speed: 0,
+      st: 'idle', t: 0, hp: COP.hp, armed: 0, fireT: 0, shotT: 0, fired: 0, clip: '', home: { x: sp.x, z: sp.z } });
+  }
+  console.log('[cop] ' + cops.length + ' officers on the street' + (copGun ? ' with pistols' : ' -- NO PISTOL GLB'));
+}
+function dressCopMat(m) {
+  if (!m) return;
+  m.roughness = 1; m.metalness = 0; m.envMapIntensity = 0;
+  // HIS OWN `onBeforeCompile`, which shadows the prototype's see-through hole completely --
+  // exactly as Colin's does, and for the same reason: the hole exists to reveal characters,
+  // so a character must never be cut by it.
+  m.onBeforeCompile = sh => { toonPatch(sh); sh.uniforms.uSpec = { value: COLINM.spec }; };
+  m.needsUpdate = true;
+}
+function dressCop(model) {
+  model.traverse(o => {
+    if (!o.isMesh && !o.isSkinnedMesh) return;
+    o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false;
+    o.material = o.material.clone(); dressCopMat(o.material);
+  });
+}
+// ONE STATE MACHINE, AND EVERY STATE HAS AN END THAT DOES NOT DEPEND ON THE PLAYER -- the
+// same rule `HIT` follows for Colin. A police officer you can wedge into a state he cannot
+// leave is worse than one who gives up too early.
+//   idle  -> stands about. Sees you inside `see`.
+//   chase -> runs at you. Inside `range` he draws.
+//   draw  -> plays `draw_weapon` once; the gun appears on the frame it finishes.
+//   armed -> holds `hold` metres off, faces you, fires every `fire` seconds.
+//   hit   -> a punch landed: one of the four hit clips, `hp` down one.
+//   down  -> `hp` gone: knocked down front or back depending which way he was facing.
+//   up    -> gets up, `hp` back to one, and goes straight back to chasing.
+function copSet(c, st) { c.st = st; c.t = 0; }
+function copHit(c, fromH) {
+  if (c.st === 'down' || c.st === 'up') return false;
+  c.hp--;
+  snd.hit(1, c.x, c.z);
+  if (c.hp > 0) { c.clip = COP.clips.hits[(Math.random() * COP.clips.hits.length) | 0]; copSet(c, 'hit'); return true; }
+  // WHICH WAY HE GOES OVER IS WHICH WAY HE WAS FACING when it landed -- a punch to the face
+  // puts him on his back, one from behind puts him on his front.
+  const face = Math.cos(wrapAngle(fromH - c.h)) < 0;
+  c.clip = face ? COP.clips.downB : COP.clips.downF;
+  copSet(c, 'down');
+  return true;
+}
+// A PUNCH LANDS WHERE THE ARM IS, which is the same frame the slash mark is drawn on --
+// `MELEE.at`. Anything else and the picture and the consequence are two separate events.
+function copsPunched(x, z, h) {
+  let n = 0;
+  for (const c of cops) {
+    const dx = c.x - x, dz = c.z - z;
+    if (dx * dx + dz * dz > COP.reach * COP.reach) continue;
+    if (Math.cos(wrapAngle(Math.atan2(dx, dz) - h)) < .2) continue;   // in front of him, not behind
+    if (copHit(c, h)) n++;
+  }
+  return n;
+}
+const _cg = new THREE.Vector3();
+function stepCops(dt) {
+  if (!cops.length || !COP.on) return;
+  const p = player, px = p.pos.x, pz = p.pos.z;
+  for (const c of cops) {
+    c.t += dt;
+    const dx = px - c.x, dz = pz - c.z, d = Math.hypot(dx, dz) || 1;
+    const toP = Math.atan2(dx, dz);
+    let want = 0, face = c.h, t = {};
+    switch (c.st) {
+      case 'idle':
+        t[COP.clips.idle] = 1;
+        if (d < COP.see && !TITLE.on) copSet(c, 'chase');
+        break;
+      case 'chase': {
+        face = toP;
+        // He stops running at `hold` once he has the gun out, and at arm's length if he has not.
+        const want0 = c.armed ? COP.hold : COP.reach * .8;
+        want = d > want0 ? (d > want0 + 3 ? COP.run : COP.walk) : 0;
+        const sp = Math.abs(c.speed);
+        t[COP.clips.idle] = clamp(1 - sp / 1.2, 0, 1);
+        t[COP.clips.walk] = clamp(1 - Math.abs(sp - COP.walk) / 2.2, 0, 1);
+        t[COP.clips.run] = clamp((sp - 2.2) / 2.4, 0, 1);
+        if (d > COP.lose) { copSet(c, 'idle'); c.armed = 0; if (c.gun) c.gun.visible = false; }
+        else if (!c.armed && d < COP.range) { c.clip = COP.clips.draw; copSet(c, 'draw'); }
+        else if (c.armed && d < COP.range) copSet(c, 'armed');
+        break;
+      }
+      case 'draw':
+        face = toP; t[c.clip] = 1;
+        // THE GUN APPEARS WHEN THE HAND GETS TO IT, not on the frame the state changed --
+        // the same rule the slash mark and the melee blow both follow.
+        if (c.t > clipLen2(c, c.clip) * .55 && c.gun) c.gun.visible = true;
+        if (c.t >= clipLen2(c, c.clip)) { c.armed = 1; copSet(c, 'armed'); }
+        break;
+      case 'armed': {
+        face = toP;
+        want = d > COP.hold + 2 ? COP.walk : 0;
+        c.fireT -= dt;
+        const sh = c.t < clipLen2(c, COP.clips.shoot) && c.shotT > 0;
+        if (sh) { t[COP.clips.shoot] = 1; }
+        else {
+          t[COP.clips.idle] = clamp(1 - Math.abs(c.speed) / 1.2, 0, 1);
+          t[COP.clips.walk] = clamp(Math.abs(c.speed) / 1.4, 0, 1);
+        }
+        if (c.fireT <= 0 && d < COP.range && !p.hit) { c.fireT = COP.fire; c.shotT = 1; c.t = 0; c.fired = 0; }
+        if (c.shotT > 0 && !c.fired && c.t > clipLen2(c, COP.clips.shoot) * COP.gunAt) { c.fired = 1; copShoot(c); }
+        if (c.shotT > 0 && c.t > clipLen2(c, COP.clips.shoot)) c.shotT = 0;
+        if (d > COP.range * 1.3) copSet(c, 'chase');
+        break;
+      }
+      case 'hit':
+        t[c.clip] = 1;
+        if (c.t > clipLen2(c, c.clip) * COP.stun) copSet(c, c.armed ? 'armed' : 'chase');
+        break;
+      case 'down':
+        t[c.clip] = 1;
+        if (c.gun) c.gun.visible = false;
+        c.armed = 0;
+        if (c.t > clipLen2(c, c.clip) + .5) { c.clip = c.clip === COP.clips.downB ? COP.clips.upB : COP.clips.upF; copSet(c, 'up'); }
+        break;
+      case 'up':
+        t[c.clip] = 1;
+        // `get_up_front` is 7.7 s at 1x, which is a nap. The clip is time-scaled the way every
+        // one-shot in this game is; `upRate` is the beat it is played at.
+        if (c.t > clipLen2(c, c.clip) / COP.upRate) { c.hp = 1; copSet(c, 'chase'); }
+        break;
+    }
+    // TURN AND MOVE. Rate-limited like everything else that steers here, and the gait blends
+    // off the speed he is ACTUALLY doing rather than off a run flag.
+    const dh = wrapAngle(face - c.h);
+    c.h += clamp(dh, -COP.turn * dt, COP.turn * dt);
+    const acc = want > c.speed ? 9 : 14;
+    c.speed += clamp(want - c.speed, -acc * dt, acc * dt);
+    if (c.speed > .01) {
+      const nx = c.x + Math.sin(c.h) * c.speed * dt, nz = c.z + Math.cos(c.h) * c.speed * dt;
+      // He walks on the same triangle collider the player does, and stops at a wall rather
+      // than through it -- one query, no capsule: a cop is not worth a second physics path.
+      const g = groundAt(nx, nz, c.y + 1.2, .6);
+      const fy = g.hit ? g.floor : hmAt(nx, nz);
+      if (Math.abs(fy - c.y) < 1.1) { c.x = nx; c.z = nz; c.y = fy; } else c.speed = 0;
+    }
+    c.root.position.set(c.x, c.y, c.z);
+    c.root.rotation.y = c.h;
+    skinWeights(c, t, dt, false, COP.clips.idle);
+    c.mixer.update(dt);
+  }
+}
+// `city.COP.gun` IS WRITE-ONLY WITHOUT THIS. The offsets are applied once when the pistol is
+// parented, so typing a new one at the console would do nothing and read as the setting not
+// existing -- the same trap `SHADE.k` fell into when it lived inside `applyDbg`.
+// `city.gunFit()` re-applies them to every officer, so lining the grip up is a three-second
+// loop on the phone instead of a push and a ten-minute Pages cache.
+function copGunFit() {
+  for (const c of cops) {
+    if (!c.gun || !c.gun.parent) continue;
+    c.gun.parent.updateWorldMatrix(true, false);
+    c.gun.geometry.computeBoundingBox(); const gb = c.gun.geometry.boundingBox;
+    const glen = Math.max(gb.max.x - gb.min.x, gb.max.y - gb.min.y, gb.max.z - gb.min.z);
+    const hs = c.gun.parent.getWorldScale(_cg).x || 1;
+    c.gun.scale.setScalar(COP.gunLen / Math.max(1e-6, glen * hs) * COP.gun.s);
+    c.gun.position.set(COP.gun.x, COP.gun.y, COP.gun.z);
+    c.gun.rotation.set(COP.gun.rx, COP.gun.ry, COP.gun.rz);
+    c.gun.visible = !!c.armed;
+  }
+  return COP.gun;
+}
+// The clip's real length for THIS officer, read off his own action rather than Colin's pool.
+function clipLen2(c, nm) { const a = c.actions[nm]; return a ? Math.max(.05, a.getClip().duration) : .6; }
+// THE SHOT. A ray from the muzzle at the player -- `weapon_tip` is the muzzle and is in the
+// gun file for exactly this, so nothing about where the barrel points is typed here. A hit
+// re-uses the car's own knock-down (`p.hit = 'fly'`), because a second damage system for one
+// bullet is a second damage system to keep in step with the first.
+function copShoot(c) {
+  const p = player;
+  snd.trick();
+  const from = _cg.set(c.x, c.y + COLIN_HEIGHT * .72, c.z);
+  const dx = p.pos.x - from.x, dy = (p.pos.y + COLIN_HEIGHT * .55) - from.y, dz = p.pos.z - from.z;
+  const d = Math.hypot(dx, dy, dz) || 1;
+  // A MARK ON THE PICTURE, the same sprite the melee slash uses -- it is a drawn effect and
+  // this is a drawn game. One at the muzzle, one where it lands.
+  slashArc(from.x + dx / d * .5, from.y + dy / d * .5, from.z + dz / d * .5, Math.atan2(dy, Math.hypot(dx, dz)), .55, 1);
+  if (d > COP.range * 1.4 || p.hit || p.melI) return;
+  slashArc(p.pos.x, p.pos.y + COLIN_HEIGHT * .55, p.pos.z, Math.random() * 3, .9, 1);
+  // straight into the car-hit sequence: he goes over backwards and gets up on his own
+  p.hitFwd = Math.cos(wrapAngle(Math.atan2(-dx, -dz) - p.faceH)) < 0;
+  p.hit = 'fly'; p.hitSnap = true; p.hitCool = HIT.cool;
+  p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.mel = ''; p.pushing = false; p.pushT = 0; p.grounded = false;
+  p.vel.x = dx / d * COP.hitPush; p.vel.z = dz / d * COP.hitPush; p.vel.y = COP.hitPush * .42;
+  if (p.board) dropBoard();
+  snd.hit(2, p.pos.x, p.pos.z);
 }
 
 // ---------- input ----------
@@ -3412,6 +3725,7 @@ const OPT_ROWS = [
   ['tog', 'See-through hole', () => HOLE.on, v => { HOLE.on = v; }],
   ['h', 'World'],
   ['tog', 'Map', () => MAP.on, v => { MAP.on = v; }],
+  ['tog', 'Police', () => COP.on, v => { COP.on = v; }],
   ['num', 'Sky exposure', () => SKY.envB, v => { SKY.envB = v; }, 0, 8, .1],
   ['num', 'Sprint x', () => MOVE.sprint, v => { MOVE.sprint = v; }, 1, 3, .05],
 ];
@@ -3755,6 +4069,10 @@ function stepMelee(dt) {
     slashArc(p.pos.x + hx * R, y, p.pos.z + hz * R, roll, p.mel === MELEE.slide ? 1.8 : 1.5, p.mel === MELEE.chain[2]);
     // A second, thinner, a beat behind and turned further: one line is a line, two is a slash.
     if (p.mel === MELEE.chain[2]) slashArc(p.pos.x + hx * R * 1.05, y + .2, p.pos.z + hz * R * 1.05, roll - .32, 1.3, 1);
+    // AND THE BLOW LANDS ON THE SAME FRAME THE MARK IS DRAWN ON. They are one event; firing
+    // the damage on the input instead puts the consequence a third of a second before the
+    // hand gets there, which is what "you cannot actually hit things" looks like.
+    copsPunched(p.pos.x + hx * R * .6, p.pos.z + hz * R * .6, p.melH);
   }
   // THE TAIL IS HIS AGAIN. Holding the whole clip makes a three-punch chain feel like three
   // seconds of watching, so past `hold` a thumb on the pad cancels out of the recovery -- the
@@ -4520,6 +4838,9 @@ function frame() {
   // player is suspended, and only because he is being posed rather than driven.
   if (TITLE.on) titleFrame(dt); else stepPlayer(dt);
   stepTraffic(dt);
+  stepCops(dt);      // ALWAYS. Skipping it on the title card leaves six men in the T-pose on
+                     // the street behind the logo -- a mixer that never updates is a bind pose,
+                     // and `idle` already refuses to notice the player while `TITLE.on`.
   stepClouds(dt);
   WHEELS.set(player.speed, !TITLE.on && player.board && player.grounded && !player.hit, !!player.rail && SFX.on);
   if (TITLE.dive > 0) diveFrame(dt); else if (!TITLE.on) stepCam(dt);
@@ -4548,8 +4869,14 @@ frame();
     catch (e) { console.warn('no ramps', e); }
     try { buildBoard(await loadGLB(BOARD.url, 'shaping the board')); }
     catch (e) { console.warn('no board model, keeping the procedural one', e); }
-    buildCity(city, ramps);
+    let copGlb = null, gunGlb = null;
+    try { copGlb = await loadGLB(COP.url, 'swearing in the police'); }
+    catch (e) { console.warn('[cop] no police_officer.glb', e); }
+    try { gunGlb = await loadGLB(COP.gunUrl, 'issuing sidearms'); }
+    catch (e) { console.warn('[cop] no pistol.glb -- they will chase you unarmed', e); }
+      buildCity(city, ramps);
     buildLadders();
+    if (copGlb) buildCops(copGlb, gunGlb);
     {
       const got = [];
       for (const u of CLOUDS.urls) { try { got.push(await loadGLB(u, 'loading the sky')); } catch (e) { /* that one is not here */ } }
@@ -4575,7 +4902,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

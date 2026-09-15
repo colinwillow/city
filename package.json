@@ -22,7 +22,8 @@
     "wearfit": "node tools/wearfit.mjs",
     "melee": "node tools/melee.mjs",
     "ladders": "node tools/ladders.mjs",
-    "dens": "node tools/dens.mjs"
+    "dens": "node tools/dens.mjs",
+    "cop": "node tools/cop.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

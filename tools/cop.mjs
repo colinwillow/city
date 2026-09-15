@@ -1,0 +1,116 @@
+// npm run cop -- what did the police officer and the pistol actually arrive as, and where
+// does the gun land when it is hung off his hand?
+//
+// Same discipline as `npm run wear`: the REAL vendored GLTFLoader, a REAL AnimationMixer and
+// REAL skinned vertices. Reading the GLB with gltf-transform answers none of this, because
+// GLTFLoader rebinds every skin with the IDENTITY matrix and that is the step that decides
+// what size a thing comes out. The pistol is the case in point -- its geometry is +/-15 units
+// while its own bones are in metres, so the file says two different things about its size and
+// only the loader settles which one wins.
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+if (!existsSync('node_modules/three/package.json')) {
+  mkdirSync('node_modules/three', { recursive: true });
+  writeFileSync('node_modules/three/package.json', JSON.stringify({
+    name: 'three', version: '0.180.0-vendored', type: 'module', main: 'index.js', exports: { '.': './index.js' } }, null, 2));
+  writeFileSync('node_modules/three/index.js', "export * from '../../vendor/three.module.min.js';\n");
+}
+const THREE = await import('three');
+const { GLTFLoader } = await import('../vendor/GLTFLoader.js');
+const { NodeIO } = await import('@gltf-transform/core');
+const { ALL_EXTENSIONS } = await import('@gltf-transform/extensions');
+const draco3d = (await import('draco3dgltf')).default;
+const gio = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
+  'draco3d.decoder': await draco3d.createDecoderModule(), 'draco3d.encoder': await draco3d.createEncoderModule() });
+const TMP = 'tools/.cop-tmp/'; mkdirSync(TMP, { recursive: true });
+async function prep(f) {
+  const out = TMP + f.split('/').pop();
+  const doc = await gio.read(f);
+  for (const t of doc.getRoot().listTextures()) t.dispose();
+  for (const e of doc.getRoot().listExtensionsUsed()) if (/draco/i.test(e.extensionName)) e.dispose();
+  await gio.write(out, doc); return out;
+}
+const loader = new GLTFLoader();
+const load = f => new Promise((res, rej) => loader.parse(readFileSync(f).buffer.slice(0), '', res, rej));
+const cop = await load(await prep('models/police_officer.glb'));
+const gun = await load(await prep('models/pistol.glb'));
+
+// SKIN REAL VERTICES. Bone world positions are not the answer: `npm run wear`'s first version
+// read those and pronounced the robot upright while he was buried head-down.
+const _v = new THREE.Vector3();
+function skinBounds(root, step = 1) {
+  root.updateMatrixWorld(true);
+  const lo = new THREE.Vector3(1e9, 1e9, 1e9), hi = new THREE.Vector3(-1e9, -1e9, -1e9);
+  let n = 0;
+  root.traverse(o => {
+    if (!o.isSkinnedMesh) return;
+    const pos = o.geometry.attributes.position, st = Math.max(1, Math.floor(pos.count / 400) * step);
+    for (let i = 0; i < pos.count; i += st) {
+      o.applyBoneTransform(i, _v.fromBufferAttribute(pos, i)); o.localToWorld(_v);
+      lo.min(_v); hi.max(_v); n++;
+    }
+  });
+  return { lo, hi, n };
+}
+const fmt = v => '(' + v.x.toFixed(3) + ', ' + v.y.toFixed(3) + ', ' + v.z.toFixed(3) + ')';
+
+console.log('=== the officer, as the loader builds him ===');
+const cb = skinBounds(cop.scene);
+console.log('  skinned bounds ' + fmt(cb.lo) + ' .. ' + fmt(cb.hi));
+console.log('  HEIGHT ' + (cb.hi.y - cb.lo.y).toFixed(3) + ' m in file units  -> scale to 1.75 = x' +
+            (1.75 / (cb.hi.y - cb.lo.y)).toFixed(3) + '   (Colin is 1.315 -> x1.331)');
+console.log('  soles at ' + cb.lo.y.toFixed(3) + (Math.abs(cb.lo.y) < .02 ? '   -> already on the floor, no sitSkin lift needed' : '   *** NEEDS A LIFT ***'));
+
+console.log('\n=== the pistol ===');
+const gb = skinBounds(gun.scene);
+console.log('  skinned bounds ' + fmt(gb.lo) + ' .. ' + fmt(gb.hi));
+const glen = Math.max(gb.hi.x - gb.lo.x, gb.hi.y - gb.lo.y, gb.hi.z - gb.lo.z);
+console.log('  LONGEST AXIS ' + glen.toFixed(3) + ' m  -- a pistol is about 0.19 m, so x' + (0.19 / glen).toFixed(3));
+let tip = null, wroot = null;
+gun.scene.traverse(o => { if (o.name === 'weapon_tip') tip = o; if (o.name === 'weapon_root') wroot = o; });
+gun.scene.updateMatrixWorld(true);
+if (wroot) console.log('  weapon_root world ' + fmt(wroot.getWorldPosition(new THREE.Vector3())));
+if (tip) console.log('  weapon_tip  world ' + fmt(tip.getWorldPosition(new THREE.Vector3())) +
+  '   -- the muzzle, which is where a shot starts and what the barrel points along');
+
+console.log('\n=== his hand, through the clips ===');
+let hand = null; cop.scene.traverse(o => { if (o.name === 'mixamorig_RightHand') hand = o; });
+const mx = new THREE.AnimationMixer(cop.scene);
+const clips = cop.animations.slice().sort((a, b) => a.name.localeCompare(b.name));
+const AIR = new Set(['knock_down_back', 'knock_down_front', 'get_up_back', 'get_up_front', 'hit_while_shooting']);
+console.log('  clip                          dur    soles lo..hi      hand y      travel(m)');
+for (const c of clips) {
+  const a = mx.clipAction(c); mx.stopAllAction(); a.reset().play(); a.setEffectiveWeight(1);
+  let slo = 1e9, shi = -1e9, hlo = 1e9, hhi = -1e9;
+  const p0 = new THREE.Vector3(), p1 = new THREE.Vector3();
+  for (let i = 0; i < 10; i++) {
+    mx.setTime(c.duration * i / 9); cop.scene.updateMatrixWorld(true);
+    const b = skinBounds(cop.scene, 3);
+    if (b.lo.y < slo) slo = b.lo.y; if (b.lo.y > shi) shi = b.lo.y;
+    if (hand) { const h = hand.getWorldPosition(new THREE.Vector3()); if (h.y < hlo) hlo = h.y; if (h.y > hhi) hhi = h.y; }
+    const hips = cop.scene.getObjectByName('mixamorig_Hips');
+    if (hips) { const w = hips.getWorldPosition(new THREE.Vector3()); if (i === 0) p0.copy(w); p1.copy(w); }
+  }
+  const travel = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+  console.log('  ' + c.name.padEnd(26) + c.duration.toFixed(2) + 's  ' +
+    slo.toFixed(2) + '..' + shi.toFixed(2) + '   ' + hlo.toFixed(2) + '..' + hhi.toFixed(2) +
+    '    ' + travel.toFixed(2) + (travel > .05 ? '  <- ROOT MOTION' : '') +
+    (!AIR.has(c.name) && slo > .05 ? '   *** FLOATS ***' : ''));
+  a.stop();
+}
+mx.stopAllAction();
+
+console.log('\n=== the pistol, object by object ===');
+gun.scene.updateMatrixWorld(true);
+gun.scene.traverse(o => {
+  const p = o.getWorldPosition(new THREE.Vector3()), s = o.getWorldScale(new THREE.Vector3());
+  console.log('  ' + (o.type + '        ').slice(0, 13) + (o.name || '(anon)').padEnd(16) +
+    ' world ' + fmt(p) + ' scale ' + s.x.toFixed(3) +
+    (o.geometry ? '  geo ' + o.geometry.attributes.position.count + 'v' : ''));
+  if (o.geometry) {
+    o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox;
+    const w = b.clone().applyMatrix4(o.matrixWorld);
+    console.log('      geo bounds ' + fmt(b.min) + ' .. ' + fmt(b.max));
+    console.log('      WORLD      ' + fmt(w.min) + ' .. ' + fmt(w.max) +
+      '   longest ' + Math.max(w.max.x - w.min.x, w.max.y - w.min.y, w.max.z - w.min.z).toFixed(3) + ' m');
+  }
+});
