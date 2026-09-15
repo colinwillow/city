@@ -75,7 +75,30 @@ for (let k = 0; k + side < H; k++) {
 // near first, then how much of it is a built surface rather than bare land
 for (const h of hits) h.d = Math.hypot(h.x - SPAWN.x, h.z - SPAWN.z);
 hits.sort((a, b) => (b.good - a.good) || (a.d - b.d));
+// `npm run spots 5 spread 8` -- eight places SPREAD ACROSS THE MAP rather than the eight
+// nearest the spawn. Farthest-point sampling: take the best one, then repeatedly take whatever
+// is furthest from everything already taken. The near-first list is the right answer for "where
+// do I put a half pipe he will actually find"; it is the wrong one for anything that wants to
+// be distributed, and asking it for six police spots put four of them in a rank eight metres
+// apart on one verge, which is what he saw.
+const SPREAD = process.argv.includes('spread') ? (+process.argv[process.argv.indexOf('spread') + 1] || 8) : 0;
 const keep = [];
+if (SPREAD) {
+  const pool = hits.filter(h => h.good > .5);
+  if (pool.length) {
+    keep.push(pool[0]);
+    while (keep.length < SPREAD && keep.length < pool.length) {
+      let best = null, bd = -1;
+      for (const h of pool) {
+        let d = 1e9;
+        for (const k of keep) d = Math.min(d, Math.hypot(k.x - h.x, k.z - h.z));
+        if (d > bd) { bd = d; best = h; }
+      }
+      if (!best || bd < WANT * 2) break;
+      keep.push(best);
+    }
+  }
+} else
 for (const h of hits) { if (keep.some(k => Math.hypot(k.x - h.x, k.z - h.z) < WANT * 1.6)) continue; keep.push(h); if (keep.length >= 12) break; }
 console.log('clear ' + WANT + ' m squares, best first (good = fraction on park/lot/court rather than road)\n');
 for (const h of keep) console.log('  x ' + h.x.toFixed(1).padStart(7) + '  z ' + h.z.toFixed(1).padStart(7) +

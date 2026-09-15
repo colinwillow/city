@@ -941,6 +941,52 @@ playwright unless he asks for it by name.
   **Placed by `npm run spots 4`**, not by eye — same rule as the ramps.
   **The chip says `· NO COP GLB` / `· NO PISTOL GLB` unasked**, because a console warning is
   invisible on a phone.
+- **HEAT: A POLICE OFFICER WHO SHOOTS ON SIGHT IS NOT A CITY, IT IS A SHOOTING GALLERY.**
+  c82 shipped six officers who noticed you at 24 m and unloaded indefinitely, and the game is
+  SKATING — the police have to be part of the street rather than a reason to stay off it. So
+  they are indifferent until you give them a reason, and the reason accumulates: a star system,
+  because that is the shape everybody already reads without being told.
+      0      they mosey -- patrol a short beat, stop, look about, walk on. They do not see you.
+      >= 1   whoever is near enough comes after you, on foot
+      >= 2   they draw and shoot -- **and `d < COP.range` gates the trigger separately**, so a
+             round is never fired across the map at somebody merely known about
+      >= 3   they call it in: everyone inside `callIn` joins, not just the one you touched
+  **And it FALLS on its own** once nobody has seen you for `calm`, so a scrape is a scrape
+  rather than a life sentence and getting away is a real move. `HEAT.punch/down/zap/bolt` is
+  what each thing you do is worth. **The stars are in the chip**, because a wanted level you
+  cannot see is one you cannot play around, and "why is everyone shooting me" is the question
+  it exists to answer before it is asked.
+- **NO TWO OFFICERS THE SAME.** Six identical men doing the identical thing on the identical
+  frame is what "they all have the exact same behavior" looks like, and it is one line of
+  variation away from a street: `react` (how long he takes to notice), `nerve` (how close he
+  will get, and how fast) and `cadence` (how often he fires), plus a `wake` state so they do
+  not all turn on the same frame. **None of these change what he DOES** — only how quickly and
+  how close — so the state machine stays one thing to reason about.
+- **`npm run spots ... spread N` EXISTS BECAUSE NEAREST-FIRST IS THE WRONG SORT FOR ANYTHING
+  DISTRIBUTED.** `spots` ranks by distance from the spawn, which is exactly right for "where
+  do I put a half pipe he will actually find" and put four police in a rank eight metres apart
+  in his face. `spread` is farthest-point sampling over the same candidates: take the best,
+  then repeatedly take whatever is furthest from everything already taken. The police spots are
+  one within a walk of the spawn and seven scattered from 297 m to 767 m out.
+- **THEIR ROUNDS ARE SLOW ENOUGH TO SEE AND TO DODGE (`SHOT`).** A hitscan bullet is a number
+  that happens to you; a round crossing ten metres in half a second is a thing on screen you
+  can read and steer off, which is the difference between being shot at and being in a fight.
+  It is also the only honest way to have police in a skating game: **the answer to being shot
+  at should be to move, and you cannot move out of the way of an instant.**
+  **The lead is deliberately short and the spread deliberately wide.** A pistol that solves the
+  intercept is a pistol you cannot dodge; he aims at where you are now plus a fraction of where
+  you are going, so standing still is punished and moving is rewarded.
+  **`range` is the other half of "the bullets don't just go infinitely"** — they stop, and the
+  ground stops them too, which is what makes cover mean something. A dodge roll's i-frames
+  cover them like everything else. A hit goes straight into the car's own knock-down rather
+  than opening a second damage system.
+- **`city.slash({roll, r, y, size})` FIRES ONE AND LETS HIM LOOK AT IT.** The melee marks came
+  out "turned, and only going to the side instead of in front of him" — **which is the second
+  game in a row that has happened in**, and both times the fix was to look at one and adjust,
+  because what is being matched is what the ANIMATION looks like and not where a bone went.
+  There is nothing to derive. So there is a way to fire one on demand without throwing a punch
+  first, and it prints the numbers to keep. `roll` is SCREEN-space radians (0 = horizontal);
+  `MELEE.fxR`/`fxY` are where it sits, as fractions of his height.
 - **THE KIT IS ONE BUTTON, NOT THREE (`KIT`, the key where Board used to be).** A phone has two
   thumbs and a HUD full of keys is a HUD you cannot play through, so Plutopia's arrangement
   ports whole: **TAP** and the thing in your hand goes on or off, **PRESS AND HOLD** and the

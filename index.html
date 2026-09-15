@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c84</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c85</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c84';
+const BUILD = 'c85';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1262,6 +1262,26 @@ function slashArc(x, y, z, roll, size, hot) {
   m.position.set(x, y, z);
   m.scale.setScalar((size || SLASH.r) * .6);
 }
+// `city.slash({roll: .3, r: .9, y: .6, size: 1.5})` -- FIRE ONE AND LOOK AT IT.
+// He has hit this in two games now: "they were turned, and they were only going to the side
+// instead of going in front of him". Both times the answer was to look at one and adjust,
+// because what is being matched is what the ANIMATION looks like and not where a bone went --
+// there is nothing to derive. So there is a way to fire one on demand, from the console,
+// without throwing a punch first, and it prints the numbers to keep.
+// Called with no argument it fires one per clip in sequence so they can be compared.
+function slashTry(o) {
+  o = o || {};
+  const p = player, h = p.faceH;
+  if (o.roll !== undefined) SLASH.roll[o.clip || 'melee_punch_01'] = o.roll;
+  if (o.r !== undefined) MELEE.fxR = o.r;
+  if (o.y !== undefined) MELEE.fxY = o.y;
+  const R = MELEE.fxR * COLIN_HEIGHT, hx = Math.sin(h), hz = Math.cos(h);
+  const nm = o.clip || 'melee_punch_01';
+  slashArc(p.pos.x + hx * R, p.pos.y + COLIN_HEIGHT * MELEE.fxY, p.pos.z + hz * R,
+    SLASH.roll[nm] !== undefined ? SLASH.roll[nm] : -.4, o.size || 1.5, !!o.hot);
+  return { clip: nm, roll: SLASH.roll[nm], 'MELEE.fxR': MELEE.fxR, 'MELEE.fxY': MELEE.fxY,
+           note: 'roll is SCREEN-space radians, 0 = horizontal. fxR/fxY are fractions of his height.' };
+}
 function stepSlash(dt) {
   if (!_slashPool) return;
   for (const m of _slashPool) {
@@ -1458,12 +1478,13 @@ function stepBolts(dt) {
     let hit = 0;
     for (const c of carsNear(m.position.x, m.position.z, 6, _cn)) {
       if (Math.hypot(c.x - m.position.x, c.z - m.position.z) > BOLT.rad + c.hl) continue;
-      c.zap = BOLT.stun; c.speed = 0; hit = 1; break;
+      c.zap = BOLT.stun; c.speed = 0; hit = 1; heatAdd(HEAT.zap); break;
     }
     if (!hit) for (const c of cops) {
       if (Math.hypot(c.x - m.position.x, c.z - m.position.z) > BOLT.rad + COP.r) continue;
       if (Math.abs(c.y + COLIN_HEIGHT * .5 - m.position.y) > 1.6) continue;
       c.hp = 0; copHit(c, Math.atan2(m.position.x - c.x, m.position.z - c.z) + Math.PI);
+      heatAdd(HEAT.bolt - HEAT.down);   // copHit already added the knock-down's share
       hit = 1; break;
     }
     if (hit) boltPop(m);
@@ -1978,6 +1999,9 @@ function missing() {
   if (CHARS.miss) m += ' · NO SKIN ' + CHARS.miss;
   // The same question the cloud and sky lines answer: "did that asset arrive". `cop0` and a
   // silent console warning are the same picture from a phone.
+  // THE STARS. A wanted level you cannot see is a wanted level you cannot play around, and
+  // "why is everyone shooting me" is the question it exists to answer before it is asked.
+  if (HEAT.n > .05) m += ' · ' + '\u2605'.repeat(Math.max(1, Math.ceil(HEAT.n)));
   if (!cops.length) m += ' · NO COP GLB';
   else if (!cops[0].gun) m += ' · NO PISTOL GLB';
   if (JAM.n) m += ' · JAM ' + JAM.n + '@' + JAM.x.toFixed(0) + ',' + JAM.z.toFixed(0);
@@ -3636,14 +3660,26 @@ const COP = {
   // WHERE THEY STAND. Measured with `npm run spots 4` rather than picked off a screenshot --
   // flat, open, unbuilt squares near the spawn, which is the same rule the ramps are placed
   // by and the reason none of them is inside a bank.
+  // SPREAD ACROSS THE MAP, NOT STACKED ON THE VERGE BY THE SPAWN. The first six came off
+  // `npm run spots 4`, which sorts NEAREST FIRST -- the right answer for "where do I put a
+  // half pipe he will actually find" and completely the wrong one for anything that wants to
+  // be distributed. It put four of them in a rank eight metres apart in his face.
+  // `npm run spots 5 spread 8` is farthest-point sampling over the same candidates: take the
+  // best, then repeatedly take whatever is furthest from everything already taken.
   spots: [
-    { x: -94, z: 0 }, { x: -94, z: -8 }, { x: -94, z: 8 },
-    { x: -94, z: -16 }, { x: -90, z: -22 }, { x: -90, z: 22 },
+    { x: -93, z: 23 },      // one within a walk of the spawn, so they can be found on purpose
+    { x: 191, z: 55 },      // downtown
+    { x: -111, z: 279 }, { x: -389, z: -85 }, { x: 165, z: 335 },
+    { x: -385, z: 337 }, { x: 397, z: -135 }, { x: 589, z: 335 },
   ],
   see: 24,          // he notices you inside this
   lose: 46,         // and gives up outside it
   range: 15,        // close enough to draw and shoot
   hold: 7,          // once armed he stands his ground at about this range
+  // PATROL. At zero heat he is not looking for you: he walks a short beat round where he
+  // stands, stops, looks about, and walks somewhere else. `beat` is how far he strays, so he
+  // is findable where the map says he is rather than wandering off across the city.
+  beat: 11, patrol: [3, 9], look: [2, 5],
   walk: 1.7, run: 5.4, turn: 7,
   hp: 3,            // punches before he goes down
   stun: .62,        // of a hit clip he is held for; the tail blends back into whatever is next
@@ -3674,8 +3710,54 @@ const COP = {
            downF: 'knock_down_front', downB: 'knock_down_back', upF: 'get_up_front', upB: 'get_up_back' },
   on: 1,
 };
+// ---------- HEAT ----------
+// A POLICE OFFICER WHO SHOOTS YOU ON SIGHT IS NOT A CITY, IT IS A SHOOTING GALLERY. The game
+// is skating; the police have to be part of the street rather than a reason to stay off it.
+// So they are indifferent until you give them a reason, and the reason accumulates -- a star
+// system, which is the shape everybody already knows and reads without being told.
+//   0      they mosey. Patrol a short beat, stop, look about, walk on. They do not see you.
+//   >= 1   whoever is near enough comes after you, on foot, to grab you
+//   >= 2   they draw, and they shoot -- but only inside `COP.range`, never across the map
+//   >= 3   they call it in: everyone inside `callIn` joins, not just the one you touched
+// And it FALLS on its own once nobody has seen you for `calm`, so a scrape is a scrape rather
+// than a life sentence. Getting away is a real move.
+const HEAT = {
+  max: 5, n: 0,
+  calm: 7,          // seconds unseen before it starts falling
+  decay: .16,       // and how fast, in stars a second
+  chaseAt: 1, fireAt: 2, callAt: 3, callIn: 90,
+  punch: .9,        // what each thing you do is worth
+  down: 1.3, zap: .5, bolt: 1.7,
+  t: 0,             // time since anything happened
+};
+function heatAdd(k) {
+  HEAT.n = Math.min(HEAT.max, HEAT.n + k); HEAT.t = 0;
+  // A CALL-IN IS A REAL ESCALATION AND IT HAS TO BE VISIBLE. Past `callAt` everybody inside
+  // `callIn` knows where you are, which is what turns a scuffle into a chase worth running from.
+  if (HEAT.n >= HEAT.callAt) for (const c of cops) {
+    if (Math.hypot(c.x - player.pos.x, c.z - player.pos.z) < HEAT.callIn) c.alert = 1;
+  }
+}
+function heatStep(dt) {
+  HEAT.t += dt;
+  if (HEAT.t > HEAT.calm) HEAT.n = Math.max(0, HEAT.n - HEAT.decay * dt);
+  if (HEAT.n < HEAT.chaseAt) for (const c of cops) c.alert = 0;
+}
 // One-shot clips, the same rule Colin's `ONCE` list follows: play through and hold the last
 // frame rather than loop, and rewind when the weight leaves zero.
+// THEIR ROUNDS ARE SLOW ENOUGH TO SEE AND TO GET OUT OF THE WAY OF. A hitscan bullet is a
+// number that happens to you; a round that crosses ten metres in half a second is a thing on
+// screen you can read and dodge, which is the difference between being shot at and being in a
+// fight. It is also the only honest way to have police in a skating game: the answer to being
+// shot at should be to move, and you cannot move out of the way of an instant.
+// `range` is the other half of "the bullets don't just go infinitely" -- they stop.
+const SHOT = {
+  speed: 19, range: 26, rad: .52, n: 16,
+  lead: .22,        // how much of your velocity he aims ahead of you -- deliberately not enough
+  spread: .09,      // and how wide he is, as a fraction of the distance
+  push: 6.5,        // what a hit does, into the car system's own knock-down
+  col: '#ffe08a', tail: 2.6,
+};
 const COP_ONCE = new Set(['draw_weapon', 'shoot_pistol', 'hit_body', 'hit_head', 'hit_ribs', 'hit_stomach',
   'knock_down_front', 'knock_down_back', 'get_up_front', 'get_up_back']);
 const cops = [];
@@ -3736,9 +3818,19 @@ function buildCops(gltf, gunGltf) {
         if (i === 0) console.log('[cop] pistol ' + (glen * hs).toFixed(3) + ' m in the hand -> x' + k.toFixed(3) + ' for ' + COP.gunLen + ' m');
       }
     }
+    // NO TWO OF THEM THE SAME. Six identical men doing the identical thing at the identical
+    // moment is what "they all have the exact same behavior" looks like, and it is one line
+    // of variation away from a street. None of these change what he DOES -- only how quickly,
+    // how close he is willing to get and how long he dithers -- so the state machine stays
+    // one thing to reason about.
     cops.push({ id: i, root, model, mixer, actions, cw: {}, key: 'cop', gun,
-      x: sp.x, z: sp.z, y: root.position.y, h: 0, speed: 0,
-      st: 'idle', t: 0, hp: COP.hp, armed: 0, fireT: 0, shotT: 0, fired: 0, clip: '', home: { x: sp.x, z: sp.z } });
+      x: sp.x, z: sp.z, y: root.position.y, h: Math.random() * Math.PI * 2, speed: 0,
+      st: 'idle', t: 0, hp: COP.hp, armed: 0, fireT: 0, shotT: 0, fired: 0, clip: '',
+      alert: 0, waitT: rnd(1, 4), tx: sp.x, tz: sp.z,
+      react: rnd(.25, 1.1),        // how long he takes to notice
+      nerve: rnd(.8, 1.25),        // how close he is willing to get, and how fast he walks
+      cadence: rnd(.85, 1.4),      // and how often he fires
+      home: { x: sp.x, z: sp.z } });
   }
   console.log('[cop] ' + cops.length + ' officers on the street' + (copGun ? ' with pistols' : ' -- NO PISTOL GLB'));
 }
@@ -3772,7 +3864,9 @@ function copSet(c, st) { c.st = st; c.t = 0; }
 function copHit(c, fromH) {
   if (c.st === 'down' || c.st === 'up') return false;
   c.hp--;
+  c.alert = 1;
   snd.hit(1, c.x, c.z);
+  heatAdd(c.hp > 0 ? HEAT.punch : HEAT.down);
   if (c.hp > 0) { c.clip = COP.clips.hits[(Math.random() * COP.clips.hits.length) | 0]; copSet(c, 'hit'); return true; }
   // WHICH WAY HE GOES OVER IS WHICH WAY HE WAS FACING when it landed -- a punch to the face
   // puts him on his back, one from behind puts him on his front.
@@ -3797,27 +3891,64 @@ const _cg = new THREE.Vector3();
 function stepCops(dt) {
   if (!cops.length || !COP.on) return;
   const p = player, px = p.pos.x, pz = p.pos.z;
+  heatStep(dt);
   for (const c of cops) {
     c.t += dt;
     const dx = px - c.x, dz = pz - c.z, d = Math.hypot(dx, dz) || 1;
     const toP = Math.atan2(dx, dz);
+    // WHAT THIS OFFICER IS ALLOWED TO DO, WHICH IS THE WHOLE OF THE STAR SYSTEM. He engages
+    // only if the heat is up AND he can see you (or somebody called it in); he draws only a
+    // level above that; and `d < COP.range` gates the trigger separately, so a bullet is never
+    // fired across the map at somebody he merely knows about.
+    const sees = d < COP.see && !TITLE.on;
+    if (sees && HEAT.n >= HEAT.chaseAt) { c.alert = 1; HEAT.t = 0; }
+    const go = c.alert && HEAT.n >= HEAT.chaseAt && d < COP.lose;
+    const mayFire = HEAT.n >= HEAT.fireAt && d < COP.range;
     let want = 0, face = c.h, t = {};
     switch (c.st) {
       case 'idle':
-        t[COP.clips.idle] = 1;
-        if (d < COP.see && !TITLE.on) copSet(c, 'chase');
+        // AT ZERO HEAT HE IS NOT LOOKING FOR YOU. He walks a short beat, stops, looks about,
+        // and walks somewhere else -- which is what makes him part of the street rather than a
+        // turret with a patrol radius.
+        t[COP.clips.idle] = clamp(1 - Math.abs(c.speed) / 1.2, 0, 1);
+        t[COP.clips.walk] = clamp(Math.abs(c.speed) / 1.4, 0, 1);
+        c.waitT -= dt;
+        if (c.waitT <= 0) {
+          if (c.tx === null) {                       // stood looking: pick somewhere to walk
+            const a = Math.random() * Math.PI * 2, r = COP.beat * (.3 + Math.random() * .7);
+            c.tx = c.home.x + Math.cos(a) * r; c.tz = c.home.z + Math.sin(a) * r;
+            c.waitT = COP.patrol[0] + Math.random() * (COP.patrol[1] - COP.patrol[0]);
+          } else {                                   // walked somewhere: stand and look
+            c.tx = null; c.waitT = COP.look[0] + Math.random() * (COP.look[1] - COP.look[0]);
+            c.h += (Math.random() - .5) * 2.2;
+          }
+        }
+        if (c.tx !== null) {
+          const ax = c.tx - c.x, az = c.tz - c.z, ad = Math.hypot(ax, az);
+          if (ad > .8) { face = Math.atan2(ax, az); want = COP.walk * c.nerve; }
+          else { c.tx = null; c.waitT = COP.look[0] + Math.random() * (COP.look[1] - COP.look[0]); }
+        }
+        if (go) { c.waitT = c.react; copSet(c, 'wake'); }
+        break;
+      // HE TAKES A BEAT TO NOTICE, AND IT IS A DIFFERENT BEAT FOR EACH OF THEM -- six men
+      // turning on the same frame is the tell that they are one thing wearing six bodies.
+      case 'wake':
+        t[COP.clips.idle] = 1; face = toP;
+        c.waitT -= dt;
+        if (!go) copSet(c, 'idle');
+        else if (c.waitT <= 0) copSet(c, 'chase');
         break;
       case 'chase': {
         face = toP;
         // He stops running at `hold` once he has the gun out, and at arm's length if he has not.
-        const want0 = c.armed ? COP.hold : COP.reach * .8;
-        want = d > want0 ? (d > want0 + 3 ? COP.run : COP.walk) : 0;
+        const want0 = (c.armed ? COP.hold : COP.reach * .8) * c.nerve;
+        want = d > want0 ? (d > want0 + 3 ? COP.run : COP.walk) * c.nerve : 0;
         const sp = Math.abs(c.speed);
         t[COP.clips.idle] = clamp(1 - sp / 1.2, 0, 1);
         t[COP.clips.walk] = clamp(1 - Math.abs(sp - COP.walk) / 2.2, 0, 1);
         t[COP.clips.run] = clamp((sp - 2.2) / 2.4, 0, 1);
-        if (d > COP.lose) { copSet(c, 'idle'); c.armed = 0; if (c.gun) c.gun.visible = false; }
-        else if (!c.armed && d < COP.range) { c.clip = COP.clips.draw; copSet(c, 'draw'); }
+        if (!go) { copSet(c, 'idle'); c.armed = 0; c.tx = null; c.waitT = 1; if (c.gun) c.gun.visible = false; }
+        else if (!c.armed && mayFire) { c.clip = COP.clips.draw; copSet(c, 'draw'); }
         else if (c.armed && d < COP.range) copSet(c, 'armed');
         break;
       }
@@ -3838,15 +3969,15 @@ function stepCops(dt) {
           t[COP.clips.idle] = clamp(1 - Math.abs(c.speed) / 1.2, 0, 1);
           t[COP.clips.walk] = clamp(Math.abs(c.speed) / 1.4, 0, 1);
         }
-        if (c.fireT <= 0 && d < COP.range && !p.hit) { c.fireT = COP.fire; c.shotT = 1; c.t = 0; c.fired = 0; }
+        if (c.fireT <= 0 && mayFire && !p.hit) { c.fireT = COP.fire * c.cadence; c.shotT = 1; c.t = 0; c.fired = 0; }
         if (c.shotT > 0 && !c.fired && c.t > clipLen2(c, COP.clips.shoot) * COP.gunAt) { c.fired = 1; copShoot(c); }
         if (c.shotT > 0 && c.t > clipLen2(c, COP.clips.shoot)) c.shotT = 0;
-        if (d > COP.range * 1.3) copSet(c, 'chase');
+        if (!go || d > COP.range * 1.3) copSet(c, 'chase');
         break;
       }
       case 'hit':
         t[c.clip] = 1;
-        if (c.t > clipLen2(c, c.clip) * COP.stun) copSet(c, c.armed ? 'armed' : 'chase');
+        if (c.t > clipLen2(c, c.clip) * COP.stun) { c.alert = 1; copSet(c, c.armed ? 'armed' : 'chase'); }
         break;
       case 'down':
         t[c.clip] = 1;
@@ -3858,7 +3989,7 @@ function stepCops(dt) {
         t[c.clip] = 1;
         // `get_up_front` is 7.7 s at 1x, which is a nap. The clip is time-scaled the way every
         // one-shot in this game is; `upRate` is the beat it is played at.
-        if (c.t > clipLen2(c, c.clip) / COP.upRate) { c.hp = 1; copSet(c, 'chase'); }
+        if (c.t > clipLen2(c, c.clip) / COP.upRate) { c.hp = 1; c.alert = 1; copSet(c, HEAT.n >= HEAT.chaseAt ? 'chase' : 'idle'); }
         break;
     }
     // TURN AND MOVE. Rate-limited like everything else that steers here, and the gait blends
@@ -3900,6 +4031,64 @@ function copGunFit() {
   }
   return COP.gun;
 }
+// ONE POOL, RECYCLED -- the same shape as the slash marks, the blobs and the plasma bolts.
+// A stretched box along the flight line rather than a sphere: a round reads as a streak, and a
+// streak points at where it is going, which is what you steer off.
+const shots = { list: [], geo: null, mat: null };
+function shotFire(x, y, z, dx, dy, dz) {
+  if (!shots.geo) {
+    shots.geo = new THREE.BoxGeometry(.09, .09, 1);
+    shots.mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(SHOT.col), transparent: true,
+      opacity: .95, depthWrite: false, fog: false });
+  }
+  let m = shots.list.find(q => !q.visible);
+  if (!m && shots.list.length < SHOT.n) {
+    m = new THREE.Mesh(shots.geo, shots.mat);
+    m.visible = false; m.renderOrder = 3; m.userData.noHole = true; m.frustumCulled = false;
+    scene.add(m); shots.list.push(m);
+  }
+  if (!m) m = shots.list[0];
+  m.visible = true;
+  m.position.set(x, y, z);
+  m.scale.set(1, 1, SHOT.tail);
+  m.lookAt(x + dx, y + dy, z + dz);
+  m.userData.dx = dx; m.userData.dy = dy; m.userData.dz = dz; m.userData.d = 0;
+}
+function stepShots(dt) {
+  const p = player;
+  for (const m of shots.list) {
+    if (!m.visible) continue;
+    const u = m.userData, step = SHOT.speed * dt;
+    u.d += step;
+    if (u.d > SHOT.range) { m.visible = false; continue; }
+    m.position.x += u.dx * step; m.position.y += u.dy * step; m.position.z += u.dz * step;
+    // the ground stops it, which is what makes cover mean something
+    const g = groundAt(m.position.x, m.position.z, m.position.y + 1, 1);
+    if (m.position.y < (g.hit ? g.floor : hmAt(m.position.x, m.position.z))) { shotPop(m); continue; }
+    if (p.hit || p.melI) continue;            // a dodge roll's i-frames cover this too
+    const bx = p.pos.x - m.position.x, by = p.pos.y + COLIN_HEIGHT * .5 - m.position.y, bz = p.pos.z - m.position.z;
+    if (bx * bx + bz * bz < SHOT.rad * SHOT.rad + .35 && Math.abs(by) < COLIN_HEIGHT * .55) {
+      shotPop(m); playerShot(u.dx, u.dz);
+    }
+  }
+}
+function shotPop(m) {
+  m.visible = false;
+  slashArc(m.position.x, m.position.y, m.position.z, Math.random() * 3, .7, 1);
+}
+// STRAIGHT INTO THE CAR'S OWN KNOCK-DOWN. A second damage system for one bullet is a second
+// damage system to keep in step with the first.
+function playerShot(dx, dz) {
+  const p = player;
+  p.hitFwd = Math.cos(wrapAngle(Math.atan2(-dx, -dz) - p.faceH)) < 0;
+  p.hit = 'fly'; p.hitSnap = true; p.hitCool = HIT.cool;
+  p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.mel = ''; p.aim = 0; p.chg = 0;
+  p.pushing = false; p.pushT = 0; p.grounded = false;
+  p.vel.x = dx * SHOT.push; p.vel.z = dz * SHOT.push; p.vel.y = SHOT.push * .45;
+  if (p.board) dropBoard();
+  snd.hit(2, p.pos.x, p.pos.z);
+  slashArc(p.pos.x, p.pos.y + COLIN_HEIGHT * .55, p.pos.z, Math.random() * 3, 1.1, 1);
+}
 // The clip's real length for THIS officer, read off his own action rather than Colin's pool.
 function clipLen2(c, nm) { const a = c.actions[nm]; return a ? Math.max(.05, a.getClip().duration) : .6; }
 // THE SHOT. A ray from the muzzle at the player -- `weapon_tip` is the muzzle and is in the
@@ -3908,23 +4097,26 @@ function clipLen2(c, nm) { const a = c.actions[nm]; return a ? Math.max(.05, a.g
 // bullet is a second damage system to keep in step with the first.
 function copShoot(c) {
   const p = player;
-  snd.trick();
   const from = _cg.set(c.x, c.y + COLIN_HEIGHT * .72, c.z);
-  const dx = p.pos.x - from.x, dy = (p.pos.y + COLIN_HEIGHT * .55) - from.y, dz = p.pos.z - from.z;
+  // OUT OF THE MUZZLE. `weapon_tip` is in `pistol.glb` for exactly this, so which way the
+  // barrel points is read off the gun rather than typed -- and it follows `shoot_pistol`.
+  if (c.gun) { c.gun.updateWorldMatrix(true, false); c.gun.getWorldPosition(from); }
+  const dx = p.pos.x - from.x, dy = (p.pos.y + COLIN_HEIGHT * .5) - from.y, dz = p.pos.z - from.z;
   const d = Math.hypot(dx, dy, dz) || 1;
-  // A MARK ON THE PICTURE, the same sprite the melee slash uses -- it is a drawn effect and
-  // this is a drawn game. One at the muzzle, one where it lands.
-  slashArc(from.x + dx / d * .5, from.y + dy / d * .5, from.z + dz / d * .5, Math.atan2(dy, Math.hypot(dx, dz)), .55, 1);
-  if (d > COP.range * 1.4 || p.hit || p.melI) return;
-  slashArc(p.pos.x, p.pos.y + COLIN_HEIGHT * .55, p.pos.z, Math.random() * 3, .9, 1);
-  // straight into the car-hit sequence: he goes over backwards and gets up on his own
-  p.hitFwd = Math.cos(wrapAngle(Math.atan2(-dx, -dz) - p.faceH)) < 0;
-  p.hit = 'fly'; p.hitSnap = true; p.hitCool = HIT.cool;
-  p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.mel = ''; p.pushing = false; p.pushT = 0; p.grounded = false;
-  p.vel.x = dx / d * COP.hitPush; p.vel.z = dz / d * COP.hitPush; p.vel.y = COP.hitPush * .42;
-  if (p.board) dropBoard();
-  snd.hit(2, p.pos.x, p.pos.z);
+  // LEADING THE SHOT, BADLY ON PURPOSE. A police pistol that solves the intercept is a police
+  // pistol you cannot dodge. He aims at where you are NOW plus a fraction of where you are
+  // going, with a spread -- so standing still is punished and moving is rewarded, which is the
+  // whole point of making the round slow enough to see.
+  const lead = SHOT.lead * (1 - SHOT.spread * .5);
+  const ax = dx + p.vel.x * lead + (Math.random() - .5) * SHOT.spread * d;
+  const ay = dy + (Math.random() - .5) * SHOT.spread * d * .35;
+  const az = dz + p.vel.z * lead + (Math.random() - .5) * SHOT.spread * d;
+  const al = Math.hypot(ax, ay, az) || 1;
+  shotFire(from.x, from.y, from.z, ax / al, ay / al, az / al);
+  slashArc(from.x + dx / d * .35, from.y + dy / d * .35, from.z + dz / d * .35, Math.random() * 3, .5, 1);
+  snd.trick();
 }
+
 
 // ---------- input ----------
 const stick = { L: { x: 0, y: 0, down: 0 }, R: { x: 0, y: 0, down: 0 } };
@@ -5314,6 +5506,7 @@ function frame() {
   if (TITLE.on) titleFrame(dt); else stepPlayer(dt);
   stepBolts(dt);
   stepTraffic(dt);
+  stepShots(dt);
   stepCops(dt);      // ALWAYS. Skipping it on the title card leaves six men in the T-pose on
                      // the street behind the logo -- a mixer that never updates is a bind pose,
                      // and `idle` already refuses to notice the player while `TITLE.on`.
@@ -5389,7 +5582,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, gear, weapFit, kitPick, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, gear, weapFit, kitPick, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
