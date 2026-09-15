@@ -1159,6 +1159,27 @@ playwright unless he asks for it by name.
   point, so **the one case that matters most failed every time**. It is a cone about the
   PLAYER now, `MELEE.arc` wide, with anything inside `COP.r` hit whichever way he is pointing,
   because that close there is no meaningful direction left.
+- **THE ROLL IS A SCREEN-SPACE ANGLE AND THIS CAMERA ORBITS — WHICH NO PER-CLIP CONSTANT CAN
+  EVER FIX.** Plutopia's camera keeps a fairly constant relationship to the player, so a fixed
+  roll reads there. `cam.az` here swings the whole way round, so **the same constant means a
+  different thing on screen every time you turn the lens** — which is exactly "sometimes
+  vertical, sometimes horizontal, never going the way the blow is going".
+  So the swing is PROJECTED (`slashScreenRoll`): two points a metre apart along the blow,
+  through the real camera matrix, and the angle between them in NDC is which way the punch
+  travels ON SCREEN. The crescent is drawn bulging along +X, so rolling it to that angle puts
+  its leading edge where the fist is going, from any camera angle, **by construction**.
+  `SLASH.roll` stops being an absolute and becomes a per-clip OFFSET from it — which is what
+  it was always trying to be.
+  **When the blow comes straight at or away from the lens** the projection is near zero and its
+  angle is noise, so the offset takes over with a `spread` of scatter — correct, because a
+  punch thrown directly away from you has no direction on screen to lie along, and a FIXED roll
+  there reads as welded: three punches in a chain leaving the identical mark in the identical
+  place.
+- **AND THE SIZES NEEDED THE .625 TOO, WHICH c91 FORGOT.** `SLASH.r` is a LENGTH IN WORLD
+  UNITS, so copying Plutopia's 1.9 verbatim put a 2 m crescent beside a 1.75 m man. Its 1.6 is
+  .57 of its 2.8 m alien; 1.5 on Colin is .86 of him — **half again too big**, which is most of
+  what "not lined up" actually looks like on screen. Scaled: r 1.19, strike .94, slide 1.13.
+  **Every borrowed length needs the scale; only counts and fractions come over raw.**
 - **THE SLASH MARKS NEEDED PLUTOPIA'S NUMBERS, NOT APPROXIMATIONS OF THEM.** c80 shipped
   life .2 against .24, r 1.5 against 1.9, peak .92 against .9, rolls −.28/−1.0/.4 against
   −.25/−.95/.35 — close enough to look deliberate and wrong enough to read as "turned". And

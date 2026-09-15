@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c91</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c92</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c91';
+const BUILD = 'c92';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1514,7 +1514,13 @@ function fxSheet(url) {
 // .24, r 1.5 against 1.9, peak .92 against .9) and approximations of a drawn effect are a
 // different drawn effect. These are its numbers.
 const SLASH = {
-  life: .24, r: 1.9, col: '#e7f4ff', hot: '#ffe2b6', url: null, n: 6, peak: .9,
+  // AND ITS SIZES TIMES .625, WHICH c91 FORGOT TO DO. `r` is a LENGTH IN WORLD UNITS, so
+  // copying Plutopia's 1.9 verbatim put a 2 m crescent next to a 1.75 m man -- its 1.6 on a
+  // 2.8 m alien is .57 of that body, and 1.5 on Colin is .86 of his. Half again too big, which
+  // is most of what a mark "not lined up" actually looks like.
+  life: .24, r: 1.19, col: '#e7f4ff', hot: '#ffe2b6', url: null, n: 6, peak: .9,
+  flat: .05,       // below this much NDC travel the blow has no direction on screen
+  spread: 1.1,     // and how far the roll is scattered when it does not
   // Which way the mark lies on screen, per clip. Radians, 0 is horizontal. Matched by eye to
   // what each swing LOOKS like rather than derived off a bone, because what is being matched
   // is the read of the animation and not where the hand went.
@@ -1564,6 +1570,33 @@ function slashTex() {
   });
   return t;
 }
+// THE ROLL IS A SCREEN-SPACE ANGLE, AND THIS CAMERA ORBITS. That is the fault the fixed
+// per-clip constants could never fix, and it is why the mark is sometimes vertical, sometimes
+// horizontal and never going the way the blow is going. Plutopia's camera keeps a fairly
+// constant relationship to the player, so a constant roll reads there; `cam.az` here swings
+// the whole way round, so the SAME constant means a different thing on screen every time you
+// turn the lens.
+// So the swing direction is PROJECTED. Two points a metre apart along the blow, through the
+// real camera matrix, and the angle between them in NDC is which way the punch is travelling
+// ON SCREEN. The crescent is drawn bulging along +X, so rolling it to that angle puts its
+// leading edge where the fist is going, from any camera angle, by construction.
+// `SLASH.roll` stops being an absolute and becomes a per-clip OFFSET from that -- which is
+// what it was always trying to be.
+// WHEN THE BLOW COMES STRAIGHT AT OR AWAY FROM THE LENS the projection is near zero and its
+// angle is noise, so the constant takes over -- which is correct: a punch thrown directly
+// away from you has no direction on screen to lie along.
+const _saA = new THREE.Vector3(), _saB = new THREE.Vector3();
+function slashScreenRoll(x, y, z, dx, dz, roll) {
+  _saA.set(x, y, z).project(camera);
+  _saB.set(x + dx, y, z + dz).project(camera);
+  const ux = _saB.x - _saA.x, uy = (_saB.y - _saA.y) * (innerHeight / Math.max(1, innerWidth));
+  const len = Math.hypot(ux, uy);
+  // A blow thrown at or away from the lens has no direction on screen, and a FIXED roll there
+  // reads as welded -- three punches in a chain all leaving the identical mark in the identical
+  // place. It gets a spread instead, so the chain looks like three swings rather than one
+  // sticker drawn three times.
+  return len < SLASH.flat ? roll + (Math.random() - .5) * SLASH.spread : Math.atan2(uy, ux) + roll;
+}
 function slashArc(x, y, z, roll, size, hot) {
   if (!_slashPool) {
     _slashPool = [];
@@ -1583,7 +1616,7 @@ function slashArc(x, y, z, roll, size, hot) {
   const m = _slashPool.find(q => !q.visible) || _slashPool[0];
   m.visible = true; m.userData.t = 0; m.userData.size = size || SLASH.r;
   m.material.color.set(hot ? SLASH.hot : SLASH.col);
-  m.material.rotation = roll;                    // the whole of which way it faces
+  m.material.rotation = roll;                    // already screen-relative; see slashScreenRoll
   m.position.set(x, y, z);
   m.scale.setScalar((size || SLASH.r) * .6);
 }
@@ -1602,8 +1635,9 @@ function slashTry(o) {
   if (o.y !== undefined) MELEE.fxY = o.y;
   const R = MELEE.fxR * COLIN_HEIGHT, hx = Math.sin(h), hz = Math.cos(h);
   const nm = o.clip || 'melee_punch_01';
-  slashArc(p.pos.x + hx * R, p.pos.y + COLIN_HEIGHT * MELEE.fxY, p.pos.z + hz * R,
-    SLASH.roll[nm] !== undefined ? SLASH.roll[nm] : -.4, o.size || 1.5, !!o.hot);
+  const tx = p.pos.x + hx * R, ty = p.pos.y + COLIN_HEIGHT * MELEE.fxY, tz = p.pos.z + hz * R;
+  slashArc(tx, ty, tz, slashScreenRoll(tx, ty, tz, hx, hz, SLASH.roll[nm] !== undefined ? SLASH.roll[nm] : -.4),
+    o.size || .94, !!o.hot);
   return { clip: nm, roll: SLASH.roll[nm], 'MELEE.fxR': MELEE.fxR, 'MELEE.fxY': MELEE.fxY,
            note: 'roll is SCREEN-space radians, 0 = horizontal. fxR/fxY are fractions of his height.' };
 }
@@ -5403,9 +5437,14 @@ function stepMelee(dt) {
     const hx = Math.sin(p.melH), hz = Math.cos(p.melH), R = MELEE.fxR * COLIN_HEIGHT;
     const y = p.pos.y + COLIN_HEIGHT * (p.mel === MELEE.slide ? .26 : MELEE.fxY);
     const roll = (SLASH.roll[p.mel] !== undefined ? SLASH.roll[p.mel] : -.4) + (Math.random() - .5) * .24;
-    slashArc(p.pos.x + hx * R, y, p.pos.z + hz * R, roll, p.mel === MELEE.slide ? 1.8 : 1.5, p.mel === MELEE.chain[2]);
+    const sx = p.pos.x + hx * R, sz = p.pos.z + hz * R;
+    slashArc(sx, y, sz, slashScreenRoll(sx, y, sz, hx, hz, roll),
+      p.mel === MELEE.slide ? 1.13 : .94, p.mel === MELEE.chain[2]);
     // A second, thinner, a beat behind and turned further: one line is a line, two is a slash.
-    if (p.mel === MELEE.chain[2]) slashArc(p.pos.x + hx * R * 1.05, y + .2, p.pos.z + hz * R * 1.05, roll - .32, 1.3, 1);
+    if (p.mel === MELEE.chain[2]) {
+      const bx = p.pos.x + hx * R * 1.05, bz = p.pos.z + hz * R * 1.05;
+      slashArc(bx, y + .2, bz, slashScreenRoll(bx, y + .2, bz, hx, hz, roll - .32), .81, 1);
+    }
     // AND THE BLOW LANDS ON THE SAME FRAME THE MARK IS DRAWN ON. They are one event; firing
     // the damage on the input instead puts the consequence a third of a second before the
     // hand gets there, which is what "you cannot actually hit things" looks like.
