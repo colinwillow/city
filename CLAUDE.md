@@ -1055,6 +1055,36 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   **Placed by `npm run spots 4`**, not by eye — same rule as the ramps.
   **The chip says `· NO COP GLB` / `· NO PISTOL GLB` unasked**, because a console warning is
   invisible on a phone.
+- **HE GOT UP WITH ONE HIT POINT, SO EVERY OFFICER AFTER HIS FIRST KNOCK-DOWN WAS A ONE-PUNCH
+  MAN.** `COP.hp` is three and always was, and `copHit` already counted down through the four
+  `hit_*` clips — but the `up` state set `c.hp = 1`, so the three-hit chain existed for exactly
+  one fight per officer per session. *"Every time he gets hit he falls down"* is that. Back on
+  his feet is back to full.
+- **A FLICK IS A PUNCH EVEN WITH THE GUN OUT; ONLY A COMMITTED SHOT STOPS IT.** The gate was
+  `p.aim || KIT.cur === 'blaster'` and the second half took melee away from anyone carrying a
+  blaster. `p.aim` alone is the whole test, and **the two gestures separate themselves**:
+  arming needs `fireAt` .80 held for `armT` .10 s, and a flick is over long before that. So a
+  quick flick of that pad is a punch and a deliberate push-and-hold is a shot — which is the
+  same mistake, and the same fix, as the sprint gate one build earlier. **Twice now the guard
+  has been written against CARRYING the gun when the thing to guard against is FIRING it.**
+- **A PLASMA BOLT LAUNCHES HIM, IT DOES NOT FOLD HIM (`COP.fly`, `copFly`).** A body that goes
+  over a bonnet reads as hit; one that folds on the spot reads as a hitpoint being deducted.
+  Ballistic, and **the GROUND ends it rather than a timer** — a timer drops him through a roof
+  he was thrown onto and leaves him hanging over a hole he was thrown into. He lands in the
+  matching knock-down and gets up from it, so the existing `down`/`up` states carry the rest
+  and nothing new had to be invented past the arc itself.
+  **COLIN'S AIR CLIPS, BORROWED (`copsLearnFlight`), AND THIS IS THE ONE PLACE THE POLICE DO
+  TOUCH THE BORROWED-CHARACTER MACHINERY.** The officer has no air clips at all. `npm run cop`
+  measured his rig at 58 mixamorig joints with the height on Y — **the same convention Colin
+  uses, which is exactly why he needs no `HIPFIX`** — so `flying_backwards` / `flying_forwards`
+  drop onto that skeleton with nothing but `skinClips`' own track filter: drop what the skin
+  does not have, keep ONLY the quaternions, because a `.position` track bakes Colin's bone
+  lengths and would stretch him. Losing the hips translation costs nothing because he is drawn
+  at his own scale and the launch is code-driven.
+  **IT IS CALLED AFTER `buildColin`, NOT IN `buildCops`** — the cops are built three awaits
+  earlier and `colin.clips` does not exist yet when they are.
+  **And it falls back to the old fold** if the clips are not there, so a cop with no Colin is a
+  cop who still goes down rather than a cop who freezes.
 - **HEAT: A POLICE OFFICER WHO SHOOTS ON SIGHT IS NOT A CITY, IT IS A SHOOTING GALLERY.**
   c82 shipped six officers who noticed you at 24 m and unloaded indefinitely, and the game is
   SKATING — the police have to be part of the street rather than a reason to stay off it. So

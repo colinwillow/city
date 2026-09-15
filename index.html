@@ -249,7 +249,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c108</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c109</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -262,7 +262,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c108';
+const BUILD = 'c109';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -2262,7 +2262,9 @@ class PBolt {
     for (const c of cops) {
       const dx = c.x - this.x, dy = c.y + COLIN_HEIGHT * .5 - this.y, dz = c.z - this.z;
       if (dx * dx + dy * dy + dz * dz > (R + COP.r * 1.6) * (R + COP.r * 1.6)) continue;
-      c.hp = 0; copHit(c, Math.atan2(-dx, -dz));
+      // THE BOLT SENDS HIM FLYING rather than folding him where he stood. `-dx,-dz` is the way
+      // the shot was going, which is the way he goes.
+      copFly(c, Math.atan2(-dx, -dz), this.c);
       heatAdd(HEAT.bolt - HEAT.down);
       this.pop('#ff9adf', 7, .95); return true;
     }
@@ -4729,6 +4731,10 @@ const COP = {
   beat: 11, patrol: [3, 9], look: [2, 5],
   walk: 1.7, run: 5.4, turn: 7,
   hp: 3,            // punches before he goes down
+  // A PLASMA BOLT DOES NOT PUNCH HIM, IT LAUNCHES HIM. Colin's own car-hit rule, one system
+  // over: the shot has somewhere to put its energy and a body that goes over a bonnet reads as
+  // hit, where one that folds on the spot reads as a hitpoint being deducted.
+  fly: { up: 7.4, back: 9.5, g: 20, spin: 2.6, min: .35 },
   stun: .62,        // of a hit clip he is held for; the tail blends back into whatever is next
   fire: 1.7,        // seconds between shots
   gunAt: .46,       // the fraction of `shoot_pistol` the round leaves on
@@ -4754,7 +4760,15 @@ const COP = {
   gunLen: 0,
   clips: { idle: 'idle_01', walk: 'walk_01', run: 'run_01', draw: 'draw_weapon', shoot: 'shoot_pistol',
            hits: ['hit_body', 'hit_head', 'hit_ribs', 'hit_stomach'],
-           downF: 'knock_down_front', downB: 'knock_down_back', upF: 'get_up_front', upB: 'get_up_back' },
+           downF: 'knock_down_front', downB: 'knock_down_back', upF: 'get_up_front', upB: 'get_up_back',
+           // BORROWED FROM COLIN UNTIL HE DRAWS HIS OWN. The officer has no air clips at all,
+           // and a man launched by a plasma bolt who holds his knock-down pose all the way
+           // through the arc reads as a falling statue. `npm run cop` measured his rig at 58
+           // mixamorig joints with the height on Y -- the same convention Colin uses, which is
+           // exactly why no HIPFIX is needed for him -- so Colin's two car-hit clips drop onto
+           // that skeleton with nothing but a track filter. Delete these two names the day
+           // there are real ones and `copsLearnFlight` becomes a no-op.
+           flyB: 'flying_backwards', flyF: 'flying_forwards' },
   on: 1,
 };
 // ---------- HEAT ----------
@@ -4926,6 +4940,60 @@ function dressCop(model) {
 //   down  -> `hp` gone: knocked down front or back depending which way he was facing.
 //   up    -> gets up, `hp` back to one, and goes straight back to chasing.
 function copSet(c, st) { c.st = st; c.t = 0; }
+// COLIN'S AIR CLIPS, PUT ON THE OFFICER'S OWN MIXER. Called after `buildColin`, because the
+// cops are built three awaits EARLIER and `colin.clips` does not exist yet when they are.
+// THE FILTER IS `skinClips`'S, AND FOR ITS REASONS: drop every track whose target this
+// skeleton does not have (fingers, mostly), and keep ONLY the quaternions -- a `.position`
+// track bakes COLIN's bone lengths and applied to another skeleton it stretches it. The
+// officer is drawn at his own scale and the launch is code-driven, so losing the hips
+// translation costs nothing here, exactly as it costs nothing for the borrowed characters.
+function copsLearnFlight() {
+  if (!cops.length || !colin.clips) return 0;
+  const want = [COP.clips.flyB, COP.clips.flyF].filter(Boolean);
+  let made = 0;
+  for (const c of cops) {
+    if (!c.mixer || !c.actions) continue;
+    const have = new Set(); c.model.traverse(o => { if (o.name) have.add(o.name); });
+    for (const nm of want) {
+      if (c.actions[nm]) continue;
+      const src = colin.clips.find(x => x.name === nm);
+      if (!src) continue;
+      const tracks = [];
+      for (const t of src.tracks) {
+        const d = t.name.indexOf('.');
+        if (!have.has(d > 0 ? t.name.slice(0, d) : t.name)) continue;
+        if (!/\.quaternion$/.test(t.name)) continue;
+        tracks.push(t.clone());
+      }
+      if (!tracks.length) continue;
+      const a = c.mixer.clipAction(new THREE.AnimationClip(nm, src.duration, tracks));
+      a.setLoop(THREE.LoopOnce); a.clampWhenFinished = true;
+      a.enabled = true; a.setEffectiveWeight(0);
+      c.actions[nm] = a; made++;
+    }
+  }
+  console.log('[cop] ' + made + ' borrowed air actions across ' + cops.length + ' officers');
+  return made;
+}
+// LAUNCHED. `fromH` is the way the shot was travelling, so he goes the way it was going --
+// and which clip plays is which way he is FACING when it lands, the same test `copHit` uses to
+// pick a knock-down: hit in the chest he goes over backwards, hit from behind he goes forward.
+function copFly(c, fromH, k) {
+  if (c.st === 'down' || c.st === 'up') return false;
+  const F = COP.fly, p = Math.max(F.min, k === undefined ? 1 : k);
+  c.hp = 0; c.alert = 1;
+  heatAdd(HEAT.down);                                     // the knock-down half; the bolt adds its own
+  const face = Math.cos(wrapAngle(fromH - c.h)) < 0;      // true = it hit him from the front
+  c.clip = (face ? COP.clips.flyB : COP.clips.flyF);
+  if (!c.actions[c.clip]) {                               // no borrowed clip: the old fold
+    c.clip = face ? COP.clips.downB : COP.clips.downF; copSet(c, 'down'); return true;
+  }
+  c.vx = Math.sin(fromH) * F.back * p; c.vz = Math.cos(fromH) * F.back * p;
+  c.vy = F.up * p; c.spin = (Math.random() < .5 ? -1 : 1) * F.spin * p;
+  c.speed = 0;                                            // the walk lets go of him
+  copSet(c, 'fly');
+  return true;
+}
 function copHit(c, fromH) {
   if (c.st === 'down' || c.st === 'up') return false;
   c.hp--;
@@ -5062,6 +5130,23 @@ function stepCops(dt) {
         t[c.clip] = 1;
         if (c.t > clipLen2(c, c.clip) * COP.stun) { c.alert = 1; copSet(c, c.armed ? 'armed' : 'chase'); }
         break;
+      // BALLISTIC, AND THE GROUND IS WHAT ENDS IT rather than a timer -- a timer would drop him
+      // through a roof he was thrown onto and leave him hanging over a hole he was thrown into.
+      case 'fly': {
+        t[c.clip] = 1;
+        c.vy -= COP.fly.g * dt;
+        c.x += c.vx * dt; c.z += c.vz * dt; c.y += c.vy * dt;
+        c.h += c.spin * dt;
+        const gf = groundAt(c.x, c.z, Math.max(2, c.y + 2), 0);
+        const fl = gf.hit ? gf.floor : hmAt(c.x, c.z);
+        if (c.vy <= 0 && c.y <= fl + .05) {
+          c.y = fl;
+          // he lands in the pose the throw left him in: the matching knock-down, then get up
+          c.clip = c.clip === COP.clips.flyB ? COP.clips.downB : COP.clips.downF;
+          copSet(c, 'down');
+        }
+        break;
+      }
       case 'down':
         t[c.clip] = 1;
         if (c.gun) c.gun.visible = false;
@@ -5072,16 +5157,23 @@ function stepCops(dt) {
         t[c.clip] = 1;
         // `get_up_front` is 7.7 s at 1x, which is a nap. The clip is time-scaled the way every
         // one-shot in this game is; `upRate` is the beat it is played at.
-        if (c.t > clipLen2(c, c.clip) / COP.upRate) { c.hp = 1; c.alert = 1; copSet(c, HEAT.n >= HEAT.chaseAt ? 'chase' : 'idle'); }
+        // BACK ON HIS FEET IS BACK TO FULL. It was `1`, so every officer after his first
+        // knock-down was a ONE-PUNCH MAN for the rest of the session -- which is what "every
+        // time he gets hit he falls down" actually is. `COP.hp` is three and it always was;
+        // the get-up was throwing two of them away.
+        if (c.t > clipLen2(c, c.clip) / COP.upRate) { c.hp = COP.hp; c.alert = 1; copSet(c, HEAT.n >= HEAT.chaseAt ? 'chase' : 'idle'); }
         break;
     }
-    // TURN AND MOVE. Rate-limited like everything else that steers here, and the gait blends
-    // off the speed he is ACTUALLY doing rather than off a run flag.
-    const dh = wrapAngle(face - c.h);
+    // TURN AND MOVE -- BUT NOT WHILE HE IS IN THE AIR. `fly` integrates its own position and
+    // spins him on the way over, and the walk below would immediately rate-limit that spin
+    // back toward `face` and drag him along the ground he has just left.
+    // Rate-limited like everything else that steers here, and the gait blends off the speed he
+    // is ACTUALLY doing rather than off a run flag.
+    const dh = c.st === 'fly' ? 0 : wrapAngle(face - c.h);
     c.h += clamp(dh, -COP.turn * dt, COP.turn * dt);
     const acc = want > c.speed ? 9 : 14;
-    c.speed += clamp(want - c.speed, -acc * dt, acc * dt);
-    if (c.speed > .01) {
+    if (c.st !== 'fly') c.speed += clamp(want - c.speed, -acc * dt, acc * dt);
+    if (c.st !== 'fly' && c.speed > .01) {
       const nx = c.x + Math.sin(c.h) * c.speed * dt, nz = c.z + Math.cos(c.h) * c.speed * dt;
       const g = groundAt(nx, nz, c.y + 1.2, .6);
       const fy = g.hit ? g.floor : hmAt(nx, nz);
@@ -5397,11 +5489,16 @@ function boardFlick(dx, dy) {
   // wind up; a flick is the one move left in it, and it costs no new control.
   if (!p.board) {
     if (p.hit) return;
-    // A CHARGE IS NOT A FLICK. The trigger is a long push UP and holding it there travels far
-    // enough, fast enough, to arm the flick detector too -- so without this every shot also
-    // threw a punch. `p.aim` is live from the moment the trigger arms, which is before any
-    // release can happen, so one test covers it.
-    if (p.aim || KIT.on && KIT.cur === 'blaster') return;
+    // A CHARGE IS NOT A FLICK, BUT CARRYING THE GUN IS NOT A CHARGE EITHER.
+    // The trigger is a long push UP and holding it there travels far enough, fast enough, to
+    // arm the flick detector too -- so without a gate every shot also threw a punch. But the
+    // gate was `p.aim || KIT.cur === 'blaster'`, and the second half took melee away from
+    // anyone holding a blaster at all.
+    // `p.aim` alone is the whole test, and the two gestures separate themselves cleanly:
+    // arming needs `fireAt` .80 held for `armT` .10 s, and A FLICK IS OVER LONG BEFORE THAT.
+    // So a quick flick of that pad is a punch and a deliberate push-and-hold is a shot --
+    // *"if you do a flick of the right stick he melees, versus press and hold to shoot."*
+    if (p.aim) return;
     if (p.grounded) meleeGo('hit', flickH(dx, dy));
     // IN THE AIR THE SAME FLICK PICKS WHICH WAY HE GOES OVER, and spends the second jump to
     // do it -- it is the tap with a direction on it, not a separate move. Up is a front flip
@@ -6808,6 +6905,9 @@ frame();
     catch (e) { console.warn('[melee] no melee.glb -- punches and the roll will be missing', e); }
     setBoot('waking colin', 1);
     try { const c = await loadGLB('models/colin.glb', 'loading colin'); buildColin(c, melee && melee.animations); } catch (e) { console.warn('colin failed', e); }
+    // AND THE OFFICERS BORROW HIS AIR CLIPS, here rather than in `buildCops` -- they are built
+    // three awaits earlier and `colin.clips` does not exist yet when they are.
+    copsLearnFlight();
     const sg = groundAt(player.pos.x, player.pos.z, 60, 0);
     player.pos.y = sg.hit ? sg.floor : hmAt(player.pos.x, player.pos.z); player.safe.copy(player.pos);
     buildMap();
