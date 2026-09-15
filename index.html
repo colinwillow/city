@@ -135,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c69</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c70</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c69';
+const BUILD = 'c70';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -2392,13 +2392,36 @@ scene.add(colin.root);
 // A SKIN IS A MODEL PLUS THE ACTIONS THAT DRIVE IT. Colin is one skin among several; what
 // makes him special is only that the CLIPS come from his file. buildSkin measures, dresses
 // and records a skin; wear() puts one on.
-function buildSkin(gltf, key) {
-  const isColin = key === 'colin';
-  const model = gltf.scene; model.updateMatrixWorld(true);
+/* SKIN:START */
+// THE ONE NUMBER PER RIG THAT CANNOT BE DERIVED, AND WHY.
+// A wrong Hips rotation rotates everything below it RIGIDLY about the hips, so whatever is
+// wrong between two armature conventions is ONE constant rotation. Finding it on paper failed
+// four times in a row -- preserve the Hips' world rotation, preserve its rotation relative to
+// rest, the full conjugation with the parent term, and no correction at all, every one of
+// which is upside down, buried, or both. `npm run wearfit` searches all 24 axis-aligned
+// rotations against a real mixer and a real skinning pass and reports which stand the
+// character up at full height without drifting, and 11 of 66 do for each robits rig while
+// the earlier hand-rolled candidates were all rotations about X and could never have found
+// them. Drop a new character in `models/chars/`, run it, paste the line.
+//     robot   Rx90*Ry270  ->  1.86 m tall, drift 0.001 m over the clip
+//     moussa  Rx90*Ry90   ->  1.73 m tall, drift 0.004 m
+//     alien   identity    ->  it already shares Colin's convention
+const HIPFIX = {
+  robot:  [-0.5, 0.5, 0.5, -0.5],
+  moussa: [0.5, 0.5, 0.5, 0.5],
+};
+// THE MEASURING HALF, deliberately apart from the dressing half: `npm run wear` runs THIS
+// TEXT against the real GLBs, the real GLTFLoader and a real AnimationMixer. Everything here
+// is arithmetic on the file and needs nothing from the game.
+function measureSkin(model, key) {
+  model.updateMatrixWorld(true);
   // THE ROOT CORRECTION'S INPUT: the Hips' parent, in world, with the model at identity --
   // captured BEFORE the model goes under colin.root, whose yaw would pollute it.
   const hips = model.getObjectByName('mixamorig_Hips');
   const armQ = new THREE.Quaternion(); if (hips && hips.parent) hips.parent.getWorldQuaternion(armQ);
+  // AND THE HIPS' OWN REST ROTATION, captured here because here is the only place it is
+  // still the rest: the moment a mixer runs it is overwritten by the pose of the frame.
+  const restQ = hips ? hips.quaternion.clone() : new THREE.Quaternion();
   // HIS FEET WERE THROUGH THE FLOOR BECAUSE THIS WAS MEASURED WRONG. Box3.setFromObject
   // multiplies a mesh's bounds by its world matrix, and his sit under an Armature scaled
   // by 0.01 and turned a quarter turn -- but a SKINNED mesh IGNORES its node transform,
@@ -2417,6 +2440,14 @@ function buildSkin(gltf, key) {
   const k = (hi > lo) ? COLIN_HEIGHT * (CHARS.h[key] || 1) / (hi - lo) : 1;
   model.scale.multiplyScalar(k); model.position.y = -lo * k; model.updateMatrixWorld(true);
   console.log('[skin] ' + key + ' geometry ' + lo.toFixed(3) + '..' + hi.toFixed(3) + ' -> x' + k.toFixed(3));
+  // the title card hangs his deck off this. Named, not guessed: the rig is Mixamo's.
+  const hand = model.getObjectByName(TITLE.hand) || model.getObjectByName('mixamorig_LeftHand') || null;
+  if (!hand) console.warn('[skin] ' + key + ': no hand bone ' + TITLE.hand + ' -- the title board will stand beside him');
+  const names = new Set(); model.traverse(o => { if (o.name) names.add(o.name); });
+  return { key, model, hand, armQ, restQ, names, mixer: null, actions: null };
+}
+function dressSkin(model, key) {
+  const isColin = key === 'colin';
   // He is authored for the kitchen: every material carries an emissive map at .1-.4 (his
   // Blender look feeds the diffuse back in as emission) and KHR_materials_specular at 2x.
   // Under a baked room that is his shading; under a 3.4 sun it is a surface that starts
@@ -2475,11 +2506,10 @@ function buildSkin(gltf, key) {
     m.onBeforeCompile = sh => { toonPatch(sh); sh.uniforms.uSpec = { value: COLINM.spec }; };
     m.needsUpdate = true;
   }
-  // the title card hangs his deck off this. Named, not guessed: the rig is Mixamo's.
-  const hand = model.getObjectByName(TITLE.hand) || model.getObjectByName('mixamorig_LeftHand') || null;
-  if (!hand) console.warn('[skin] ' + key + ': no hand bone ' + TITLE.hand + ' -- the title board will stand beside him');
-  const names = new Set(); model.traverse(o => { if (o.name) names.add(o.name); });
-  const skin = { key, model, hand, armQ, names, mixer: null, actions: null };
+}
+function buildSkin(gltf, key) {
+  const skin = measureSkin(gltf.scene, key);
+  dressSkin(skin.model, key);
   CHARS.skins[key] = skin;
   return skin;
 }
@@ -2491,19 +2521,23 @@ function buildSkin(gltf, key) {
 //  3. premultiply the Hips track by K = A_skin^-1 * A_colin, the one place the parent term
 //     of the rest-pose delta is both needed and trivially available (see CHARS).
 // It is a filter plus one quaternion multiply per Hips key: no resampling, no cost.
-function skinClips(skin) {
-  if (skin.key === 'colin') return colin.clips;
-  const K = skin.armQ.clone().invert().multiply(CHARS.skins.colin.armQ);
+function skinClips(skin, clips) {
+  clips = clips || colin.clips;
+  if (skin.key === 'colin') return clips;
+  // The rigid correction measured for this rig. Identity for anything sharing Colin's
+  // convention, which is every Plutopia character and Colin himself.
+  const f = HIPFIX[skin.key];
+  const K = f ? new THREE.Quaternion(f[0], f[1], f[2], f[3]) : null;
   const _q = new THREE.Quaternion();
   const out = [];
-  for (const src of colin.clips) {
+  for (const src of clips) {
     const tracks = [];
     for (const t of src.tracks) {
       const dot = t.name.indexOf('.'); const node = dot > 0 ? t.name.slice(0, dot) : t.name;
       if (!skin.names.has(node)) continue;
       if (!/\.quaternion$/.test(t.name)) continue;
       const c = t.clone();
-      if (node === 'mixamorig_Hips') {
+      if (K && node === 'mixamorig_Hips') {
         const v = c.values;
         for (let i = 0; i + 3 < v.length; i += 4) { _q.set(v[i], v[i + 1], v[i + 2], v[i + 3]).premultiply(K); v[i] = _q.x; v[i + 1] = _q.y; v[i + 2] = _q.z; v[i + 3] = _q.w; }
       }
@@ -2516,6 +2550,28 @@ function skinClips(skin) {
 // PUT A SKIN ON. The previous one keeps its mixer and actions and simply leaves the root, so
 // switching back is instant. CW is emptied because the new actions all start at weight 0 and
 // stopped: a stale 1.0 in it would tell colinSet the idle was already playing.
+// STAND HIM ON THE ROAD. The bind-pose bounds put his feet at zero, but the moment the
+// retargeted clip is applied the body is rigidly rotated about the hips -- and a rotation
+// about an origin the mesh does not share leaves a CONSTANT vertical offset (constant is the
+// measured part: 0.001 m of drift across the clip, which is what makes one lift enough).
+// So skin a few hundred vertices of the pose he actually stands in and lift by what they say.
+// Nothing is typed per character; a new rig lands right on its own.
+const _sv = new THREE.Vector3();
+function sitSkin(skin) {
+  let lo = Infinity;
+  skin.model.updateMatrixWorld(true);
+  skin.model.traverse(o => {
+    if (!o.isSkinnedMesh) return;
+    const pos = o.geometry.attributes.position, step = Math.max(1, Math.floor(pos.count / 300));
+    for (let i = 0; i < pos.count; i += step) {
+      o.applyBoneTransform(i, _sv.fromBufferAttribute(pos, i)); o.localToWorld(_sv);
+      if (_sv.y < lo) lo = _sv.y;
+    }
+  });
+  if (lo < Infinity) { skin.model.position.y -= lo; skin.model.updateMatrixWorld(true); }
+  return lo;
+}
+/* SKIN:END */
 function wear(key) {
   const skin = CHARS.skins[key]; if (!skin) return false;
   if (colin.model && colin.model !== skin.model) { colin.root.remove(colin.model); if (colin.mixer) colin.mixer.stopAllAction(); }
@@ -2531,6 +2587,8 @@ function wear(key) {
   if (skin.model.parent !== colin.root) colin.root.add(skin.model);
   for (const k in CW) delete CW[k];
   const a0 = colin.actions['idle_neutral']; if (a0) { a0.reset(); a0.play(); a0.setEffectiveWeight(1); CW['idle_neutral'] = 1; }
+  // once, on the first wearing: the mixer has to have written a pose before it can be measured
+  if (!skin.sat) { skin.mixer.update(0); const d = sitSkin(skin); skin.sat = 1; console.log('[skin] ' + key + ' soles measured at ' + d.toFixed(3) + ', lifted to 0'); }
   CHARS.cur = key; try { localStorage.setItem(CHARS.key, key); } catch (e) {}
   document.querySelectorAll('#chars button').forEach(b => b.classList.toggle('on', b.dataset.key === key));
   return true;
@@ -3303,11 +3361,29 @@ function buildBoard(gltf) {
 // ---------- camera ----------
 // The placement stepCam ends with, without the damping -- the title and the descent drive the
 // rig directly, because a lag on a shot that is already slow is just a shot that is late.
+const _cq = [];
+// IS THE LENS INSIDE SOMETHING? The boom is a fixed length and the sway swings it through
+// whatever is behind him -- at the spawn, the house. Walk the boom in from the far end and
+// stop at the first sample that is not inside a solid box. Cheap: one grid query per step,
+// and only the title and the descent use it, which are the only shots nobody is steering.
+function camClear(tx, ty, tz, dx, dy, dz, dist) {
+  for (let i = 0; i <= 6; i++) {
+    const d = dist * (1 - i * .12);
+    const x = tx + dx * d, y = ty + dy * d, z = tz + dz * d;
+    gridQuery(x, z, .4, _cq);
+    let hit = false;
+    for (const b of _cq) if (x > b.minx - .35 && x < b.maxx + .35 && z > b.minz - .35 && z < b.maxz + .35 && y > b.miny - .35 && y < b.maxy + .35) { hit = true; break; }
+    if (!hit) return d;
+  }
+  return dist * .28;
+}
 function camAim(az, el, dist, look) {
   cam.az = az; cam.el = el;
   cam.tgt.set(player.pos.x, player.pos.y + look, player.pos.z);
   const ce = Math.cos(el);
-  cam.pos.set(cam.tgt.x - Math.sin(az) * ce * dist, cam.tgt.y + Math.sin(el) * dist, cam.tgt.z - Math.cos(az) * ce * dist);
+  const dx = -Math.sin(az) * ce, dy = Math.sin(el), dz = -Math.cos(az) * ce;
+  dist = camClear(cam.tgt.x, cam.tgt.y, cam.tgt.z, dx, dy, dz, dist);
+  cam.pos.set(cam.tgt.x + dx * dist, cam.tgt.y + dy * dist, cam.tgt.z + dz * dist);
   const floor = hmAt(cam.pos.x, cam.pos.z) + .6; if (cam.pos.y < floor) cam.pos.y = floor;
   camera.position.copy(cam.pos); camera.lookAt(cam.tgt);
   sky.position.copy(camera.position);
@@ -3328,6 +3404,10 @@ function titleBoard() {
 }
 function titleFrame(dt) {
   TITLE.t += dt;
+  // NO SEE-THROUGH HOLE ON THE CARD. It exists so a building between the play camera and him
+  // does not hide him, and on a held title shot it is a dither storm across the picture --
+  // which is what it was, because the sway walks the lens into the house behind him.
+  HOLE.on = 0;
   // He stands where he SPAWNS. That is the point of doing the card in the live scene: START
   // is a camera move and not a teleport, so the street on the card is the street he starts in.
   player.vel.set(0, 0, 0); player.speed = 0; player.heading = player.faceH = TITLE.face;
@@ -3349,6 +3429,7 @@ function diveFrame(dt) {
   if (!player.board) titleBoard();
   if (TITLE.dive <= 0) { cam.idle = 0; board.visible = player.board; }
 }
+HOLE.was = HOLE.on;   // the card turns the hole off; this is what it turns back on
 const titleEl = document.getElementById('title');
 function startGame() {
   if (!TITLE.on || !ready) return;
@@ -3359,6 +3440,7 @@ function startGame() {
   // started the decode. `SFX.init` fetches, decodes and puts the theme on, all off one press
   // he was always going to make.
   SFX.wake();
+  HOLE.on = HOLE.was;
   player.jump = 0; player.charge = 0; player.rHold = 0;   // nothing held over the card is spent on entry
   stick.L.x = stick.L.y = stick.R.x = stick.R.y = 0; for (const k in keys) keys[k] = 0;
   titleEl.classList.add('go'); setTimeout(() => titleEl.remove(), 900);

@@ -17,7 +17,9 @@
     "sky": "node tools/sky.mjs",
     "junc": "node tools/junc.mjs",
     "cross": "node tools/cross.mjs",
-    "rigs": "node tools/rigs.mjs"
+    "rigs": "node tools/rigs.mjs",
+    "wear": "node tools/wear.mjs",
+    "wearfit": "node tools/wearfit.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

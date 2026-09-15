@@ -560,17 +560,38 @@ playwright unless he asks for it by name.
   walks. Two rigs out of eight come back nonsense, so a per-character scale has to be measured
   off the skinned mesh's GEOMETRY bounds — and never off `Box3.setFromObject`, for the reason
   three hundred lines up.
-  **THE ONE CORRECTION THAT IS NEEDED IS AT THE ROOT, AND IT IS EXACT THERE.** Measured in
-  WORLD space, Colin, the robot and Moussa stand identically — Hips 0.7° apart, the same
-  left-right axis, head above hips. The 90° is entirely in how each file splits it between
-  the armature and the Hips: Colin's armature is turned a quarter turn and his Hips undoes it
-  locally (90.7°); the robits rigs do neither. So Colin's raw Hips track would lay a robot on
-  its side every frame. `skinClips` premultiplies that ONE track by `K = A_skin⁻¹ · A_colin`
-  (the Hips' parents' world rotations, captured with the model at identity BEFORE it goes
-  under `colin.root`, whose yaw would pollute it). That is the rest-pose delta *with* its
-  parent term, which at the root is the static armature and therefore free — and it
-  reproduces the skin's own rest exactly at Colin's rest. The alien shares Colin's bind pose
-  and K is the identity. Every bone below stays rotation-only, as robits ships it.
+  **THE ROOT CORRECTION IS MEASURED, NOT DERIVED. FOUR DERIVATIONS IN A ROW WERE WRONG.**
+  A wrong Hips rotation rotates everything below it RIGIDLY about the hips, so the difference
+  between two armature conventions is ONE constant rotation — and finding it on paper failed
+  every time. c69 shipped `A_skin⁻¹·A_colin` (preserve the Hips' WORLD rotation, which is what
+  the obvious derivation gives) and hung the robot and Moussa upside down under the road. Then
+  `A_colin⁻¹·A_skin` — upright, full height, and still buried 1.9 m. Then `rest_skin·rest_colin⁻¹`
+  and the full conjugation `P·(q·r_c⁻¹)·P⁻¹·r_s` — both identical to the first, because with
+  `A_c ≈ I`, `r_c ≈ I` and `r_s = A_s⁻¹` all three collapse to the same expression on these rigs.
+  **`npm run wearfit` searches all 24 axis-aligned rotations against a real mixer and a real
+  skinning pass** and reports which stand the character up at full height without drifting:
+      robot   Rx90*Ry270  ->  1.86 m, drift 0.001 m over the clip   hipQ [-.5, .5, .5, -.5]
+      moussa  Rx90*Ry90   ->  1.73 m, drift 0.004 m                 hipQ [.5, .5, .5, .5]
+      alien   identity    ->  it already shares Colin's convention
+  11 of 66 work for each robits rig, and **every hand-rolled candidate was a rotation about X**,
+  so none of them could ever have found one. Drop a new character in `models/chars/`, run the
+  tool, paste the line into `HIPFIX`.
+  **AND THE RESIDUAL IS A CONSTANT LIFT, WHICH IS WHY ONE NUMBER IS ENOUGH.** Rotating about
+  an origin the mesh does not share leaves a vertical offset; that it is CONSTANT is the
+  measured part (0.001 m of drift), so `sitSkin` skins three hundred vertices of the pose he
+  actually stands in and lifts by what they say. Nothing is typed per character — the robot
+  came out needing 1.96 m and the alien 0.83 m, and neither is in the source.
+  **EVERY CHECK THAT MEASURED THE ASSET SAID ALL FOUR RIGS WERE FINE** — bone overlap, rest
+  poses, node scales, hip heights, name sanitising — while two of the three were lying in the
+  road. An offline quaternion check even *agreed* with the wrong correction (0.7° residual at
+  rest) because it carried the same transpose error as the reasoning did. `npm run wear` loads
+  the real GLBs with the vendored GLTFLoader, runs the shipped `measureSkin`/`skinClips`/
+  `sitSkin` text between the `SKIN:START/END` markers, drives a real `AnimationMixer` and
+  **skins real vertices with `applyBoneTransform`** — because its first version read BONE world
+  positions and pronounced the robot upright while he was buried head-down (his bones live
+  under an armature the mesh does not share; only the vertices reconcile the two).
+  It needs `node_modules/three` to resolve the loader's bare `three` import and writes that
+  shim itself, pointing at the VENDORED build.
   **`GLTFLoader` binds every skin with the IDENTITY matrix**, so at rest a vertex's world
   position IS its geometry position for any file it opens — the Colin measurement in
   `buildSkin` generalises with nothing typed per rig. Everyone is scaled to `COLIN_HEIGHT`
