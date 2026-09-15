@@ -114,3 +114,26 @@ gun.scene.traverse(o => {
       '   longest ' + Math.max(w.max.x - w.min.x, w.max.y - w.min.y, w.max.z - w.min.z).toFixed(3) + ' m');
   }
 });
+
+console.log('\n=== the officer\'s own non-bone nodes, and any weapon joint ===');
+cop.scene.updateMatrixWorld(true);
+let wj = null;
+cop.scene.traverse(o => {
+  if (/weapon|gun|pistol/i.test(o.name)) {
+    if (!wj) wj = o;
+    const p = o.getWorldPosition(new THREE.Vector3()), s = o.getWorldScale(new THREE.Vector3());
+    console.log('  ' + (o.type + '      ').slice(0, 9) + o.name.padEnd(22) + ' world ' + fmt(p) +
+      ' scale ' + s.x.toFixed(4) + '  parent ' + (o.parent ? o.parent.name : '-'));
+  }
+});
+if (!wj) console.log('  (none -- still no weapon joint on this export)');
+else {
+  const mx2 = new THREE.AnimationMixer(cop.scene);
+  for (const nm of ['draw_weapon', 'shoot_pistol', 'idle_01']) {
+    const c = cop.animations.find(a => a.name === nm); if (!c) continue;
+    const a = mx2.clipAction(c); mx2.stopAllAction(); a.reset().play(); a.setEffectiveWeight(1);
+    mx2.setTime(c.duration * .9); cop.scene.updateMatrixWorld(true);
+    console.log('  ' + nm.padEnd(16) + ' at 90%: weapon joint ' + fmt(wj.getWorldPosition(new THREE.Vector3())));
+    a.stop();
+  }
+}

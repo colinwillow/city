@@ -913,12 +913,21 @@ playwright unless he asks for it by name.
   through the real loader, and against an officer scaled x2.016 that lands at 0.61 m — a
   carbine. `COP.gunLen` is what a pistol is and `buildCops` divides to get there, so a
   re-export at any size lands right with no edit.
-  **THE OFFICER'S RIG HAS NO WEAPON BONE.** 58 joints and every one of them `mixamorig_`; the
-  `weapon_root`/`weapon_tip` pair lives in `pistol.glb` only. So the two files do NOT share a
-  placement and nothing in either says where the grip goes — `COP.gun` is the offset, and
-  **`city.gunFit()` re-applies it**, because an offset applied once at parent time is a
-  write-only setting and reads exactly like the setting not existing. (`SHADE.k` fell into
-  that same hole one build earlier.)
+  **HIS RE-EXPORT CARRIES THE JOINT, AND THAT ENDED EVERY GUESS IN HERE (c85).** The c82 file
+  was 58 bones and every one of them `mixamorig_`, so the two files shared no placement and the
+  grip had to be hand-nudged. The new one has `weapon_root` and `weapon_tip` **on the LEFT
+  hand** — he is left-handed, which no amount of reasoning would have produced — and they are
+  the same pair the pistol file is built round. Measured through the real loader:
+      officer  weapon_root (0.440, 0.461, 0.001)   weapon_tip (0.673, 0.454, 0.055)
+      pistol   weapon_root (0, 0, 0)               weapon_tip (-0.233, 0.008, 0.054)
+  Same offset, X mirrored, because one is a left hand. **So the alignment is already done**:
+  the pistol mesh keeps its own local transform, is parented to the officer's joint, and no
+  scale, offset or rotation is applied at all. `COP.gunLen` defaults to 0 = as authored, and
+  `COP.gun` + `city.gunFit()` survive only as overrides for nudging the art.
+  **And `weapon_tip` is the muzzle as a BONE**, so it rides the draw and the recoil: where the
+  round leaves from is read off the rig without `copShoot` knowing those clips exist.
+  **When a rig arrives with the joint, use the joint.** Two builds of hand-placement went away
+  the moment it did.
   **`weapon_tip` IS THE MUZZLE** and is in the file for exactly that, so nothing about where
   the barrel points is typed in the game.
   **EVERY STATE HAS AN END THAT DOES NOT DEPEND ON THE PLAYER** — `HIT`'s own rule for Colin.

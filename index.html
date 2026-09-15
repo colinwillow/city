@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c85</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c86</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c85';
+const BUILD = 'c86';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -750,7 +750,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"7a8f51c7","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/city.glb":"a15d4187","models/colin.glb":"fbf5c6f1","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -3693,18 +3693,18 @@ const COP = {
   // beat like every other one-shot in this game. It is a state TIMER rather than a clip
   // time scale, so the pose still reads; he simply stops waiting through the tail.
   upRate: 2.6,
-  // The gun is parented to his right hand and these three nudge it there. It is NOT derived:
-  // `models/pistol.glb` has its own `weapon_root`/`weapon_tip` at ITS armature origin and the
-  // officer's rig has no weapon bone at all (58 joints, every one of them mixamorig), so the
-  // two files do not share a placement and nothing in either says where the grip goes.
-  // Exposed on `city.COP.gun` so it is a three-second nudge on the phone rather than a push.
+  // AN OVERRIDE, NOT A PLACEMENT. His re-export carries `weapon_root`/`weapon_tip` on the
+  // officer's own LEFT hand and the pistol file is built round the same pair, so the alignment
+  // is already done and nothing below is applied by default. These stay for nudging the art.
   gun: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, s: 1 },
   // AND ITS SIZE IS MEASURED, NOT TYPED -- the skateboard's own rule. `npm run cop` reads the
   // pistol through the real loader at 0.303 m long in its own file, and the officer is scaled
   // x2.016 to reach COLIN_HEIGHT, so parented to his hand it would come out 0.61 m: a carbine.
   // `gunLen` is what a pistol is, and `buildCops` divides to get there, so a re-export at any
   // size lands right with no edit here and `gun.s` stays a nudge rather than a correction.
-  gunLen: .22,
+  // 0 = AS AUTHORED. He aligned the pistol to the officer's own `weapon_root` in its own file,
+  // so the default is to touch nothing. Set a length and `city.gunFit()` to override.
+  gunLen: 0,
   clips: { idle: 'idle_01', walk: 'walk_01', run: 'run_01', draw: 'draw_weapon', shoot: 'shoot_pistol',
            hits: ['hit_body', 'hit_head', 'hit_ribs', 'hit_stomach'],
            downF: 'knock_down_front', downB: 'knock_down_back', upF: 'get_up_front', upB: 'get_up_back' },
@@ -3799,31 +3799,42 @@ function buildCops(gltf, gunGltf) {
     // at exactly the size it was drawn -- `npm run cop` measures 0.303 m through the real
     // loader, which is a pistol. Parenting also means it follows `draw_weapon` and
     // `shoot_pistol` for free, which hanging it off a matrix would not.
-    let gun = null, tip = null, hand = null;
-    model.traverse(o => { if (o.name === 'mixamorig_RightHand') hand = o; });
-    if (gunGltf && hand) {
-      gunGltf.scene.traverse(o => { if (o.isMesh && !gun) gun = o; if (o.name === 'weapon_tip') tip = o; });
+    // HIS RE-EXPORT HAS THE JOINT, AND THAT ENDS EVERY GUESS IN HERE.
+    // c82 had to hand-place the pistol, because the officer's rig was 58 bones and every one
+    // of them `mixamorig_`: the two files shared no placement and nothing in either said where
+    // the grip went. The new export carries `weapon_root` and `weapon_tip` on the LEFT hand --
+    // he is left-handed, which no amount of reasoning would have produced -- and they are the
+    // same pair the pistol file is built round. Measured through the real loader:
+    //     officer  weapon_root (0.440, 0.461, 0.001)   weapon_tip (0.673, 0.454, 0.055)
+    //     pistol   weapon_root (0, 0, 0)               weapon_tip (-0.233, 0.008, 0.054)
+    // Same offset, X mirrored, because one is a left hand. So the alignment is ALREADY DONE:
+    // the pistol mesh keeps its own local transform and is parented to the officer's joint,
+    // and no scale, offset or rotation is applied at all. `COP.gunLen` and `COP.gun` survive
+    // only as overrides if the art wants nudging; by default this is exactly what he authored.
+    let gun = null, mount = null, tip = null;
+    model.traverse(o => {
+      if (o.name === 'weapon_root') mount = o;
+      if (o.name === 'weapon_tip') tip = o;
+    });
+    if (gunGltf && mount) {
+      gunGltf.scene.traverse(o => { if (o.isMesh && !gun) gun = o; });
       if (gun) {
         gun = gun.clone(); gun.material = gun.material.clone(); gun.castShadow = true;
+        gun.frustumCulled = false;
         dressCopMat(gun.material);
-        hand.add(gun); gun.visible = false;
-        hand.updateWorldMatrix(true, false);
-        gun.geometry.computeBoundingBox(); const gb = gun.geometry.boundingBox;
-        const glen = Math.max(gb.max.x - gb.min.x, gb.max.y - gb.min.y, gb.max.z - gb.min.z);
-        const hs = hand.getWorldScale(_cg).x || 1;
-        const k = COP.gunLen / Math.max(1e-6, glen * hs);
-        gun.scale.setScalar(k * COP.gun.s);
-        gun.position.set(COP.gun.x, COP.gun.y, COP.gun.z);
-        gun.rotation.set(COP.gun.rx, COP.gun.ry, COP.gun.rz);
-        if (i === 0) console.log('[cop] pistol ' + (glen * hs).toFixed(3) + ' m in the hand -> x' + k.toFixed(3) + ' for ' + COP.gunLen + ' m');
+        mount.add(gun); gun.visible = false;
+        if (COP.gunLen > 0) {
+          // an override, off by default: `city.COP.gunLen = .22; city.gunFit()` resizes them all
+          mount.updateWorldMatrix(true, false);
+          gun.geometry.computeBoundingBox(); const gb = gun.geometry.boundingBox;
+          const glen = Math.max(gb.max.x - gb.min.x, gb.max.y - gb.min.y, gb.max.z - gb.min.z);
+          const hs = mount.getWorldScale(_cg).x || 1;
+          gun.scale.setScalar(COP.gunLen / Math.max(1e-6, glen * hs) * COP.gun.s);
+        }
+        if (i === 0) console.log('[cop] pistol on his own weapon_root' + (COP.gunLen > 0 ? ', resized to ' + COP.gunLen + ' m' : ', as authored'));
       }
-    }
-    // NO TWO OF THEM THE SAME. Six identical men doing the identical thing at the identical
-    // moment is what "they all have the exact same behavior" looks like, and it is one line
-    // of variation away from a street. None of these change what he DOES -- only how quickly,
-    // how close he is willing to get and how long he dithers -- so the state machine stays
-    // one thing to reason about.
-    cops.push({ id: i, root, model, mixer, actions, cw: {}, key: 'cop', gun,
+    } else if (gunGltf && i === 0) console.warn('[cop] no weapon_root on this officer export; no pistol');
+    cops.push({ id: i, root, model, mixer, actions, cw: {}, key: 'cop', gun, tip,
       x: sp.x, z: sp.z, y: root.position.y, h: Math.random() * Math.PI * 2, speed: 0,
       st: 'idle', t: 0, hp: COP.hp, armed: 0, fireT: 0, shotT: 0, fired: 0, clip: '',
       alert: 0, waitT: rnd(1, 4), tx: sp.x, tz: sp.z,
@@ -4021,15 +4032,17 @@ function copGunFit() {
   for (const c of cops) {
     if (!c.gun || !c.gun.parent) continue;
     c.gun.parent.updateWorldMatrix(true, false);
-    c.gun.geometry.computeBoundingBox(); const gb = c.gun.geometry.boundingBox;
-    const glen = Math.max(gb.max.x - gb.min.x, gb.max.y - gb.min.y, gb.max.z - gb.min.z);
-    const hs = c.gun.parent.getWorldScale(_cg).x || 1;
-    c.gun.scale.setScalar(COP.gunLen / Math.max(1e-6, glen * hs) * COP.gun.s);
+    if (COP.gunLen > 0) {
+      c.gun.geometry.computeBoundingBox(); const gb = c.gun.geometry.boundingBox;
+      const glen = Math.max(gb.max.x - gb.min.x, gb.max.y - gb.min.y, gb.max.z - gb.min.z);
+      const hs = c.gun.parent.getWorldScale(_cg).x || 1;
+      c.gun.scale.setScalar(COP.gunLen / Math.max(1e-6, glen * hs) * COP.gun.s);
+    } else c.gun.scale.setScalar(COP.gun.s);
     c.gun.position.set(COP.gun.x, COP.gun.y, COP.gun.z);
     c.gun.rotation.set(COP.gun.rx, COP.gun.ry, COP.gun.rz);
     c.gun.visible = !!c.armed;
   }
-  return COP.gun;
+  return { gunLen: COP.gunLen, gun: COP.gun, note: 'gunLen 0 = as authored on his weapon_root' };
 }
 // ONE POOL, RECYCLED -- the same shape as the slash marks, the blobs and the plasma bolts.
 // A stretched box along the flight line rather than a sphere: a round reads as a streak, and a
@@ -4098,9 +4111,11 @@ function clipLen2(c, nm) { const a = c.actions[nm]; return a ? Math.max(.05, a.g
 function copShoot(c) {
   const p = player;
   const from = _cg.set(c.x, c.y + COLIN_HEIGHT * .72, c.z);
-  // OUT OF THE MUZZLE. `weapon_tip` is in `pistol.glb` for exactly this, so which way the
-  // barrel points is read off the gun rather than typed -- and it follows `shoot_pistol`.
-  if (c.gun) { c.gun.updateWorldMatrix(true, false); c.gun.getWorldPosition(from); }
+  // OUT OF THE MUZZLE, AND IT IS A BONE. `weapon_tip` rides his left hand through every clip,
+  // so where the round leaves from is read off the rig rather than typed -- and it is right
+  // through the draw and the recoil without anything here knowing those exist.
+  if (c.tip) { c.tip.updateWorldMatrix(true, false); c.tip.getWorldPosition(from); }
+  else if (c.gun) { c.gun.updateWorldMatrix(true, false); c.gun.getWorldPosition(from); }
   const dx = p.pos.x - from.x, dy = (p.pos.y + COLIN_HEIGHT * .5) - from.y, dz = p.pos.z - from.z;
   const d = Math.hypot(dx, dy, dz) || 1;
   // LEADING THE SHOT, BADLY ON PURPOSE. A police pistol that solves the intercept is a police
