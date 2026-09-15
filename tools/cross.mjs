@@ -14,9 +14,22 @@ const DIRS = { N: [0, 1], S: [0, -1], E: [1, 0], W: [-1, 0] };
 const LANE = 2.88;   // laneOffset() on a 12 m road: w * .24. Cars keep RIGHT, right = (-fz, fx).
 // a car drives toward the origin from `d` metres away down its own approach, IN ITS LANE --
 // without the offset the N and S cars share one line and every head-on reads as a collision.
-function make(dir, dist, id, v0) {
+function make(dir, dist, id, v0, jx = 0, jz = 0) {
   const [ux, uz] = DIRS[dir], rx = -uz * LANE, rz = ux * LANE;
-  return { id, x: -ux * dist + rx, z: -uz * dist + rz, fx: ux, fz: uz, speed: v0, stop: 0, top: 12, done: false, dir };
+  return { id, x: jx - ux * dist + rx, z: jz - uz * dist + rz, fx: ux, fz: uz, speed: v0, stop: 0, top: 12,
+           done: false, dir, exit: (jx * ux + jz * uz) + 12 };
+}
+// A CORRIDOR, WHICH IS WHAT THIS CITY ACTUALLY IS. `npm run junc` measured 40 junction boxes
+// with 27 of them under 12 m of clear road to the next -- so a car downtown has SEVERAL
+// crossings inside `TRAF.reach` at once, and `crossGive` is a per-PAIR decision. Every case
+// above is one isolated junction, which is the one shape this graph does not have; a rule
+// that clears a four-way perfectly can still crawl a corridor, and nothing here could see it.
+function corridor(n, spacing, through) {
+  const a = []; let id = 0;
+  for (let k = 0; k < through; k++) a.push(make('E', 22 + k * 15, id++, 10));           // along the main road
+  for (let j = 0; j < n; j++) a.push(make('N', 24 + (j % 3) * 5, id++, 10, j * spacing, 0));  // one crossing each
+  for (const c of a) if (c.dir === 'E') c.exit = (n - 1) * spacing + 14;                 // out the far end
+  return a;
 }
 function sim(cars, rule, T = 14) {
   const dt = 1 / 60; let t = 0, worstGap = 1e9, inBox = 0, cleared = 0;
@@ -24,6 +37,17 @@ function sim(cars, rule, T = 14) {
   for (; t < T; t += dt) {
     for (const c of cars) {
       if (c.wake !== undefined && t >= c.wake) { c.top = 12; c.wake = undefined; }
+      // A CAR THAT TURNS. Every case above drives dead straight for fourteen seconds, and
+      // this city's cars turn at every junction -- `stepTraffic` swings the yaw at
+      // clamp(speed*.35, .8, 2.2) rad/s toward the next tile. Mid-turn a car's heading is
+      // 45 degrees off the road it is on, which is exactly the range where the FOLLOW test
+      // (`dot > .55`) lets go and the CROSSING test takes over, so the car behind it in its
+      // own lane starts treating the car it is queued behind as traffic to give way to.
+      if (c.turnAt !== undefined && t >= c.turnAt && c.turned < Math.PI / 2) {
+        const r = Math.min(2.2, Math.max(.8, c.speed * .35)) * dt;
+        c.turned += r; const a = Math.atan2(c.fx, c.fz) + r * (c.turnDir || 1);
+        c.fx = Math.sin(a); c.fz = Math.cos(a);
+      }
       c.stop = c.speed < .5 ? c.stop + dt : 0;
       if (c.speed < .5 && c.top > 0 && waited.has(c.id)) waited.set(c.id, waited.get(c.id) + dt);
       let cap = c.top, qd = 1e9, qv = 0;
@@ -71,7 +95,7 @@ function sim(cars, rule, T = 14) {
         const ta = ((o.x - c.x) * o.fz - (o.z - c.z) * o.fx) / den;
         if (Math.abs(ta) < 3.5) { inBox++; break; }
       }
-      if (!c.done && (c.x * c.fx + c.z * c.fz) > 12) { c.done = true; cleared = t; }
+      if (!c.done && (c.x * c.fx + c.z * c.fz) > (c.exit === undefined ? 12 : c.exit)) { c.done = true; cleared = t; }
     }
     for (let i = 0; i < cars.length; i++) for (let j = i + 1; j < cars.length; j++) {
       const g = Math.hypot(cars[i].x - cars[j].x, cars[i].z - cars[j].z);
@@ -125,6 +149,19 @@ const cases = [
   // permission to stop halfway -- and everything must recover once the road clears.
   ['exit blocked, clears at 5s',     () => { const a = [make('N', 26, 0, 10), make('E', 30, 1, 10)];
                                             const j = make('N', -9, 2, 0); j.top = 0; j.wake = 5; a.push(j); return a; }],
+  // THE SHAPE THE HARNESS NEVER HAD. Junctions 12 m apart, which is what `npm run junc`
+  // measured for 27 of the 40 boxes in this city, with one crossing car at each.
+  ['CORRIDOR 3 junctions @12 m',     () => corridor(3, 12, 2)],
+  ['CORRIDOR 5 junctions @12 m',     () => corridor(5, 12, 3)],
+  ['CORRIDOR 5 junctions @20 m',     () => corridor(5, 20, 3)],
+  // THE LEAD CAR TURNS RIGHT AT THE JUNCTION and two cars are queued behind it in its lane.
+  // Nobody is crossing anybody: this is one lane of traffic taking a corner.
+  ['queue behind a car TURNING',     () => { const a = [make('N', 6, 0, 10), make('N', 18, 1, 10), make('N', 30, 2, 10)];
+                                            a[0].turnAt = .2; a[0].turned = 0; a[0].turnDir = 1;
+                                            for (const c of a) c.exit = 24; return a; }],
+  ['queue behind a LEFT turn',       () => { const a = [make('N', 6, 0, 10), make('N', 18, 1, 10), make('N', 30, 2, 10)];
+                                            a[0].turnAt = .2; a[0].turned = 0; a[0].turnDir = -1;
+                                            for (const c of a) c.exit = 24; return a; }],
 ];
 const pad = (s, n) => String(s).padEnd(n);
 const num = (v, n = 6) => (v === Infinity ? 'NEVER' : v.toFixed(2)).padStart(n);

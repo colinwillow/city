@@ -284,6 +284,31 @@ playwright unless he asks for it by name.
   five-row truth table, because no four-car standoff can reproduce a deadlock that needs a
   queue feeding a queue. The row that matters is "blocked box, waited out the stuck timer →
   goes". `stuck` came back down to 2.2 once it was reachable again.
+- **"THE CARS ARE JAMMING" IS AN IMPRESSION, AND `npm run dens` KILLED THE OBVIOUS ANSWER.**
+  Fewer cars is the first thing anyone reaches for and it cannot be the fix here:
+      197 driving cars (266 in the file, 69 parked or props)   15831 lane-metres of road
+      a car in a queue holds its own 4.9 m + TRAF.gap 6.5 = 11.4 m
+      -> OCCUPANCY 14%, and 80 m of headway per car
+  At 14% a jam is not congestion, it is a rule doing something wrong in one place. The tool
+  prints the table at 100/80/70/60/50% so the argument does not have to be had again.
+- **AND THE RULE IS NOT IT EITHER — `npm run cross` NOW TESTS THE SHAPES IT WAS MISSING.**
+  Every case in that harness used to be ONE isolated junction with cars driving dead straight,
+  which are the two things this city is not. Added and all clearing:
+      CORRIDOR 3/5 junctions at 12 m   -- `npm run junc` says 27 of 40 boxes are closer than
+                                          that, so a car downtown has SEVERAL crossings inside
+                                          `TRAF.reach` at once and `crossGive` is per-PAIR
+      queue behind a car TURNING       -- mid-turn a car's heading is 45 deg off its road,
+                                          which is exactly where the FOLLOW test (`dot > .55`)
+                                          lets go and the CROSSING test takes over
+  Both clear with no stopped-in-box time. **Three hypotheses measured and all three wrong** —
+  which is worth more than shipping the fourth one on a hunch.
+- **SO THE GAME COUNTS IT (`JAM`, `jamScan`).** What is left is something no offline tool can
+  see, and what would settle it is not more reasoning but WHERE: one knot of eight cars round
+  a bad tile and the whole map crawling are different bugs and they look identical from a
+  phone. A car stopped longer than `JAM.at` is stuck; past `JAM.show` of them the fps chip
+  says `· JAM n@x,z` unasked, the same way `· NO CLOUD GLB` does, with the coordinate of the
+  biggest knot in `JAM.cell`-metre buckets. `npm run spots` prints coordinates in the same
+  frame, so the number is walkable to.
 - **`npm run junc` SAYS WHY THERE ARE NO TRAFFIC LIGHTS.** A junction-reservation or signal
   scheme — the obvious answer, and a real one — needs junctions, and this road graph has none
   to find. 489 road slabs, 171 of them with both axes present, and **99% of those touch
@@ -748,6 +773,28 @@ playwright unless he asks for it by name.
   him out of the recovery, which is what makes each link in the chain a decision.
   **A dodge roll is the only thing in the game that makes him unhittable** (`p.melI`, tested
   at the top of `carHit`) — without i-frames a roll is a slower walk with a nicer clip.
+- **THE SLASH MARK IS DRAWN ON THE PICTURE, NOT PLACED IN THE WORLD (`SLASH`, `slashArc`).**
+  Ported whole from Plutopia, and its first version's mistake is the entire lesson: a ring in
+  the world is the obvious build and it is wrong. A `RingGeometry` lies in its own XY plane,
+  so turning it by his heading puts its NORMAL along the swing — the arc ends up drawn in the
+  plane facing the direction of travel with the crescent's opening pinned to his local right,
+  which reads as sideways from every camera angle. A slash mark is a mark **on the picture**,
+  which is what the ones in comics and in every stylised game are, so it is a camera-facing
+  sprite with a roll in SCREEN space. It cannot be edge-on and it cannot face the wrong way.
+  That is also what lets his own art drop in: a PNG at `SLASH.url` replaces the canvas one.
+  **ONE FILLED SHAPE, NOT A RUN OF STROKES.** Walking the arc in fifty segments and stroking
+  each at its own width looks tapered in the source and is not — every round cap overlaps its
+  neighbour, source-over accumulates the alpha at each join, and out comes a white slab with a
+  ragged edge. Tracing both edges of the ribbon and filling it once gives a real taper and a
+  point at each end. Thickest a third of the way in, not dead centre: symmetric reads as a
+  shape somebody placed, off-centre reads as one pass of a brush.
+  **NOT ADDITIVE.** Additive over a lit street has nowhere to go but white: the mark saturates,
+  clears `POST.bloomTh` and comes back out of the bloom chain as a glowing lump.
+  **AND IT FIRES ON THE CONTACT FRAME (`MELEE.at`), NEVER ON THE INPUT.** Drawing it on the
+  flick puts the picture a third of a second before the hand gets there, and a swing and its
+  consequence arriving as two events is what "you cannot actually hit things" looks like from
+  outside. Per clip, because a round kick connects later in its arc than a jab. The dodge roll
+  leaves no mark — it is not a strike.
 - **THE HIPS TRANSLATION IS NOT A BONE LENGTH, AND DROPPING IT IS WHAT MADE HIM FLOAT.**
   `tools/melee.mjs` cut the borrowed clips to rotation-only — right for every other track,
   wrong for this one. The hips translation is the body's HEIGHT OFF THE GROUND and every one

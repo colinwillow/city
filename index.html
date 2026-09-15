@@ -135,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c79</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c80</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c79';
+const BUILD = 'c80';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -445,6 +445,13 @@ const MELEE = {
   // which is the "about double as far" the tackle was asked for, bought mostly by the profile
   // rather than by a launch spike: 8.05 -> 12.95 m/s, not 8.05 -> 21.
   carry: .45,
+  // THE MARK LANDS WHEN THE ARM DOES, NOT WHEN THE THUMB DOES. Drawing it on the input puts
+  // the picture a third of a second before the hand gets there, and a swing and its
+  // consequence arriving as two separate events is exactly what "you cannot actually hit
+  // things" looks like from outside. `at` is the fraction of the move the blow lands on,
+  // per clip, because a round kick connects later in its arc than a jab does.
+  at: { melee_punch_01: .34, melee_slash: .42, melee_round_kick: .50, slide: .24 },
+  fxY: .62, fxR: .95,   // up his body and out in front of him, as fractions of his height
   url: 'models/chars/melee.glb',
   roll: 'roll',      // the left pad's flick: a dodge, and the only i-frames in the game
   rollV: 9.5,
@@ -1018,6 +1025,99 @@ function holePatch(sh) {
 }
 // Follows his chest on screen. Everything here is in rtScene pixels, because that is the
 // buffer the scene pass writes and gl_FragCoord is measured in.
+// ---------- the slash mark ----------
+// PLUTOPIA'S, PORTED WHOLE, AND ITS FIRST VERSION'S MISTAKE IS THE WHOLE LESSON. A ring in
+// the world was the obvious build and it is wrong: a `RingGeometry` lies in its own XY plane,
+// so turning it by his heading puts its NORMAL along the swing -- the arc ends up drawn in
+// the plane facing the direction of travel, with the crescent's opening pinned to his local
+// right, which looks like it is facing sideways from every camera angle.
+// A SLASH MARK IS NOT A THING IN THE WORLD. It is a mark drawn ON THE PICTURE -- which is
+// what the ones in comics and in every stylised game are -- so it is a camera-facing sprite
+// with a roll in SCREEN space. It cannot be edge-on, it cannot face the wrong way, and it
+// reads the same from anywhere. That is also what lets his own hand-drawn ones drop straight
+// in: put a PNG at `SLASH.url` and it replaces the canvas one with no other change.
+const SLASH = {
+  life: .2, r: 1.5, col: '#eaf4ff', hot: '#ffe2b6', url: null, n: 6, peak: .92,
+  // Which way the mark lies on screen, per clip. Radians, 0 is horizontal. Matched by eye to
+  // what each swing LOOKS like rather than derived off a bone, because what is being matched
+  // is the read of the animation and not where the hand went.
+  roll: { melee_punch_01: -.28, melee_slash: -1.0, melee_round_kick: .4, slide: .1 },
+};
+let _slashPool = null, _slashTex = null;
+function slashTex() {
+  if (_slashTex) return _slashTex;
+  const S = 256, cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const g = cv.getContext('2d');
+  // ONE FILLED SHAPE, NOT A RUN OF OVERLAPPING STROKES. Walking the arc in fifty segments and
+  // stroking each at its own width looks tapered in the source and is not: every round cap
+  // overlaps its neighbour, source-over accumulates the alpha at each join, and what comes
+  // out is a slab of solid white with a ragged edge. Tracing both edges of the ribbon and
+  // filling it ONCE gives a real taper, one uniform alpha, and a point at each end.
+  const ink = (r, w, a0, a1, alpha, bias) => {
+    const N = 64, out = [], inn = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      // Thickest a third of the way in and whipping to a point, rather than fattest dead
+      // centre: a symmetric crescent reads as a shape somebody placed, this reads as one
+      // pass of a brush.
+      const taper = Math.pow(t, bias) * Math.pow(1 - t, 1.3) * 3.08;
+      const a = a0 + (a1 - a0) * t, hw = w * .5 * taper;
+      const cx = S * .5 + Math.cos(a) * r, cy = S * .5 + Math.sin(a) * r;
+      out.push([cx + Math.cos(a) * hw, cy + Math.sin(a) * hw]);
+      inn.push([cx - Math.cos(a) * hw, cy - Math.sin(a) * hw]);
+    }
+    g.globalAlpha = alpha;
+    g.beginPath(); g.moveTo(out[0][0], out[0][1]);
+    for (let i = 1; i <= N; i++) g.lineTo(out[i][0], out[i][1]);
+    for (let i = N; i >= 0; i--) g.lineTo(inn[i][0], inn[i][1]);
+    g.closePath(); g.fill(); g.globalAlpha = 1;
+  };
+  g.fillStyle = '#fff';
+  ink(S * .33, S * .105, -1.35, 1.30, 1, .55);        // the body of the mark
+  ink(S * .41, S * .026, -1.05, 1.05, .45, .8);       // a hair riding outside it
+  ink(S * .26, S * .020, -.85, .90, .30, .9);         // and one inside, so it is not one line
+  const t = new THREE.CanvasTexture(cv); t.needsUpdate = true; _slashTex = t;
+  if (SLASH.url) new THREE.TextureLoader().load(A(SLASH.url), tx => {
+    tx.needsUpdate = true; _slashTex = tx;
+    for (const m of _slashPool || []) m.material.map = tx;
+  });
+  return t;
+}
+function slashArc(x, y, z, roll, size, hot) {
+  if (!_slashPool) {
+    _slashPool = [];
+    const tex = slashTex();
+    for (let i = 0; i < SLASH.n; i++) {
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex, color: new THREE.Color(SLASH.col), transparent: true, opacity: 0,
+        // NOT ADDITIVE. Additive over a lit street has nowhere to go but white: the mark
+        // saturates, clears `POST.bloomTh` and comes back out of the bloom chain as a glowing
+        // lump. A drawn mark sits ON the picture at its own opacity, which is normal blending,
+        // and that is also what stops it lighting the road it is drawn over.
+        depthWrite: false, fog: false }));
+      m.visible = false; m.renderOrder = 3; m.userData.noHole = 1; m.frustumCulled = false;
+      scene.add(m); _slashPool.push(m);
+    }
+  }
+  const m = _slashPool.find(q => !q.visible) || _slashPool[0];
+  m.visible = true; m.userData.t = 0; m.userData.size = size || SLASH.r;
+  m.material.color.set(hot ? SLASH.hot : SLASH.col);
+  m.material.rotation = roll;                    // the whole of which way it faces
+  m.position.set(x, y, z);
+  m.scale.setScalar((size || SLASH.r) * .6);
+}
+function stepSlash(dt) {
+  if (!_slashPool) return;
+  for (const m of _slashPool) {
+    if (!m.visible) continue;
+    const t = (m.userData.t += dt) / SLASH.life;
+    if (t >= 1) { m.visible = false; continue; }
+    // It opens fast and thins away: the scale keeps growing while the opacity falls, which is
+    // what makes a mark read as having been LEFT BEHIND rather than as having been placed.
+    m.scale.setScalar(m.userData.size * (.62 + t * .7));
+    m.material.opacity = SLASH.peak * (t < .14 ? t / .14 : (1 - (t - .14) / .86) ** 1.3);
+  }
+}
 // ---------- contact blobs ----------
 // THE PART A SHADOW MAP IS GENUINELY BAD AT IS THE CONTACT UNDER HIS FEET, and it is the part
 // that does the most work: what grounds a thing is the dark under it. Plutopia stopped
@@ -1495,7 +1595,39 @@ function missing() {
   if (SFX.miss.length) m += ' · NO SND ' + SFX.miss.length;
   if (CHARS.cur !== 'colin') m += ' · ' + CHARS.cur;
   if (CHARS.miss) m += ' · NO SKIN ' + CHARS.miss;
+  if (JAM.n) m += ' · JAM ' + JAM.n + '@' + JAM.x.toFixed(0) + ',' + JAM.z.toFixed(0);
   return m;
+}
+// "THE CARS ARE KIND OF JAMMING UP AGAIN" IS AN IMPRESSION, AND AN IMPRESSION CANNOT BE
+// DEBUGGED. Two offline tools already answered half of it and ruled themselves out:
+//   `npm run dens`  -- 197 driving cars over 15831 lane-metres is 14% occupancy and 80 m of
+//                      headway each, so THINNING THE TRAFFIC CANNOT BE THE ANSWER. At 14% a
+//                      jam is not congestion, it is a rule doing something wrong in one place.
+//   `npm run cross` -- the shipped rule clears every standoff, and now also a CORRIDOR of
+//                      junctions 12 m apart (which is the shape `npm run junc` says this city
+//                      actually is, 27 of 40 boxes closer than that) and a queue behind a car
+//                      TURNING. None of them jam. So it is not the crossing rule on its own.
+// What is left is something neither tool can see, and the thing that would settle it is not
+// more reasoning -- it is WHERE. One cluster of eight cars round a bad tile and the whole map
+// crawling are different bugs and they look identical from a phone. So the game counts it:
+// a car stopped longer than `JAM.at` is stuck, and if enough of them are stuck the chip says
+// how many and the map coordinate of the biggest knot, unasked, the same way `NO CLOUD GLB`
+// does. `npm run spots` prints coordinates in the same frame, so the number is walkable to.
+const JAM = { at: 3, show: 8, cell: 40, n: 0, x: 0, z: 0, every: .5, t: 0 };
+const _jamC = new Map();
+function jamScan(dt) {
+  JAM.t += dt; if (JAM.t < JAM.every) return; JAM.t = 0;
+  _jamC.clear(); let best = null, bn = 0;
+  for (const c of cars) {
+    if (c.stop < JAM.at) continue;
+    const k = Math.floor(c.x / JAM.cell) + ',' + Math.floor(c.z / JAM.cell);
+    let e = _jamC.get(k); if (!e) _jamC.set(k, e = { n: 0, x: 0, z: 0 });
+    e.n++; e.x += c.x; e.z += c.z;
+    if (e.n > bn) { bn = e.n; best = e; }
+  }
+  let tot = 0; for (const e of _jamC.values()) tot += e.n;
+  JAM.n = tot >= JAM.show ? tot : 0;
+  if (JAM.n && best) { JAM.x = best.x / best.n; JAM.z = best.z / best.n; }
 }
 function census() {
   let pts = 0, spr = 0, ln = 0, mesh = 0, bone = 0, skin = 0;
@@ -3220,7 +3352,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -3456,7 +3588,7 @@ function meleeGo(kind) {
   p.heading = p.faceH = p.melH;
   p.melV = kind === 'roll' ? MELEE.rollV
     : nm === MELEE.slide ? Math.max(p.speed * MELEE.slideV, MELEE.runAt) : MELEE.lunge;
-  p.pushing = false; p.goT = 0;
+  p.pushing = false; p.goT = 0; p.melFx = p.melI ? 1 : 0;   // a dodge leaves no mark
   snd.jump();
 }
 // A MELEE IS A ROLL WITH A DIFFERENT CLIP, so it is driven the same way `stepRoll` is: the
@@ -3475,6 +3607,17 @@ function stepMelee(dt) {
   const g = groundUnder(p.pos, MOVE.step, p.vel, py); p.wall = g.wall;
   settle(p, g, MOVE.step, px, pz);
   p.speed = Math.hypot(p.vel.x, p.vel.z);
+  // THE MARK, ON THE CONTACT FRAME. See MELEE.at: the swing and its consequence have to be
+  // one event, so this fires off the move's own progress rather than off the input.
+  if (!p.melFx && u >= (MELEE.at[p.mel] !== undefined ? MELEE.at[p.mel] : .38)) {
+    p.melFx = 1;
+    const hx = Math.sin(p.melH), hz = Math.cos(p.melH), R = MELEE.fxR * COLIN_HEIGHT;
+    const y = p.pos.y + COLIN_HEIGHT * (p.mel === MELEE.slide ? .26 : MELEE.fxY);
+    const roll = (SLASH.roll[p.mel] !== undefined ? SLASH.roll[p.mel] : -.4) + (Math.random() - .5) * .24;
+    slashArc(p.pos.x + hx * R, y, p.pos.z + hz * R, roll, p.mel === MELEE.slide ? 1.8 : 1.5, p.mel === MELEE.chain[2]);
+    // A second, thinner, a beat behind and turned further: one line is a line, two is a slash.
+    if (p.mel === MELEE.chain[2]) slashArc(p.pos.x + hx * R * 1.05, y + .2, p.pos.z + hz * R * 1.05, roll - .32, 1.3, 1);
+  }
   // THE TAIL IS HIS AGAIN. Holding the whole clip makes a three-punch chain feel like three
   // seconds of watching, so past `hold` a thumb on the pad cancels out of the recovery -- the
   // same escape `stepRoll` gives him, and what makes the chain feel like a decision each time.
@@ -4231,6 +4374,8 @@ function frame() {
   if (TITLE.dive > 0) diveFrame(dt); else if (!TITLE.on) stepCam(dt);
   stepHole();
   blobStep();
+  stepSlash(dt);
+  jamScan(dt);
   drawMap(dt);
   if (colin.mixer) colin.mixer.update(dt);
   renderPost();
@@ -4279,7 +4424,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, JAM, TRAF, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
