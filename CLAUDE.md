@@ -897,6 +897,23 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   him out of the recovery, which is what makes each link in the chain a decision.
   **A dodge roll is the only thing in the game that makes him unhittable** (`p.melI`, tested
   at the top of `carHit`) — without i-frames a roll is a slower walk with a nicer clip.
+- **A STRIKE GOES WHERE THE FLICK POINTED, AND THAT DIRECTION WAS BEING THROWN AWAY.**
+  `boardFlick` is handed `(dx, dy)` — the pad travel that fired the gesture — and used it for
+  the air flips while `meleeGo` ignored it entirely, so a punch went wherever he already
+  happened to be pointing. *"If I melee up and to the right he should turn and melee that
+  direction."* `meleeGo(kind, h)` takes a world heading now and he snaps onto it before the
+  clip starts. The old fallbacks stay for the cases with no direction in them — travel first,
+  then facing — because a lapsed thumb has none at all.
+  **AND IT GOES THROUGH `cam.az` (`flickH`), NEVER RAW.** The pad is in SCREEN space and the
+  camera can be anywhere, so "up and to the right" is a different bearing every time the lens
+  moves. Same mapping and same convention as `stickWorld`, in one function, so the flick and
+  the stick can never disagree about which way is forward.
+- **THE BLASTER HAS PLUTOPIA'S OWN VOICE NOW, AND `snd.trick()` WAS STANDING IN.** That is a
+  deck tick — a skateboard noise on a plasma cannon. `blaster_sound_01/02.mp3` come over with
+  the two numbers that matter: **louder AND LOWER as the charge fills**
+  (`.42 + c*.22` gain, `1.10 - c*.26` rate). The pitch is the half that does the work — it is
+  what makes a big shot read as heavy rather than as merely a bigger noise, and dropping it is
+  the whole difference between a second sound and the same gun working harder.
 - **THE SLASH MARK IS DRAWN ON THE PICTURE, NOT PLACED IN THE WORLD (`SLASH`, `slashArc`).**
   Ported whole from Plutopia, and its first version's mistake is the entire lesson: a ring in
   the world is the obvious build and it is wrong. A `RingGeometry` lies in its own XY plane,
