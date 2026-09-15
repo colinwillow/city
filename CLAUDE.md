@@ -1242,6 +1242,49 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   The melee flick is already suppressed exactly this way in `boardFlick`, so this is the rule
   that pad already follows, applied to the meaning that was still leaking through. The charge
   jump stands down with it. **A tap is still a jump** — that is a separate event, not `rHold`.
+- **`npm run gait` SAYS WHETHER A BORROWED GAIT CLIP FITS THIS BODY, AND IT IS TWO SEPARATE
+  QUESTIONS.** *"It makes him go up and down really quickly"* has two causes that need
+  different fixes, so guessing costs a round:
+  1. **THE CYCLE RATE, WHICH HAS A CLOSED FORM.** A clip is time-scaled by `speed / ref`, so
+     one cycle takes `dur * ref / speed` — which means a clip of a DIFFERENT LENGTH needs its
+     own reference or the feet land at the wrong rate: `ref = GAIT.ref * (colinDur / thisDur)`.
+     c98 typed both by eye and got **one error in each direction**:
+         run    rifle 0.533 s vs run_fwd 0.667   -> ref 6.00, shipped 4.4   36% TOO FAST
+         walk   rifle 1.333 s vs walk_fwd 1.067  -> ref 1.24, shipped 1.7   37% too slow
+  2. **THE HIPS EXCURSION, WHICH IS THE EXPORT AND NOTHING ELSE.** A clip retargeted off a
+     taller rig keeps the SOURCE's vertical travel, and the same centimetres on a shorter body
+     read as a bounce. Measured against his own gait as the only reference that matters:
+         idle   his 0.3 cm    rifle 5.5 cm    SEVENTEEN TIMES, on a clip where he is standing still
+         walk   his 6.4 cm    rifle 8.5 cm
+         run    his 6.7 cm    rifle 14.6 cm   more than double
+     **A reference speed cannot fix this** — the cycle rate is the clip's TIME and the bounce is
+     its CONTENT. For a borrowed clip the remap is `tools/melee.mjs`'s job; for one baked into
+     `colin.glb` the only honest fix is the export, which is what the tool says so nobody
+     spends a build tuning a number that cannot reach it.
+  **AND ITS FIRST RUN REPORTED A WALK CYCLE BOBBING SIX METRES.** The hips channel is not in
+  geometry units: a skinned vertex is already near metres (GLTFLoader binds with the identity)
+  but a BONE's translation lives inside the armature, which carries the hundredth scale. The
+  tool multiplied by the model scale alone and was out by 100x. Same class as `Box3` against
+  geometry bounds, one node up — measure the chain, never assume it.
+- **HOLDING A SHOT, HE FACES THE SHOT — AND THAT IS THREE CHANGES THAT ARE ONE IDEA.**
+  `stepAim` turns `p.heading` with the pad, so while the trigger is held: the left thumb must
+  not also write `heading` (two writers, whichever ran last wins the frame); `faceH` comes
+  round at the ON THE SPOT rate rather than the running one, because a man levelling a rifle
+  turns to face it rather than leaning into it over two seconds; and **`plant` goes to zero**.
+  `plant` is what swings the velocity onto his facing as he speeds up — right for running and
+  exactly wrong here, since it would drag every step round to point down the barrel. At zero he
+  goes where the thumb says while facing the shot, which is a STRAFE, and
+  `rifle_strafe_left/right` are already in the pool for the day they are drawn.
+- **THE CHIP SAYS HOW BIG THE GUN ACTUALLY IS (`gunSize`), IN CENTIMETRES.** "Still no blaster"
+  is THREE bugs wearing one face and they are identical from a phone — it never loaded, it
+  loaded at the wrong size, or it is the right size in the wrong place. c98 fixed one of them
+  (nine millimetres, the armature scale applied twice) and nothing on screen could say whether
+  that was the one. Now:
+      · NO BLASTER GLB   the file never arrived
+      · gun1cm           still double-scaled
+      · gun93cm          right size, so the fault is placement or culling and not this
+  Same rule as `cloud0` / `cloud28 vis0` / `env0`: **put the number that tells them apart on
+  the screen, because a console warning is invisible on a phone.**
 - **THE KIT IS THREE PLAIN KEYS IN A ROW NOW, NOT A RADIAL MENU.** The fan was one button doing
   two jobs — tap to toggle, press-and-hold to choose — and *"let's just get rid of the Swiss
   Army button thing"*. A long press is a gesture you have to be told about; three keys say what

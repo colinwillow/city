@@ -187,7 +187,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c98</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c99</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -200,7 +200,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c98';
+const BUILD = 'c99';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -596,7 +596,18 @@ const WEAP = {
   clip: 'rifle_shoot_stationary_01',
   fireHold: .42,        // how long the shoot clip owns the body, scaled to fit
   idle: 'rifle_idle_01', walk: 'rifle_walk_fwd_01', run: 'rifle_run_fwd_01',
-  walkRef: 1.7, runRef: 4.4,
+  // THESE TWO WERE TYPED AND BOTH WERE WRONG; `npm run gait` MEASURES THEM.
+  // A clip is time-scaled by `speed / ref`, so one cycle takes `dur * ref / speed` seconds --
+  // which means a borrowed clip of a DIFFERENT LENGTH needs its own reference to put the feet
+  // down at the same rate: `ref = GAIT.ref * (colinDur / thisDur)`. The rifle clips are not
+  // the same length as Colin's own:
+  //     run    rifle 0.533 s vs run_fwd 0.667      -> ref 4.8 * 1.251 = 6.00   (I typed 4.4)
+  //     walk   rifle 1.333 s vs walk_fwd 1.067     -> ref 1.55 * 0.800 = 1.24  (I typed 1.7)
+  // At 4.4 the run cycled 36% faster than his ordinary run at the same ground speed, which is
+  // the "it makes him go up and down really quickly" -- a 16-frame stride played quick. The
+  // walk was 37% too slow the other way. Guessing a number that has a closed form is how you
+  // get one error in each direction.
+  walkRef: 1.24, runRef: 6.0,
 };
 // THE BOLT. It rides a fixed height above whatever is under it rather than flying a straight
 // line, which is Plutopia's rule and the reason a shot goes over a kerb instead of burying
@@ -1801,6 +1812,19 @@ function gearShow() {
 // piece parented to Colin's hand stays on Colin's hand when the robot walks on -- which reads
 // as the gun being left behind on a man who has gone. `wear` calls this.
 function gearRehome() { if (gear.blaster || gear.jet) weapFit(); }
+// HOW BIG IS THE GUN, REALLY -- in world metres, off its own bounds, wherever it has ended up
+// in the skeleton. The chip prints it, because a weapon you cannot see is three bugs wearing
+// one face and this is the one number that tells them apart.
+const _gbb = new THREE.Box3(), _gsz = new THREE.Vector3();
+function gunSize() {
+  const b = gear.blaster;
+  if (!b) return -1;                       // the GLB never arrived
+  b.g.updateWorldMatrix(true, true);
+  _gbb.setFromObject(b.g);
+  if (_gbb.isEmpty()) return 0;
+  _gbb.getSize(_gsz);
+  return Math.max(_gsz.x, _gsz.y, _gsz.z);
+}
 
 // ---------- the trigger, the bolt and the thrust ----------
 // THE TRIGGER IS A FULL PULL, HELD -- see WEAP for why each of the four gates is there. This
@@ -2638,6 +2662,18 @@ function missing() {
   // WHICH PLACEMENT THE BLASTER GOT. "It is in the wrong place" and "his rig has no weapon
   // joint yet" are different problems and they look identical from a phone.
   if (KIT.cur === 'blaster' && kitOut() && !gear.mount) m += ' · NO WEAPON JOINT';
+  // AND HOW BIG IT ACTUALLY IS, IN CENTIMETRES, MEASURED OFF ITS WORLD BOUNDS.
+  // "Still no blaster" is THREE different bugs that look identical from a phone: it never
+  // loaded, it loaded and is the wrong size, or it is the right size and in the wrong place.
+  // c98 fixed one of them (nine millimetres, the armature scale applied twice) and the only
+  // way to know from here whether that was the one is to put the number on screen.
+  //     NO BLASTER GLB   the file never arrived
+  //     gun1cm           still double-scaled
+  //     gun93cm          right size -- so the fault is placement or culling, not this
+  if (KIT.cur === 'blaster' && kitOut()) {
+    const gs = gunSize();
+    m += gs < 0 ? ' · NO BLASTER GLB' : ' · gun' + (gs * 100).toFixed(0) + 'cm';
+  }
   if (!cops.length) m += ' · NO COP GLB';
   else if (!cops[0].gun) m += ' · NO PISTOL GLB';
   if (JAM.n) m += ' · JAM ' + JAM.n + '@' + JAM.x.toFixed(0) + ',' + JAM.z.toFixed(0);
@@ -5597,11 +5633,22 @@ function stepFoot(dt) {
   if (p.hang) { stepHang(dt); return; }
   if (p.lad) { stepLadder(dt); return; }
   const sp0 = Math.hypot(p.vel.x, p.vel.z);
-  if (s.mag > .1) p.heading = Math.atan2(s.x, s.z);        // the thumb, taken whole
-  // the body comes round toward it, briskly on the spot and slowly at a run
-  p.faceH += wrapAngle(p.heading - p.faceH) * Math.min(1, lerp(MOVE.face0, MOVE.face1, clamp(sp0 / MOVE.max, 0, 1)) * dt);
-  // whose direction the legs push in: the thumb's at a walk, his own facing at a run
-  const plant = p.grounded ? smooth(MOVE.plantAt, MOVE.plantFull, sp0) : 0;
+  // HOLDING A SHOT, HE FACES THE SHOT. `stepAim` already turns `p.heading` with the pad, so
+  // the left thumb must not also write it -- otherwise the two fight and whichever ran last
+  // wins the frame. Three things change while the trigger is held and they are one idea:
+  //   * the left stick stops steering him (it moves him instead);
+  //   * the body comes round at the ON THE SPOT rate, not the running one. A man levelling a
+  //     rifle turns to face it; he does not lean into it over two seconds;
+  //   * and the legs stop PLANTING. `plant` is what swings the velocity onto his facing as he
+  //     speeds up, which is right for running and exactly wrong here -- it would drag every
+  //     step round to point down the barrel. At zero he goes where the thumb says while facing
+  //     the shot, which is a strafe, and `rifle_strafe_left/right` are already in the pool for
+  //     the day they are drawn.
+  const aiming = !!p.aim;
+  if (s.mag > .1 && !aiming) p.heading = Math.atan2(s.x, s.z);   // the thumb, taken whole
+  p.faceH += wrapAngle(p.heading - p.faceH) * Math.min(1,
+    (aiming ? MOVE.face0 : lerp(MOVE.face0, MOVE.face1, clamp(sp0 / MOVE.max, 0, 1))) * dt);
+  const plant = (p.grounded && !aiming) ? smooth(MOVE.plantAt, MOVE.plantFull, sp0) : 0;
   let dvx = s.x, dvz = s.z, brake = 1;
   if (plant > 1e-3) {
     const hx = Math.sin(p.faceH), hz = Math.cos(p.faceH);

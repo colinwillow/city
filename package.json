@@ -27,7 +27,8 @@
     "check:boot": "node tools/boot.mjs",
     "check": "npm run check:syntax && npm run check:boot",
     "joints": "node tools/joints.mjs",
-    "gun": "node tools/gun.mjs"
+    "gun": "node tools/gun.mjs",
+    "gait": "node tools/gait.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",
