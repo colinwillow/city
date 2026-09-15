@@ -1412,10 +1412,27 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   actually pointing at, and a priority order pulls the mark off the car in front of him onto an
   officer forty metres away.
   **THE RETICLE IS NOT DECORATION.** An aim assist you cannot see is one you cannot trust — the
-  mark IS the promise, so it has to be on the thing before the shot leaves. Four ticks round a
-  gap rather than a dot, because a dot on an officer at forty metres is one pixel and what has
-  to read is WHICH THING is marked. `pointer-events: none` without exception: it sits in the
-  middle of the play area.
+  mark IS the promise, so it has to be on the thing before the shot leaves.
+  **AND IT SHOWS WHENEVER THE TRIGGER IS ARMED, NOT ONLY WHEN SOMETHING LOCKS (c112).** It used
+  to appear only on a lock, so pointing at open ground gave no mark at all — and open ground is
+  most of the city. **A gun you cannot aim at a wall is a gun you can only aim at people.**
+  **WHERE IT SITS WITH NO LOCK IS WALKED, NOT RAYCAST (`aimPoint`).** The bolt does not fly a
+  straight line — it RIDES `BOLT.ride` over whatever is under it — so a straight ray puts the
+  mark through a rise the shot will go over, and on the far side of a dip it will follow down
+  into. It walks the bolt's own path in `step` metres, stopping on anything solid or on a rise
+  steeper than the bolt can climb. Coarse on purpose: a mark a metre out on a sixty-metre shot
+  is invisible, a mark on the wrong side of a wall is not.
+  **LOCKED IS A DIFFERENT MARK, NOT A BRIGHTER ONE.** It goes warm, the brackets snap in and
+  hold rather than breathing, and the whole thing tightens — so "the gun has something" and
+  "the gun is pointed at dirt" are told apart at a glance rather than by comparing brightness
+  to a memory of what it looked like a second ago.
+  **THE ART IS PLUTOPIA'S**: four layers turning at different rates about one centre — a dashed
+  ring, arrows the other way, brackets that breathe, a diamond that pulses. **Turning is the
+  whole trick**; a static mark reads as a dead overlay. None of it costs a frame, because CSS
+  animation runs off the compositor and the only thing the loop writes is the position.
+  `transform-box: view-box` is load-bearing — without it each group spins about its own tight
+  bounding box rather than the shared middle, and the layers wobble apart.
+  `pointer-events: none` without exception: it sits in the middle of the play area.
 - **A COMMITTED SHOT STANDS THE SPRINT DOWN; CARRYING THE GUN DOES NOT (c108 fixed c98).** `p.rHold` is "how long
   that pad has been down" and it feeds the SPRINT — so holding the pad up to charge a shot was
   also winding him to x3 top speed while `stepAim` steered him with the same thumb. Aiming

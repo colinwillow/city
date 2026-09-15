@@ -161,18 +161,37 @@
      without this the three keys would still take a thumb through the card at opacity 0, which
      is the `#startB` landmine one element over. */
   body.title #kitRow .key{pointer-events:none}
-  /* THE RETICLE. Four ticks around a gap, not a dot: a dot over a police officer at forty
-     metres is a pixel, and what has to read is WHICH THING is marked. `pointer-events:none`
-     without exception -- it sits in the middle of the play area and can never eat a thumb. */
-  #retic{position:fixed;z-index:5;width:46px;height:46px;margin:-23px 0 0 -23px;pointer-events:none;
-    animation:reticIn .12s ease-out}
+  /* THE RETICLE, PLUTOPIA'S. Four layers turning at different rates round one centre: a
+     dashed ring, a set of arrows the other way, brackets that breathe, a diamond that pulses.
+     Turning IS the whole trick -- a static mark reads as a dead overlay, and nothing here has
+     to be recomputed per frame for it because CSS animation runs off the compositor.
+     `pointer-events:none` without exception: it sits in the middle of the play area. */
+  #retic{position:fixed;z-index:5;left:0;top:0;width:58px;height:58px;margin:-29px 0 0 -29px;
+    pointer-events:none;will-change:transform,opacity;transition:opacity .16s,filter .2s}
   #retic[hidden]{display:none}
-  #retic i{position:absolute;background:rgba(157,247,255,.95);box-shadow:0 0 8px rgba(120,238,255,.9)}
-  #retic i:nth-child(1){left:50%;top:0;width:2px;height:11px;margin-left:-1px}
-  #retic i:nth-child(2){left:50%;bottom:0;width:2px;height:11px;margin-left:-1px}
-  #retic i:nth-child(3){top:50%;left:0;height:2px;width:11px;margin-top:-1px}
-  #retic i:nth-child(4){top:50%;right:0;height:2px;width:11px;margin-top:-1px}
-  @keyframes reticIn{from{transform:scale(1.7);opacity:0}to{transform:scale(1);opacity:1}}
+  #retic svg{width:100%;height:100%;display:block;overflow:visible;
+    filter:drop-shadow(0 0 5px rgba(120,238,255,.8))}
+  /* transform-box:view-box so the origin is the viewBox's own middle rather than each group's
+     tight bounding box, which would spin every layer about a different point. */
+  #retic svg g,#retic svg path{transform-box:view-box;transform-origin:32px 32px}
+  .rA{animation:reticspin 7s linear infinite}
+  .rB{animation:reticspin 4.2s linear infinite reverse}
+  .rC{animation:reticbrk 1.5s ease-in-out infinite}
+  .rD{animation:reticdia 1.5s ease-in-out infinite}
+  @keyframes reticspin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+  @keyframes reticbrk{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(.9);opacity:1}}
+  @keyframes reticdia{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(1.1);opacity:.95}}
+  /* LOCKED IS A DIFFERENT MARK, not a brighter one. It goes warm, the brackets snap in and
+     hold rather than breathing, and the whole thing tightens -- so "the gun has something" and
+     "the gun is pointed at dirt" are told apart at a glance rather than by comparing
+     brightness to a memory of what it looked like a second ago. */
+  #retic.lock{filter:drop-shadow(0 0 9px rgba(255,180,60,.95))}
+  #retic.lock svg{transform:scale(.84)}
+  #retic.lock .rA{animation-duration:2.6s}
+  #retic.lock .rC{animation:none;transform:scale(.78)}
+  #retic.lock .rD{animation-duration:.5s}
+  #retic.lock circle,#retic.lock path{stroke:rgba(255,206,120,.95)}
+  #retic.lock path[fill]{fill:rgba(255,222,150,.95)}
   /* The charge, wound round the right stick: it is the one thing on screen that says how big
      the shot you are about to take is, and it belongs where the thumb already is. */
   #sticks .stick .chg{position:absolute;inset:-6px;border-radius:50%;pointer-events:none;opacity:0;
@@ -243,13 +262,26 @@
   <div class="stick" id="stkR"><div class="chg" id="stkRChg"></div><div class="knob"></div><div class="lbl">LOOK</div></div>
 </div>
 <div id="kitRow"></div>
-<div id="retic" hidden><i></i><i></i><i></i><i></i></div>
+<div id="retic" hidden><svg viewBox="0 0 64 64" fill="none">
+  <g class="rA"><circle cx="32" cy="32" r="25.5" stroke="rgba(150,246,255,.42)" stroke-width="1.1" stroke-dasharray="2.4 8.4"/></g>
+  <g class="rB">
+    <path d="M32 3.4l4.4 6.6h-8.8z" fill="rgba(190,252,255,.95)"/>
+    <path d="M32 60.6l4.4-6.6h-8.8z" fill="rgba(190,252,255,.5)"/>
+    <path d="M3.4 32l6.6-4.4v8.8zM60.6 32l-6.6-4.4v8.8z" fill="rgba(150,246,255,.55)"/>
+  </g>
+  <g class="rC">
+    <path d="M13 21.5V13h8.5M51 21.5V13h-8.5M13 42.5V51h8.5M51 42.5V51h-8.5"
+      stroke="rgba(170,250,255,.95)" stroke-width="2.4" stroke-linecap="butt"/>
+  </g>
+  <path class="rD" d="M32 22.5l8.4 9.5-8.4 9.5-8.4-9.5z" stroke="rgba(200,253,255,.9)" stroke-width="1.3"/>
+  <circle cx="32" cy="32" r="1.5" fill="rgba(226,255,255,1)"/>
+</svg></div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c111</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c112</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -262,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c111';
+const BUILD = 'c112';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1963,7 +1995,7 @@ function stepAim(dt) {
   p.fireT = Math.max(0, (p.fireT || 0) - dt);
   if (!has) {
     p.aim = 0; p.armT = 0; p.chg = 0; p.turning = 0; p.lock = null; p.aimAdj = 0;
-    stepChargeFx(0, dt); reticShow(null); return;   // ...and the mark goes with the gun
+    stepChargeFx(0, dt); reticShow(null, 0); return;   // ...and the mark goes with the gun
   }
   p.shotT = Math.max(0, (p.shotT || 0) - dt);
   const rx = stick.R.x, ry = stick.R.y;            // raw pad; ry is NEGATIVE for up
@@ -2028,7 +2060,7 @@ function stepAim(dt) {
   // THE BALL WINDS UP AT THE MUZZLE while he holds it -- the swirl closing in is the whole
   // read of the charge, and it says the shot is getting bigger without a number on screen.
   stepChargeFx(p.aim ? WEAP.min + (1 - WEAP.min) * p.chg : 0, dt);
-  reticShow(p.lock);
+  reticShow(p.lock, !!p.aim, p.aimH);
 }
 // WHAT THE GUN IS POINTING AT. A cone about the aim, nearest-and-straightest first, and
 // whatever is ALREADY locked keeps it on a wider cone and a discount so the reticle does not
@@ -2060,15 +2092,54 @@ function pickTarget(h) {
 // you cannot see is one you cannot trust: the mark is the promise the gun is making, so it has
 // to be ON the thing before the shot leaves. Projected through the real camera each frame,
 // hidden the moment nothing is locked.
+// WHERE THE SHOT WOULD LAND IF HE LET GO NOW. The reticle used to appear only when something
+// LOCKED, so pointing at open ground gave no mark at all -- and open ground is most of the
+// city. *"We need the aimer to pop up when you're aiming so you can always see where you're
+// about to shoot."* A gun you cannot aim at a wall is a gun you can only aim at people.
+// IT WALKS THE BOLT'S OWN PATH rather than casting a straight ray, because the bolt does not
+// fly one: it RIDES `BOLT.ride` over whatever is under it (see `stepBolts`), so a straight ray
+// would put the mark through a rise the shot will actually go over, and on the far side of a
+// dip the shot will follow down into.
+// Coarse on purpose -- `step` metres, and it runs once a frame while aiming, against a grid
+// lookup. A mark a metre out on a sixty-metre shot is invisible; a mark on the wrong side of a
+// wall is not.
+const _ap = { x: 0, y: 0, z: 0 }, _apb = [];
+function aimPoint(h) {
+  const p = player, B = BOLT;
+  const sx = Math.sin(h), sz = Math.cos(h);
+  let x = p.pos.x + sx * 1.2, z = p.pos.z + sz * 1.2;
+  let g = groundAt(x, z, p.pos.y + 3, 0);
+  let y = (g.hit ? g.floor : hmAt(x, z)) + B.ride;
+  const far = Math.min(WEAP.lock.range * 1.6, B.speed * B.life), step = 2.2;
+  for (let d = 0; d < far; d += step) {
+    const nx = x + sx * step, nz = z + sz * step;
+    g = groundAt(nx, nz, y + B.ride + 2, 0);
+    const fl = (g.hit ? g.floor : hmAt(nx, nz)) + B.ride;
+    // a rise it cannot climb stops it, which is the same rule the real bolt follows
+    if (fl - y > step * (B.climb / Math.max(1, B.speed)) + .9) break;
+    x = nx; z = nz; y = fl;
+    // ...and so does anything solid
+    gridQuery(x, z, 1, _apb);
+    let hit = false;
+    for (const b of _apb) { if (x > b.minx && x < b.maxx && z > b.minz && z < b.maxz && y > b.miny && y < b.maxy) { hit = true; break; } }
+    if (hit) break;
+  }
+  _ap.x = x; _ap.y = y; _ap.z = z;
+  return _ap;
+}
 const _rt = new THREE.Vector3();
 let _reticEl = null;
-function reticShow(o) {
+function reticShow(o, on, h) {
   if (!_reticEl) _reticEl = document.getElementById('retic');
   if (!_reticEl) return;
-  if (!o) { if (!_reticEl.hidden) _reticEl.hidden = true; return; }
-  _rt.set(o.x, (o.y || 0) + (o.hh ? o.hh * .9 : COLIN_HEIGHT * .6), o.z).project(camera);
+  if (!on) { if (!_reticEl.hidden) _reticEl.hidden = true; return; }
+  // ON the thing when there is one, on the ground the shot would reach when there is not.
+  const t = o || aimPoint(h);
+  const y = o ? (o.y || 0) + (o.hh ? o.hh * .9 : COLIN_HEIGHT * .6) : t.y;
+  _rt.set(t.x, y, t.z).project(camera);
   if (_rt.z > 1) { _reticEl.hidden = true; return; }   // behind the lens
   _reticEl.hidden = false;
+  _reticEl.classList.toggle('lock', !!o);
   _reticEl.style.left = ((_rt.x * .5 + .5) * innerWidth) + 'px';
   _reticEl.style.top = ((-_rt.y * .5 + .5) * innerHeight) + 'px';
 }
