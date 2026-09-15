@@ -1251,12 +1251,20 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
      c98 typed both by eye and got **one error in each direction**:
          run    rifle 0.533 s vs run_fwd 0.667   -> ref 6.00, shipped 4.4   36% TOO FAST
          walk   rifle 1.333 s vs walk_fwd 1.067  -> ref 1.24, shipped 1.7   37% too slow
+     The c100 export renamed and re-cut them, so every one is measured again and the tool now
+     walks the whole set against whichever of Colin's own clips it has to sit beside:
+         run 4.57   run aim 5.33   walk 1.24   strafe L 4.36 / R 4.57   ladder 1.98
+     **The two strafes differ by 5% and get their own number.** Eyeballing one value here is
+     exactly what produced two errors in opposite directions last time.
   2. **THE HIPS EXCURSION, WHICH IS THE EXPORT AND NOTHING ELSE.** A clip retargeted off a
      taller rig keeps the SOURCE's vertical travel, and the same centimetres on a shorter body
      read as a bounce. Measured against his own gait as the only reference that matters:
          idle   his 0.3 cm    rifle 5.5 cm    SEVENTEEN TIMES, on a clip where he is standing still
          walk   his 6.4 cm    rifle 8.5 cm
          run    his 6.7 cm    rifle 14.6 cm   more than double
+     **AND HE FIXED IT AT THE SOURCE**: the c100 `rifle_run` bobs 3.9 cm, 0.6x his own run --
+     so that half was the export, exactly as the tool said, and the idle is the one left
+     (5.5 cm against 0.3, still 17x).
      **A reference speed cannot fix this** — the cycle rate is the clip's TIME and the bounce is
      its CONTENT. For a borrowed clip the remap is `tools/melee.mjs`'s job; for one baked into
      `colin.glb` the only honest fix is the export, which is what the tool says so nobody
@@ -1266,6 +1274,27 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   but a BONE's translation lives inside the armature, which carries the hundredth scale. The
   tool multiplied by the model scale alone and was out by 100x. Same class as `Box3` against
   geometry bounds, one node up — measure the chain, never assume it.
+- **AIMED, THE LEGS ANSWER THE ANGLE AND NOT THE SPEED — WHICH IS WHAT THE STRAFES ARE FOR.**
+  The ordinary armed gait is the three-clip speed blend like any other. The AIMED one cannot
+  be: while the trigger is held he faces the shot and travels wherever the thumb says (`plant`
+  is zero, see below), so "how fast" no longer picks the clip — "which way, relative to his
+  nose" does. Forward is `rifle_run_aim`, sideways is the strafe for that side, still is the
+  idle, and the blend is `|cos|` against `|sin|` of the angle between travel and `faceH`.
+  It falls straight out of the facing rule rather than being a second system.
+  **+X IS HIS LEFT**, so a positive sine is a strafe to the LEFT — heading grows +Z toward +X
+  and his right is `(-fz, fx)`. Written down because that argument comes out backwards half
+  the time.
+  **THE GAP IS BACKWARDS (`WEAP.aimBack`, empty).** There is no backpedal clip, so retreating
+  under aim plays the forward one and the feet go the wrong way. Same hook and same reason as
+  `GAIT.sprint` and `HANG.clip`: name a clip and it blends in.
+- **THE LADDER HAS ITS OWN CLIP NOW (c100), AND ITS RATE COMES FROM THE RUNGS.** `climb_ladder`
+  replaces four builds of `walk_fwd_neutral` quickened. The time scale is NOT typed: one cycle
+  is one hand-over-hand pair, so it covers `LAD.cycle` rungs of `LAD.rung` metres and plays at
+  `speed * clipLen / rise` — which puts his hands on the bars at whatever climb speed is set
+  and survives a re-export of any length. `LAD.cycle` is the one dial if the feet skate.
+  **`LAD.speed` (3.8 m/s) asks for x4.6 and is capped at `tsMax`**: that is a genuinely fast
+  climb and the clip cannot sell it, so the clip leads and the last of the speed is bought
+  honestly rather than as a blur. `LAD.fallback` is what it uses if an export drops the clip.
 - **HOLDING A SHOT, HE FACES THE SHOT — AND THAT IS THREE CHANGES THAT ARE ONE IDEA.**
   `stepAim` turns `p.heading` with the pad, so while the trigger is held: the left thumb must
   not also write `heading` (two writers, whichever ran last wins the frame); `faceH` comes

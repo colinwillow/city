@@ -65,28 +65,34 @@ const bob = a => {
 };
 const get = n => anims.find(a => a.getName() === n);
 
+// EVERY BORROWED CLIP AGAINST THE ONE OF COLIN'S OWN IT HAS TO SIT BESIDE. The baseline is
+// what decides the reference: a strafe and a run are both one stride, so both are measured
+// against `run_fwd`; a ladder climb is a walk cycle's cadence.
 const PAIRS = [
-  ['idle',  'idle_neutral',      'rifle_idle_01',      null,          null],
-  ['walk',  'walk_fwd_neutral',  'rifle_walk_fwd_01',  GAIT.walkRef,  WEAP.walkRef],
-  ['run',   'run_fwd',           'rifle_run_fwd_01',   GAIT.runRef,   WEAP.runRef],
+  ['idle    ', 'idle_neutral',     'rifle_idle_01',             null],
+  ['walk    ', 'walk_fwd_neutral', 'rifle_walk_fwd_01',         'walkRef'],
+  ['run     ', 'run_fwd',          'rifle_run',                 'runRef'],
+  ['run aim ', 'run_fwd',          'rifle_run_aim',             'aimRunRef'],
+  ['strafe L', 'run_fwd',          'rifle_strafe_left',         'strafeRef'],
+  ['strafe R', 'run_fwd',          'rifle_strafe_right',        'strafeRef'],
+  ['shoot   ', 'idle_neutral',     'rifle_shoot_stationary_01', null],
+  ['ladder  ', 'walk_fwd_neutral', 'climb_ladder',              'LAD.rate'],
 ];
-console.log(file + '   drawn scale x' + MODEL.toFixed(3) + ', armature x' + ARM.toFixed(4) + ' -> hips units are ' + K.toFixed(5) + ' m'  + '   '.slice(0,0) + '   (GAIT walkRef ' + GAIT.walkRef + ', runRef ' + GAIT.runRef + ')');
-console.log('\n                     dur      hips bob   in-place?     ref it WANTS   shipped');
-for (const [what, cn, rn, gref, wref] of PAIRS) {
-  for (const [tag, nm] of [['colin ', cn], ['rifle ', rn]]) {
-    const a = get(nm);
-    if (!a) { console.log('  ' + tag + nm.padEnd(20) + 'MISSING'); continue; }
-    const d = dur(a), b = bob(a);
-    let want = '', ship = '';
-    if (tag === 'rifle ' && gref) {
-      const cd = dur(get(cn));
-      want = (gref * (cd / d)).toFixed(2).padStart(8);
-      ship = String(wref).padStart(8);
-    }
-    console.log('  ' + tag + nm.padEnd(22) + d.toFixed(3) + 's  ' +
-      (b ? (b.range * 100).toFixed(1).padStart(5) + ' cm' : '   --  ') + '   ' +
-      (b ? (b.travel < .02 ? 'in place ' : 'MOVES ' + b.travel.toFixed(2) + 'm') : '        ') + '  ' + want + '  ' + ship);
-  }
+console.log(file + '   drawn x' + MODEL.toFixed(3) + ', armature x' + ARM.toFixed(4) + ' -> hips units are ' + K.toFixed(5) + ' m');
+console.log('   Colin: idle ' + dur(get('idle_neutral')).toFixed(3) + 's  walk ' + dur(get('walk_fwd_neutral')).toFixed(3) +
+  's (ref ' + GAIT.walkRef + ')  run ' + dur(get('run_fwd')).toFixed(3) + 's (ref ' + GAIT.runRef + ')');
+console.log('\n                                  dur     hips bob   vs his own   in place?   ref it WANTS');
+for (const [what, cn, rn, key] of PAIRS) {
+  const a = get(rn), c = get(cn);
+  if (!a) { console.log('  ' + what + '  ' + rn.padEnd(26) + 'MISSING'); continue; }
+  const d = dur(a), b = bob(a), cb = bob(c), cd = dur(c);
+  const base = /walk/.test(cn) ? GAIT.walkRef : GAIT.runRef;
+  const want = key ? (base * (cd / d)).toFixed(2) : '  --  ';
+  const ratio = (b && cb && cb.range > 1e-4) ? (b.range / cb.range).toFixed(1) + 'x' : ' -- ';
+  console.log('  ' + what + '  ' + rn.padEnd(26) + d.toFixed(3) + 's  ' +
+    (b ? (b.range * 100).toFixed(1).padStart(5) + ' cm' : '   --  ') + '   ' + ratio.padStart(6) + '      ' +
+    (b ? (b.travel < .02 ? 'yes' : 'NO ' + b.travel.toFixed(2) + 'm') : '   ') + '      ' + want.padStart(7) +
+    (key ? '   -> ' + key : ''));
 }
 const ci = bob(get('idle_neutral')), ri = bob(get('rifle_idle_01'));
 if (ci && ri) {

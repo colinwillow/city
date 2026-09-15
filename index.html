@@ -187,7 +187,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c99</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c100</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -200,7 +200,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c99';
+const BUILD = 'c100';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -432,9 +432,18 @@ const LAD = {
   speed: 3.8,       // m/s up and down -- the hotel is 4.5 s, a house 2.9
   grab: 1.05,       // how close to latch on
   lip: 1.25,        // how far below the top he stops climbing and mantles instead
-  clip: 'walk_fwd_neutral',   // NO CLIMB CLIP. A walk cycle facing a wall is legs on rungs and
-                              // arms reaching, which is most of what a climb is. A stand-in.
-  ts: 1.35,         // the walk, quickened, so the feet roughly meet the rungs
+  // HIS OWN CLIMB CLIP (c100). `walk_fwd_neutral` quickened stood in for four builds on the
+  // grind/hang rule -- a walk cycle facing a wall is legs on rungs and arms reaching -- and
+  // this replaces it. `LAD.fallback` is what it goes back to if an export ever drops it.
+  clip: 'climb_ladder', fallback: 'walk_fwd_neutral',
+  // AND THE TIME SCALE IS DERIVED FROM THE RUNGS, NOT TYPED. One cycle of the clip is one
+  // hand-over-hand pair, so it covers `cycle` rungs of `rung` metres; playing it at
+  // `speed * clipLen / rise` puts his hands on the bars at whatever climb speed is set, and a
+  // re-export of any length lands right with no edit. (The old 1.35 was picked by eye against
+  // a clip that was not even a climb.)
+  cycle: 2,         // rungs one cycle of the clip covers -- the one dial if the feet skate
+  tsMax: 2.6,       // ...and the cap. `speed` 3.8 m/s is a fast climb and asks for x4.6, which
+                    // is a blur; the clip leads and the last of the speed is bought honestly.
 };
 const LADDERS = [];
 // LEDGE HANGS. A ledge is the TOP EDGE OF A SOLID BOX -- found, never authored, the same way
@@ -595,19 +604,30 @@ const WEAP = {
   // on the kit, so an empty name or a missing clip falls straight back to the ordinary gait.
   clip: 'rifle_shoot_stationary_01',
   fireHold: .42,        // how long the shoot clip owns the body, scaled to fit
-  idle: 'rifle_idle_01', walk: 'rifle_walk_fwd_01', run: 'rifle_run_fwd_01',
+  idle: 'rifle_idle_01', walk: 'rifle_walk_fwd_01', run: 'rifle_run',
+  // AIMING IS ITS OWN SET, AND IT IS WHAT THE STRAFES WERE ALWAYS FOR. While the trigger is
+  // held he faces the shot and travels wherever the thumb says (`plant` is zero, see stepFoot),
+  // so the legs cannot be picked by speed alone -- they are picked by the ANGLE BETWEEN where
+  // he is going and where he is pointing. Forward is `rifle_run_aim`, sideways is the strafe
+  // for that side, and standing still is the idle.
+  aimRun: 'rifle_run_aim', strafeL: 'rifle_strafe_left', strafeR: 'rifle_strafe_right',
+  aimBack: '',          // THE GAP: no backpedal clip, so retreating plays the forward one and
+                        // the feet go the wrong way. Name one here and it blends in; same hook
+                        // as `GAIT.sprint` and `HANG.clip`, and the same reason it is empty.
+  aimRunRef: 5.33, strafeLRef: 4.36, strafeRRef: 4.57,
   // THESE TWO WERE TYPED AND BOTH WERE WRONG; `npm run gait` MEASURES THEM.
   // A clip is time-scaled by `speed / ref`, so one cycle takes `dur * ref / speed` seconds --
   // which means a borrowed clip of a DIFFERENT LENGTH needs its own reference to put the feet
   // down at the same rate: `ref = GAIT.ref * (colinDur / thisDur)`. The rifle clips are not
   // the same length as Colin's own:
-  //     run    rifle 0.533 s vs run_fwd 0.667      -> ref 4.8 * 1.251 = 6.00   (I typed 4.4)
-  //     walk   rifle 1.333 s vs walk_fwd 1.067     -> ref 1.55 * 0.800 = 1.24  (I typed 1.7)
-  // At 4.4 the run cycled 36% faster than his ordinary run at the same ground speed, which is
-  // the "it makes him go up and down really quickly" -- a 16-frame stride played quick. The
-  // walk was 37% too slow the other way. Guessing a number that has a closed form is how you
-  // get one error in each direction.
-  walkRef: 1.24, runRef: 6.0,
+  //     run       rifle_run      0.700 s vs run_fwd 0.667   -> 4.8 * 0.953 = 4.57
+  //     run aim   rifle_run_aim  0.600 s vs run_fwd          -> 4.8 * 1.112 = 5.33
+  //     walk      rifle_walk     1.333 s vs walk_fwd 1.067   -> 1.55 * 0.800 = 1.24
+  //     strafe    0.733 / 0.700 s vs run_fwd                 -> 4.36 and 4.57
+  // The two strafes differ by 5% and get their own number, because the last time a value here
+  // was eyeballed it came out wrong in BOTH directions at once (4.4 against 6.00 and 1.7
+  // against 1.24) and cost a build. `npm run gait` prints all of them.
+  walkRef: 1.24, runRef: 4.57,
 };
 // THE BOLT. It rides a fixed height above whatever is under it rather than flying a straight
 // line, which is Plutopia's rule and the reason a shot goes over a kerb instead of burying
@@ -806,7 +826,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"9d86b14e","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -4290,7 +4310,12 @@ function colinAnim(dt) {
   // no hang clip and no climb clip: the one pose with his arms up stands in for both
   if (p.hang) { t[HANG.clip] = 1; colinSet(t, dt); return; }
   // and no climb clip either: a walk cycle facing a wall is legs on rungs and arms reaching
-  if (p.lad) { colinScale(LAD.clip, LAD.ts); t[LAD.clip] = 1; colinSet(t, dt); return; }
+  if (p.lad) {
+    const nm = colin.actions[LAD.clip] ? LAD.clip : LAD.fallback;
+    const rise = Math.max(.05, LAD.cycle * LAD.rung);
+    colinScale(nm, clamp(LAD.speed * clipLen(nm, .83) / rise, .5, LAD.tsMax));
+    t[nm] = 1; colinSet(t, dt); return;
+  }
   if (p.board) {
     // crouch -> pop -> rise -> land. The crouch is a blend rather than a state, so a thumb
     // resting on the pad settles into it and a tap goes straight past it to the pop.
@@ -4345,12 +4370,33 @@ function colinAnim(dt) {
     const w = clamp(sp / GAIT.walkAt, 0, 1);
     const r = clamp((sp - GAIT.walkAt) / (GAIT.runAt - GAIT.walkAt), 0, 1);
     const f = WEAP.clip && colin.actions[WEAP.clip] ? clamp(p.fireT / WEAP.fireHold, 0, 1) : 0;
-    t[WEAP.idle] = (1 - w) * (1 - f);
-    t[WEAP.walk] = w * (1 - r) * (1 - f);
-    t[WEAP.run] = w * r * (1 - f);
+    const k = 1 - f;
+    if (p.aim && colin.actions[WEAP.aimRun]) {
+      // AIMED: THE LEGS ANSWER THE ANGLE, NOT THE SPEED. He is facing the shot and moving
+      // wherever the thumb says, so "how fast" no longer picks the clip -- "which way, relative
+      // to his nose" does. That is the whole reason the strafes exist and it falls straight out
+      // of `plant` being zero while the trigger is held.
+      const rel = sp > .2 ? wrapAngle(Math.atan2(p.vel.x, p.vel.z) - p.faceH) : 0;
+      const cf = Math.abs(Math.cos(rel)), sf = Math.sin(rel), as = Math.abs(sf);
+      const tot = Math.max(1e-4, cf + as);
+      // +X IS HIS LEFT -- heading grows +Z toward +X and his right is `(-fz, fx)`. So travel
+      // rotated toward +X off his nose (a positive `rel`, hence a positive sine) is a strafe to
+      // the LEFT. Written down because this argument comes out backwards half the time.
+      const side = sf > 0 ? WEAP.strafeL : WEAP.strafeR;
+      t[WEAP.aimRun] = w * (cf / tot) * k;
+      t[side] = w * (as / tot) * k;
+      t[WEAP.idle] = (1 - w) * k;
+      colinScale(WEAP.aimRun, clamp(sp / WEAP.aimRunRef, GAIT.tsLo, GAIT.tsHi));
+      colinScale(WEAP.strafeL, clamp(sp / WEAP.strafeLRef, GAIT.tsLo, GAIT.tsHi));
+      colinScale(WEAP.strafeR, clamp(sp / WEAP.strafeRRef, GAIT.tsLo, GAIT.tsHi));
+    } else {
+      t[WEAP.idle] = (1 - w) * k;
+      t[WEAP.walk] = w * (1 - r) * k;
+      t[WEAP.run] = w * r * k;
+      colinScale(WEAP.walk, clamp(sp / WEAP.walkRef, GAIT.tsLo, GAIT.tsHi));
+      colinScale(WEAP.run, clamp(sp / WEAP.runRef, GAIT.tsLo, GAIT.tsHi));
+    }
     if (f > 0) { t[WEAP.clip] = f; colinScale(WEAP.clip, clipLen(WEAP.clip, 1.13) / Math.max(.05, WEAP.fireHold)); }
-    colinScale(WEAP.walk, clamp(sp / WEAP.walkRef, GAIT.tsLo, GAIT.tsHi));
-    colinScale(WEAP.run, clamp(sp / WEAP.runRef, GAIT.tsLo, GAIT.tsHi));
   } else {
     const w = clamp(sp / GAIT.walkAt, 0, 1);
     const r = clamp((sp - GAIT.walkAt) / (GAIT.runAt - GAIT.walkAt), 0, 1);
