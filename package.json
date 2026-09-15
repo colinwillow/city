@@ -20,7 +20,8 @@
     "rigs": "node tools/rigs.mjs",
     "wear": "node tools/wear.mjs",
     "wearfit": "node tools/wearfit.mjs",
-    "melee": "node tools/melee.mjs"
+    "melee": "node tools/melee.mjs",
+    "ladders": "node tools/ladders.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

@@ -643,6 +643,28 @@ playwright unless he asks for it by name.
   local translations up the parent chain, which ignores every rotation and scale on the way:
   it put Colin's hips at 52.8 and three candidates at a NEGATIVE height, and that number was
   about to pick the scale every character is drawn at.
+- **LADDERS GO WHERE THE JUMPS CANNOT REACH, AND `npm run ladders` FINDS THEM.** A charge jump
+  into a double tops out at 8.04 m and the grab window adds 2.15, so **anything under 10.2 m
+  is already climbable and does not want a ladder**. The tool takes every building over that,
+  probes its four faces at 1.6/3.0/4.5 m out for **flat open ground** sampled off the same land
+  and road meshes the collider is built from, and emits the foot, the top and the bearing.
+  A ladder whose foot is in the water or up the inside of a wall is what placing one by eye
+  off a screenshot gets you — the same reason `npm run spots` exists.
+      9 candidates. 6 placed: hotel_a 17.1 m, travel_agency 13.8, four house_05 at 11.1.
+      3 LEFT OUT ON PURPOSE: the 51 m skyscrapers are a 13.3 s climb with nothing happening.
+  Their feet are measured and sitting commented in `LAD.spots` for the day there is a lift or
+  a jetpack. The placed ones climb in 2.8 to 4.4 s.
+  **The geometry is procedural and merged** — two rails and a rung every `LAD.rung`, one draw
+  call per ladder on `cityMat`, so it is toon shaded for free.
+  **A LADDER IS NOT IN THE COLLIDER.** It is a thing you latch to, not a wall you stop against,
+  and rails thin enough to look right are thin enough to catch a foot on.
+  **Up and down come from the thumb's component ALONG THE WALL, never its raw Y.** The stick is
+  in world space and the camera can be anywhere, so "up" is the thumb pushed INTO the wall and
+  "down" is it pulled away. Walking into one latches; there is no button.
+  **Topping out hands him to the ledge hang's own mantle** (`p.hang` + `climbT`), so a ladder
+  ends the way a ledge does and there is ONE piece of code that puts him on a roof.
+  **No climb clip exists**: `walk_fwd_neutral` quickened stands in, because a walk cycle facing
+  a wall is legs on rungs and arms reaching. Same stand-in rule as the grind and the hang.
 - **A LEDGE IS THE TOP EDGE OF A SOLID BOX — FOUND, NEVER AUTHORED (`HANG`, `ledgeGrab`).**
   The same idea as the grind rails: the city is already thirty thousand boxes in a grid, so
   every roof, wall top, balcony and shopfront in it is a ledge for free and nothing is placed

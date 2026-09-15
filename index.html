@@ -135,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c76</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c77</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c76';
+const BUILD = 'c77';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -337,6 +337,36 @@ const TRICK = {
   // held off until it finishes, after which the still-held thumb spins him as it always did.
   rollLock: true,
 };
+// LADDERS. Where the jumps cannot reach. `npm run ladders` finds them rather than anybody
+// placing one by eye: every building taller than a charge jump into a double can already grab
+// (8.04 m of apex plus 2.15 of grab window = 10.2), with a wall face that has FLAT OPEN GROUND
+// in front of it, sampled off the same land and road meshes the collider is built from. A
+// ladder whose foot is in the water or up the inside of a wall is what placing by eye gets you.
+const LAD = {
+  // The tool also found the three 51 m skyscrapers and they are deliberately left out: a
+  // ladder up one is a thirteen-second climb with nothing happening, and they want a lift or
+  // the jetpack instead. Their feet are measured and waiting if that changes --
+  //   { x: 255.5, y: .41, z: 59.9,  top: 51,   rot: 1.571 },   // skyscraper_c_001
+  //   { x: 246.5, y: .46, z: 169.9, top: 51,   rot: 1.571 },   // skyscraper_c_002
+  //   { x: 189.2, y: .41, z: 173.3, top: 49.7, rot: 0 },       // skyscraper_a_001
+  spots: [
+    { x: 290.8, y: .41, z: -13.1, top: 17.1, rot: -1.571 },   // hotel_a
+    { x: 279.2, y: .45, z: 222.3, top: 13.8, rot: 0 },        // travel_agency_001
+    { x: -214.3, y: .5, z: 31,    top: 11.1, rot: 0 },        // house_05_012
+    { x: -137.3, y: .47, z: 31,   top: 11.1, rot: 0 },        // house_05_003
+    { x: -137.3, y: .47, z: 182,  top: 11.1, rot: 0 },        // house_05_005
+    { x: 524.2, y: .45, z: 147.4, top: 11.1, rot: 1.571 },    // house_05_009
+  ],
+  rung: .34, wide: .44, bar: .045,   // the geometry: spacing, width, and how thick the stock is
+  hold: .36,        // how far his body sits off the rungs
+  speed: 3.8,       // m/s up and down -- the hotel is 4.5 s, a house 2.9
+  grab: 1.05,       // how close to latch on
+  lip: 1.25,        // how far below the top he stops climbing and mantles instead
+  clip: 'walk_fwd_neutral',   // NO CLIMB CLIP. A walk cycle facing a wall is legs on rungs and
+                              // arms reaching, which is most of what a climb is. A stand-in.
+  ts: 1.35,         // the walk, quickened, so the feet roughly meet the rungs
+};
+const LADDERS = [];
 // LEDGE HANGS. A ledge is the TOP EDGE OF A SOLID BOX -- found, never authored, the same way
 // a grind rail is the top edge of the metal. The city is already thirty thousand boxes in a
 // grid, so every roof, wall top, balcony and shipfront in it is a ledge for free and nothing
@@ -1353,7 +1383,7 @@ function census() {
   let vis = 0; for (const c of clouds) if (c.g.visible) vis++;
   dbgInfo = ' · pts' + pts + ' spr' + spr + ' line' + ln + ' onBone' + bone + ' skin' + skin + ' mesh' + mesh
     + ' cloud' + clouds.length + '/vis' + vis + ' env' + (ENV.tex ? 1 : 0)
-    + ' box' + solids.length + '/' + COLS.split + ' ramp' + PARK.built + ' rail' + RAILS.length
+    + ' box' + solids.length + '/' + COLS.split + ' ramp' + PARK.built + ' rail' + RAILS.length + ' lad' + LADDERS.length
     + ' deck' + BOARD.deck.toFixed(2) + (BOARD.got ? '' : '(proc)');
 }
 // ALBEDO ONLY: his textures with no lighting of any kind. If his hair and face read
@@ -1965,6 +1995,7 @@ function hitMove(dt, gk, half) {
   const r = settle(p, g, MOVE.step, px, pz);
   // A GRAB IS CHECKED AFTER THE MOVE AND ONLY IN THE AIR -- on the way up as well as down, so
   // a jump that just clears a parapet catches it rather than bouncing off the face.
+  if (!p.lad && !p.hang && ladGrab(p)) return r;
   if (!p.grounded && p.vel.y < MOVE.jump * .55) ledgeGrab(p);
   return r;
 }
@@ -2840,6 +2871,8 @@ function colinAnim(dt) {
   if (p.mel) { t[p.mel] = 1; colinSet(t, dt); return; }
   // no hang clip and no climb clip: the one pose with his arms up stands in for both
   if (p.hang) { t[HANG.clip] = 1; colinSet(t, dt); return; }
+  // and no climb clip either: a walk cycle facing a wall is legs on rungs and arms reaching
+  if (p.lad) { colinScale(LAD.clip, LAD.ts); t[LAD.clip] = 1; colinSet(t, dt); return; }
   if (p.board) {
     // crouch -> pop -> rise -> land. The crouch is a blend rather than a state, so a thumb
     // resting on the pad settles into it and a tap goes straight past it to the pop.
@@ -3047,10 +3080,10 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
-function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
-function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
+function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
+function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
   // left stick -> world direction, relative to the camera azimuth
@@ -3097,6 +3130,88 @@ function groundUnder(p, step, vel, fromY, bounce) {
   const hm = g.hit ? g.floor
     : Math.max(hmAt(p.x, p.z), hmAt(p.x + q, p.z), hmAt(p.x - q, p.z), hmAt(p.x, p.z + q), hmAt(p.x, p.z - q));
   return { floor: Math.max(hm, r.floor), hm, wall: r.hitWall, ceil: g.ceil };
+}
+// ONE MESH FOR ALL OF THEM. Two rails and a rung every `LAD.rung`, merged into a single
+// geometry per ladder and dropped into `cityGroup` with the city's own material, so a ladder
+// costs one draw call and is toon shaded like everything else without being told.
+// IT IS NOT IN THE COLLIDER. A ladder is a thing you latch to, not a wall you stop against,
+// and rails thin enough to look right are thin enough to catch a foot on.
+function buildLadders() {
+  for (const sp of LAD.spots) {
+    const h = sp.top - sp.y;
+    if (h < 1) continue;
+    const parts = [], w = LAD.wide / 2, b = LAD.bar;
+    for (const side of [-w, w]) {
+      const g = new THREE.BoxGeometry(b * 2, h, b * 2);
+      g.translate(side, h / 2, 0); parts.push(g);
+    }
+    for (let y = LAD.rung; y < h - .1; y += LAD.rung) {
+      const g = new THREE.BoxGeometry(LAD.wide, b * 1.6, b * 1.6);
+      g.translate(0, y, 0); parts.push(g);
+    }
+    const geo = mergeGeometries(parts, false);
+    for (const g of parts) g.dispose();
+    // cityMat is only set once buildCity has seen a textured mesh; a ladder with a null
+    // material is a three exception rather than a grey ladder, so it gets one either way
+    const m = new THREE.Mesh(geo, cityMat || new THREE.MeshStandardMaterial({ color: 0x6b7480, roughness: .8 }));
+    m.position.set(sp.x, sp.y, sp.z); m.rotation.y = sp.rot;
+    m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+    cityGroup.add(m);
+    // the outward normal is the way it faces; forward is (sin, cos) as everywhere else
+    LADDERS.push({ x: sp.x, z: sp.z, y0: sp.y, y1: sp.top, nx: Math.sin(sp.rot), nz: Math.cos(sp.rot) });
+  }
+  console.log('ladders: ' + LADDERS.length + ' built');
+}
+// WALK INTO ONE AND HE IS ON IT. No button: the ladder is a place, and pushing toward a place
+// is how you get to it. He can also catch one in mid-air, which is what makes a jump onto a
+// fire escape work.
+function ladGrab(p) {
+  if (p.ladCool > 0 || p.board || p.hit || p.mel || p.hang) return false;
+  const s = stickWorld();
+  for (let i = 0; i < LADDERS.length; i++) {
+    const L = LADDERS[i];
+    const dx = p.pos.x - L.x, dz = p.pos.z - L.z;
+    if (dx * dx + dz * dz > LAD.grab * LAD.grab) continue;
+    if (p.pos.y < L.y0 - 1.2 || p.pos.y > L.y1 - .4) continue;
+    // he has to be ASKING for it: the thumb pointed into the wall, or simply falling past it
+    const into = s.mag > .3 && (s.x * -L.nx + s.z * -L.nz) > .25;
+    if (!into && p.grounded) continue;
+    p.lad = i + 1;
+    p.pos.set(L.x + L.nx * LAD.hold, Math.max(p.pos.y, L.y0), L.z + L.nz * LAD.hold);
+    p.heading = p.faceH = Math.atan2(-L.nx, -L.nz);
+    p.vel.set(0, 0, 0); p.speed = 0; p.grounded = false; p.jumps = 0; p.air = '';
+    return true;
+  }
+  return false;
+}
+function stepLadder(dt) {
+  const p = player, L = LADDERS[p.lad - 1];
+  const s = stickWorld();
+  // UP AND DOWN COME FROM THE THUMB'S COMPONENT ALONG THE WALL, not from its raw Y: the stick
+  // is in world space and the camera can be anywhere, so "up the ladder" is the thumb pushed
+  // INTO the wall and "down" is the thumb pulled away from it.
+  const into = (s.x * -L.nx + s.z * -L.nz) * s.mag;
+  p.pos.y += into * LAD.speed * dt;
+  p.pos.x = L.x + L.nx * LAD.hold; p.pos.z = L.z + L.nz * LAD.hold;
+  p.heading = p.faceH = Math.atan2(-L.nx, -L.nz);
+  p.vel.set(0, 0, 0); p.speed = Math.abs(into) * LAD.speed;
+  // TOP OUT INTO THE MANTLE HE ALREADY HAS. Reaching the lip hands him to the ledge hang's
+  // own climb, which goes up and then in -- so a ladder ends the way a ledge does and there
+  // is one piece of code that puts him on a roof.
+  if (p.pos.y > L.y1 - LAD.lip) {
+    p.lad = 0; p.hang = 1; p.climbT = HANG.climb;
+    p.cx0 = p.pos.x; p.cy0 = p.pos.y; p.cz0 = p.pos.z;
+    p.cx1 = L.x - L.nx * HANG.inset; p.cy1 = L.y1; p.cz1 = L.z - L.nz * HANG.inset;
+    snd.jump();
+    return;
+  }
+  // off the bottom, or pushed off with the jump
+  if (p.pos.y <= L.y0 + .02) { p.pos.y = L.y0; p.lad = 0; p.ladCool = HANG.cool; p.grounded = true; return; }
+  if (p.jump) {
+    p.jump = 0; p.lad = 0; p.ladCool = HANG.cool; p.jumps = 1;
+    p.vel.set(L.nx * 3.2, MOVE.jump * .62, L.nz * 3.2);
+    snd.jump();
+  }
 }
 const _lq = [];
 // IS THERE A LIP IN FRONT OF HIM? The closest point on a box's FOOTPRINT to him gives both the
@@ -3246,6 +3361,7 @@ function stepFoot(dt) {
   if (p.rollT > 0) { stepRoll(dt); return; }
   if (p.mel) { stepMelee(dt); return; }
   if (p.hang) { stepHang(dt); return; }
+  if (p.lad) { stepLadder(dt); return; }
   const sp0 = Math.hypot(p.vel.x, p.vel.z);
   if (s.mag > .1) p.heading = Math.atan2(s.x, s.z);        // the thumb, taken whole
   // the body comes round toward it, briskly on the spot and slowly at a run
@@ -3586,9 +3702,10 @@ function stepPlayer(dt) {
   player.rollT = Math.max(0, player.rollT - dt);
   player.melWin = Math.max(0, player.melWin - dt);
   player.hangCool = Math.max(0, player.hangCool - dt);
+  player.ladCool = Math.max(0, player.ladCool - dt);
   if (player.melWin <= 0 && !player.mel) player.melStep = 0;
   player.airT = player.grounded ? 0 : player.airT + dt;
-  if (player.hit) { player.hang = 0; player.climbT = 0; stepHit(dt); return; }
+  if (player.hit) { player.hang = 0; player.climbT = 0; player.lad = 0; stepHit(dt); return; }
   if (player.board) stepSkate(dt); else stepFoot(dt);
   if (colin.ready) colinAnim(dt);
   // fell in the water / off the world
@@ -3991,6 +4108,7 @@ frame();
     try { buildBoard(await loadGLB(BOARD.url, 'shaping the board')); }
     catch (e) { console.warn('no board model, keeping the procedural one', e); }
     buildCity(city, ramps);
+    buildLadders();
     {
       const got = [];
       for (const u of CLOUDS.urls) { try { got.push(await loadGLB(u, 'loading the sky')); } catch (e) { /* that one is not here */ } }
@@ -4016,7 +4134,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, PARADE, MELEE, HANG, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
