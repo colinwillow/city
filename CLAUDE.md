@@ -643,6 +643,32 @@ playwright unless he asks for it by name.
   local translations up the parent chain, which ignores every rotation and scale on the way:
   it put Colin's hips at 52.8 and three candidates at a NEGATIVE height, and that number was
   about to pick the scale every character is drawn at.
+- **A LEDGE IS THE TOP EDGE OF A SOLID BOX — FOUND, NEVER AUTHORED (`HANG`, `ledgeGrab`).**
+  The same idea as the grind rails: the city is already thirty thousand boxes in a grid, so
+  every roof, wall top, balcony and shopfront in it is a ledge for free and nothing is placed
+  by hand.
+  **The closest point on the box's FOOTPRINT gives the distance to the face AND its outward
+  normal in one step** — `clamp(pos, min, max)` per axis, then the vector from that point to
+  him. No per-face tests, right whichever side he comes at, and **being inside the footprint
+  returns nothing**, which is what stops him grabbing the roof he is standing on.
+  **A ledge belongs to something TALL (`HANG.tall`).** Every kerb, bollard and planter is a
+  box with a top; without the height gate he grabs all of them, and most of the city's boxes
+  are ankle furniture.
+  **Head clearance is checked BEFORE the grab, not after.** A lip with a wall on top of it is
+  a lip he would climb into.
+  **The mantle goes UP FIRST, THEN IN.** Lerping straight to the target drags him diagonally
+  THROUGH the parapet he is climbing over; over the top and then across is what a mantle is.
+  **Letting go gives the second jump back**, so a bad grab costs a moment rather than a life.
+  **NO HANG CLIP AND NO CLIMB CLIP EXIST.** `jump_going_up` stands in for both, exactly the
+  way `skate_idol_crouch` stands in for the grind — it is the one pose with his arms up, and
+  reaching is what a hang and a mantle both are. `HANG.clip` is where real ones go.
+  **The reach is what the jumps are for**, and it lines up with the city by arithmetic rather
+  than by luck — `HANG.hi` is 2.15 m above his feet at the moment of the grab:
+      plain jump       apex 2.81 m  ->  grabs a ledge up to  4.96 m
+      jump + double    apex 5.19 m  ->                       7.34 m
+      charge + double  apex 8.04 m  ->                      10.19 m   (houses are 7–11 m)
+  So a roof needs the charged double, and a balcony does not. **No shimmy along the ledge
+  yet** — that is the obvious next piece.
 - **THE SECOND JUMP IS THE FLIP (`AIR`, `airStart`).** One move is better than two, so the
   double jump and the air flip are the same thing: tap the right pad again in the air and he
   kicks off nothing and goes over. A FLICK picks which way over — up front, down back, the

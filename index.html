@@ -135,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c75</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c76</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c75';
+const BUILD = 'c76';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -336,6 +336,26 @@ const TRICK = {
   // not a bug to work around, it is the same gesture: so the roll goes first and the yaw is
   // held off until it finishes, after which the still-held thumb spins him as it always did.
   rollLock: true,
+};
+// LEDGE HANGS. A ledge is the TOP EDGE OF A SOLID BOX -- found, never authored, the same way
+// a grind rail is the top edge of the metal. The city is already thirty thousand boxes in a
+// grid, so every roof, wall top, balcony and shipfront in it is a ledge for free and nothing
+// has to be placed by hand.
+const HANG = {
+  reach: .72,        // how close to the face he has to be
+  tall: 1.3,         // and the thing it belongs to has to be at least this tall
+  lo: 1.05, hi: 2.15,// where the ledge has to sit ABOVE HIS FEET to be grabbable
+  drop: 1.86,        // and where his feet end up once he has it: hands on the lip, body below
+  stand: .38,        // how far his body hangs off the face
+  head: 1.05,        // clearance needed ABOVE the ledge, or he would climb into a wall
+  inset: .55,        // how far onto the roof the climb puts him
+  climb: .6,         // seconds
+  cool: .35,         // after letting go, before he may grab again -- or he re-grabs instantly
+  push: .45,         // how far the thumb must point AWAY from the wall to let go
+  // NO HANG CLIP AND NO CLIMB CLIP EXIST. `jump_going_up` stands in for both, the way
+  // `skate_idol_crouch` stands in for the grind: it is the one pose with his arms up, and
+  // reaching is what a hang and a mantle both are. Name real ones here when they land.
+  clip: 'jump_going_up',
 };
 // THE SECOND JUMP, ON FOOT, AND IT IS A FLIP. He asked whether the double jump should be a
 // flip or whether the flip should be its own thing; one move is better than two, so the
@@ -1942,7 +1962,11 @@ function hitMove(dt, gk, half) {
   const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
   const g = groundUnder(p.pos, MOVE.step, p.vel, py); p.wall = g.wall;
-  return settle(p, g, MOVE.step, px, pz);
+  const r = settle(p, g, MOVE.step, px, pz);
+  // A GRAB IS CHECKED AFTER THE MOVE AND ONLY IN THE AIR -- on the way up as well as down, so
+  // a jump that just clears a parapet catches it rather than bouncing off the face.
+  if (!p.grounded && p.vel.y < MOVE.jump * .55) ledgeGrab(p);
+  return r;
 }
 function stepHit(dt) {
   const p = player;
@@ -2814,6 +2838,8 @@ function colinAnim(dt) {
   // A MELEE OWNS HIM WHOLE. One clip at weight 1 and nothing of the gait underneath: a punch
   // with a walk cycle blended into it is a man waving while he strolls.
   if (p.mel) { t[p.mel] = 1; colinSet(t, dt); return; }
+  // no hang clip and no climb clip: the one pose with his arms up stands in for both
+  if (p.hang) { t[HANG.clip] = 1; colinSet(t, dt); return; }
   if (p.board) {
     // crouch -> pop -> rise -> land. The crouch is a blend rather than a state, so a thumb
     // resting on the pad settles into it and a tap goes straight past it to the pop.
@@ -3021,10 +3047,10 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
-function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
-function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
+function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; document.getElementById('boardB').classList.toggle('on', player.board); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
+function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
   // left stick -> world direction, relative to the camera azimuth
@@ -3071,6 +3097,74 @@ function groundUnder(p, step, vel, fromY, bounce) {
   const hm = g.hit ? g.floor
     : Math.max(hmAt(p.x, p.z), hmAt(p.x + q, p.z), hmAt(p.x - q, p.z), hmAt(p.x, p.z + q), hmAt(p.x, p.z - q));
   return { floor: Math.max(hm, r.floor), hm, wall: r.hitWall, ceil: g.ceil };
+}
+const _lq = [];
+// IS THERE A LIP IN FRONT OF HIM? The closest point on a box's FOOTPRINT to him gives both the
+// distance to the face and its outward normal in one step -- no per-face tests, and it is
+// exactly right whichever side he comes at. Being INSIDE the footprint returns nothing, which
+// is what stops him grabbing the roof he is standing on.
+function ledgeGrab(p) {
+  if (p.hangCool > 0 || p.board || p.hit || p.mel) return false;
+  const fx = Math.sin(p.faceH), fz = Math.cos(p.faceH);
+  gridQuery(p.pos.x + fx * HANG.reach, p.pos.z + fz * HANG.reach, 1.2, _lq);
+  let best = null, bestD = 1e9;
+  for (const b of _lq) {
+    if (b.yaw !== undefined) continue;                       // a car is not a ledge
+    // A LEDGE BELONGS TO SOMETHING TALL. Every kerb, bollard and planter in the city is a box
+    // with a top, and without this he grabs all of them -- the city is thirty thousand boxes
+    // and most of them are ankle furniture.
+    if (b.maxy - b.miny < HANG.tall) continue;
+    const rel = b.maxy - p.pos.y;
+    if (rel < HANG.lo || rel > HANG.hi) continue;            // not at hand height
+    const cx = clamp(p.pos.x, b.minx, b.maxx), cz = clamp(p.pos.z, b.minz, b.maxz);
+    let nx = p.pos.x - cx, nz = p.pos.z - cz;
+    const d = Math.hypot(nx, nz);
+    if (d < 1e-3 || d > HANG.reach) continue;                // inside it, or too far off
+    nx /= d; nz /= d;
+    if (fx * -nx + fz * -nz < .3) continue;                  // he has to be facing INTO it
+    if (d < bestD) { bestD = d; best = { b, cx, cz, nx, nz }; }
+  }
+  if (!best) return false;
+  // AND THERE HAS TO BE ROOM TO STAND UP THERE. A lip with a wall on top of it is a lip he
+  // would climb into, so the head clearance is checked before the grab and not after it.
+  const tx = best.cx - best.nx * HANG.inset, tz = best.cz - best.nz * HANG.inset, top = best.b.maxy;
+  gridQuery(tx, tz, .5, _lq);
+  for (const o of _lq) {
+    if (o === best.b || o.yaw !== undefined) continue;
+    if (tx > o.minx && tx < o.maxx && tz > o.minz && tz < o.maxz && o.maxy > top + .15 && o.miny < top + HANG.head) return false;
+  }
+  p.hang = 1; p.hangY = top; p.hangNX = best.nx; p.hangNZ = best.nz;
+  p.pos.set(best.cx + best.nx * HANG.stand, top - HANG.drop, best.cz + best.nz * HANG.stand);
+  p.cx1 = tx; p.cy1 = top; p.cz1 = tz;                       // where a climb would put him
+  p.vel.set(0, 0, 0); p.speed = 0; p.jumps = 0; p.air = ''; p.grounded = false;
+  p.heading = p.faceH = Math.atan2(-best.nx, -best.nz);      // he faces the wall
+  snd.land(.3, false);
+  return true;
+}
+// HANGING IS NOT FALLING, so gravity and the collider are both off and his position is held.
+// Tap to climb, pull away to let go -- and letting go gives back the second jump, so a bad
+// grab costs a moment rather than a life.
+function stepHang(dt) {
+  const p = player;
+  if (p.climbT > 0) {
+    p.climbT = Math.max(0, p.climbT - dt);
+    const k = 1 - p.climbT / HANG.climb, e = k * k * (3 - 2 * k);
+    // UP FIRST, THEN IN. Lerping straight to the target drags him diagonally THROUGH the
+    // parapet he is climbing; going over the top and then across is what a mantle is.
+    const up = clamp(e * 1.7, 0, 1), fwd = clamp((e - .4) / .6, 0, 1);
+    p.pos.x = lerp(p.cx0, p.cx1, fwd); p.pos.z = lerp(p.cz0, p.cz1, fwd);
+    p.pos.y = lerp(p.cy0, p.cy1 + .02, up);
+    if (p.climbT <= 0) { p.hang = 0; p.grounded = true; p.vel.set(0, 0, 0); p.speed = 0; p.hangCool = HANG.cool; p.goT = 0; }
+    return;
+  }
+  const s = stickWorld();
+  // the thumb pointed AWAY from the wall is the only way down that is not the climb
+  if ((s.mag > .35 && (s.x * p.hangNX + s.z * p.hangNZ) > HANG.push) || p.hit) {
+    p.hang = 0; p.hangCool = HANG.cool; p.jumps = 1; p.vel.set(0, 0, 0);
+    return;
+  }
+  if (p.jump) { p.jump = 0; p.climbT = HANG.climb; p.cx0 = p.pos.x; p.cy0 = p.pos.y; p.cz0 = p.pos.z; snd.jump(); }
+  p.vel.set(0, 0, 0); p.speed = 0;
 }
 // KICK OFF NOTHING. Called from the jump block below, for the second jump only.
 function airStart(kind) {
@@ -3151,6 +3245,7 @@ function stepFoot(dt) {
   p.rHold = stick.R.down ? p.rHold + dt : 0;
   if (p.rollT > 0) { stepRoll(dt); return; }
   if (p.mel) { stepMelee(dt); return; }
+  if (p.hang) { stepHang(dt); return; }
   const sp0 = Math.hypot(p.vel.x, p.vel.z);
   if (s.mag > .1) p.heading = Math.atan2(s.x, s.z);        // the thumb, taken whole
   // the body comes round toward it, briskly on the spot and slowly at a run
@@ -3490,9 +3585,10 @@ function stepPlayer(dt) {
   player.landT = Math.max(0, player.landT - dt);
   player.rollT = Math.max(0, player.rollT - dt);
   player.melWin = Math.max(0, player.melWin - dt);
+  player.hangCool = Math.max(0, player.hangCool - dt);
   if (player.melWin <= 0 && !player.mel) player.melStep = 0;
   player.airT = player.grounded ? 0 : player.airT + dt;
-  if (player.hit) { stepHit(dt); return; }
+  if (player.hit) { player.hang = 0; player.climbT = 0; stepHit(dt); return; }
   if (player.board) stepSkate(dt); else stepFoot(dt);
   if (colin.ready) colinAnim(dt);
   // fell in the water / off the world
@@ -3920,7 +4016,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, PARADE, MELEE, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, PARADE, MELEE, HANG, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
