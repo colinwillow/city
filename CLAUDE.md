@@ -601,6 +601,27 @@ playwright unless he asks for it by name.
   all, which is the tell — a number that moves nothing is not the number. `p.rHold` was
   already sitting there as "how long the right pad has been down", with no `far` test on it.
   The jump charge keeps its own gate; only the ceiling moved.
+  **AND THE THIRD BUG WAS `accFall`, WHICH IS THE ONE THAT ACTUALLY HELD HIM AT 9 m/s.**
+  `accFall` thins the acceleration out as he nears top speed — and it measured against the
+  BASE ceiling, `sp0 / MOVE.max`. So the instant he passed 9 m/s the ramp sat at its floor of
+  `1 − .93 = .07` and his acceleration was `24 × .07 = 1.68 m/s²`. **The target had been going
+  up since c79 and the acceleration that has to get him there was pinned at 7% the whole
+  time.** Two builds of real fixes landed on top of it and he reported no change to either,
+  which is exactly right — neither of them was this. Simulated against the shipped constants:
+      OLD (vs MOVE.max)   sprint x1.00  target  9.0 m/s   reached in 1.57 s
+      OLD (vs MOVE.max)   sprint x3.00  target 27.0 m/s   NEVER (12 s and still climbing)
+      NEW (vs want)       sprint x1.00  target  9.0 m/s   reached in 1.57 s
+      NEW (vs want)       sprint x3.00  target 27.0 m/s   reached in 4.33 s
+  It measures against `want` — the speed he is actually being asked for. **The ordinary
+  walk-to-run is identical to the frame**, which is the check that says the fix cannot have
+  disturbed the locomotion it sits inside.
+  **`CAM.rush` WAS NEVER BROKEN AND HAD SIMPLY NEVER BEEN REACHED.** The speed effect he asked
+  for — a widening lens plus the radial blur in the composite (`uRush`), Plutopia's own — has
+  been in the file all along, on a curve starting at 8 m/s. On foot he was pinned at 9 by the
+  bug above, so it has never once been off the floor while running. Fixing the acceleration is
+  what turns it on; `rush0`/`rushSpan`/`rushK` are the curve, and it has to cover a sprint on
+  foot as well as 24 m/s on the board. **Suspect the thing that feeds an effect before the
+  effect.**
   **`MOVE.sprint` AND `GAIT.tsHi` MOVE TOGETHER OR THE FEET SLIDE.** The run clip is scaled by
   `speed / GAIT.runRef`, so a ceiling of 17.6 m/s wants **3.7x** and the cap is what he
   actually gets. 1.7 was already under the OLD ceiling of 14 — he had been sliding at full
@@ -1011,6 +1032,18 @@ playwright unless he asks for it by name.
      through a hard turn, which is what plants the feet rather than just pointing them.
   Steering is rate-limited (`turn`) separately from acceleration.
 - The gait blends three clips by measured speed (`GAIT`) — never add a run *flag*.
+  **`GAIT.sprint` IS THE HOOK FOR A SPRINT CLIP AND IT IS EMPTY UNTIL THERE IS ONE**, written
+  the same way `GAIT.windUp` is: name a clip and `colinAnim` blends it in over `run_fwd` past
+  `sprintAt` on its own reference speed, and the run clip gives way rather than being stretched.
+  Until then `run_fwd` is time-scaled and `tsHi` (2.9) is the ceiling — at a 27 m/s sprint the
+  clip wants **5.6x** and gets 2.9, so the feet do slide at the very top. A run played at 5.6x
+  is a cartoon scramble, so the cap is deliberately short of keeping up and **the camera is
+  what sells the speed instead**. A real sprint clip is the honest fix and it is one word here.
+- **THE SPEEDO SAT ON TOP OF THE BUILD CHIP AND ATE WHAT THE BUILD CHIP IS FOR.** `#build`
+  grows with whatever `missing()` has to say — `NO CLOUD GLB`, `NO COP GLB`, `JAM n@x,z` — and
+  a centred `#speed` overlapped exactly that tail, so in the one screenshot that ever reported
+  a jam the coordinate was unreadable. The speedo moved down a line; **the top-left gutter
+  belongs to the build chip**, and anything added to `missing()` has to stay readable there.
 - **The camera leads where he is GOING, not where he is heading.** Plutopia's own notes
   record a "sliding" complaint there that was the camera's lead aiming at his heading,
   not the locomotion. Suspect the camera before re-tuning movement.
@@ -1140,6 +1173,10 @@ playwright unless he asks for it by name.
   ten-minute Pages cache and a reload for a value he could have decided in three seconds by
   looking at it. Half of these ARE look-at-it decisions ("a little lighter", "one or the
   other"). The badge cycle is the diagnostic half of this; the panel is the taste half.
+  **HIS PICKS ARE THE DEFAULTS NOW** (c83): shadows `map` at .32, blob .62, toon bands 3 /
+  floor .40 / rim .54, bloom .35 at 1.45, outline .60, sky 1.9, sprint x3. `localStorage`
+  already holds them on his phone, so baking them in changes nothing he sees — it is so a
+  fresh device starts where he likes it and so the constants in the file tell the truth.
   **It writes the LIVE objects, not a copy** (`SHADE`, `BLOB`, `TOON`, `POST`, `HOLE`, `MAP`,
   `SKY`, `MOVE`), so there is no second source of truth and the console still works alongside
   it. Remembered in `localStorage`, because a setting you re-pick after every reload is one

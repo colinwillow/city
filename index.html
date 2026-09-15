@@ -140,7 +140,14 @@
     background:linear-gradient(180deg,#a6f4ff,#49cdec);box-shadow:0 6px 22px rgba(0,0,0,.5),0 0 26px rgba(120,238,255,.55);
     animation:updp 1.5s ease-in-out infinite}
   @keyframes updp{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.06)}}
-  #speed{top:calc(14px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:13px;min-width:70px;text-align:center}
+  /* THE SPEEDO SAT ON TOP OF THE BUILD CHIP AND ATE THE THING THE BUILD CHIP IS FOR.
+     `#build` grows with whatever `missing()` has to say -- NO CLOUD GLB, NO COP GLB, JAM n@x,z
+     -- and a centred `#speed` overlapped exactly that tail, so the jam coordinate was
+     unreadable in the one screenshot that reported a jam. It moves to the RIGHT of centre and
+     down a line; the top-left gutter belongs to the build chip. */
+  #speed{top:calc(58px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:13px;min-width:70px;text-align:center}
+  #build{max-width:calc(100vw - 190px - env(safe-area-inset-left) - env(safe-area-inset-right))}
+  #build i{white-space:normal}
   #speed b{font-size:20px;letter-spacing:0;margin-right:4px}
   #help{bottom:calc(26px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);opacity:.45;text-align:center;letter-spacing:.1em;text-transform:none;font-size:11px}
   @media (pointer:coarse){#help{display:none}}
@@ -159,7 +166,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c82</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c83</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -172,7 +179,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c82';
+const BUILD = 'c83';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -215,7 +222,8 @@ const MOVE = {
   // a sprint AND a charge, and letting go is a jump scaled by how long you held it. One input
   // doing two things that belong together -- you run at something and leap it.
   chargeMax: .9,     // seconds to a full wind-up
-  sprint: 1.95,      // top speed multiplier at full charge: 9 -> 17.6 m/s, 63 km/h
+  sprint: 3.0,       // top speed multiplier at full charge: 9 -> 27 m/s, 97 km/h. HIS pick,
+                     // off the panel, once the acceleration could actually reach it.
   chargeUp: .42,     // extra jump SPEED at full charge, as a fraction
   chargeOut: 5.0,    // and how much he is thrown along his travel, m/s
   turn: 26, airTurn: 9,
@@ -260,7 +268,15 @@ const ROLL = { at: -7, min: 4, max: 10, free: .42, rate: 1.70 };
 // full charge for a while -- and 2.4 covers 11.5 m/s honestly and keeps the rest readable.
 // There is no sprint clip; that is the real fix, and `run_fwd` at 3.7x is a cartoon scramble,
 // so this is deliberately short of keeping up rather than absurdly past it.
-const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 2.4, windUp: '' };
+// `sprint` IS THE HOOK FOR A SPRINT CLIP AND IT IS EMPTY UNTIL THERE IS ONE, exactly like
+// `windUp`. Name a clip here and `colinAnim` blends it in over `run_fwd` as he passes
+// `sprintAt`, on its own reference speed -- which is the honest fix for the feet. Until then
+// `run_fwd` is time-scaled and `tsHi` is the ceiling: at a 27 m/s sprint the clip wants 5.6x
+// and gets 2.9, so the feet do slide at the very top. A run clip played at 5.6x is a cartoon
+// scramble, so the cap is deliberately short of keeping up rather than absurdly past it, and
+// the CAMERA is what sells the speed instead (`CAM.rush`).
+const GAIT = { walkAt: 1.5, runAt: 6.0, walkRef: 1.55, runRef: 4.8, tsLo: .7, tsHi: 2.9,
+  windUp: '', sprint: '', sprintAt: 11, sprintRef: 7.5 };
 const SK8 = {
   pushV: 5.4,        // m/s added by one shove
   // THE PUSH CLIP IS THE CLOCK. It is not a pose to blend in and out of -- it is a whole
@@ -486,7 +502,14 @@ const MELEE = {
 // moment they move the lens, and they are worth more as verbs -- jump, and whatever
 // comes after it. So the elevation is a constant: a shallow look-down that keeps him
 // and the street he is on both in frame, and the pad's whole travel means yaw.
-const CAM = { dist: 6.4, distV: .11, el: .17, look: 1.3, yawRate: 2.4, follow: 1.8, idle: .55, half: .07, fov: 52, fovRush: 9 };
+// `rush` IS THE SPEED EFFECT AND IT HAS BEEN IN THE FILE ALL ALONG -- a widening lens plus a
+// radial blur in the composite (`uRush`), which is Plutopia's own. Nothing was missing from
+// it: on foot he was pinned at 9 m/s by the `accFall` bug above, and the curve starts at 8,
+// so it has never once been off the floor while he was running. Fixing the acceleration is
+// what turns it on. `rush0`/`rushSpan` are the curve, exposed so it can be dialled: it now
+// has to cover a 17.6 m/s sprint on foot as well as 24 on the board.
+const CAM = { dist: 6.4, distV: .11, el: .17, look: 1.3, yawRate: 2.4, follow: 1.8, idle: .55, half: .07,
+  fov: 52, fovRush: 9, rush0: 7, rushSpan: 14, rushK: .6 };
 // THE TITLE CARD'S SHOT. The scene is the game's own, so all that is here is a camera.
 const TITLE = {
   on: true, t: 0,
@@ -567,7 +590,7 @@ const CHARS = {
                                                 // the camera and the deck are all tuned to him.
   key: 'city.char',                              // localStorage
 };
-const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rim0: .26, rimP: 3.4, rimCol: new THREE.Color('#dcefff'),
+const TOON = { k: 1, bands: 3, soft: .055, floor: .40, rim: .54, rim0: .54, rimP: 3.4, rimCol: new THREE.Color('#dcefff'),
   spec: 1, specG: .06,     // how much specular survives overall, and at the GRAZING end
   // 1 = the rim takes the colour of the surface it is on, 0 = flat white on everything.
   rimTint: 1 };
@@ -588,7 +611,7 @@ const LIGHT = { sun: 3.4, hemi: 1.6, fill: .9, sunDir: new THREE.Vector3(.55, 1,
 // in the bright pass -- but because it has been blamed three times and never ruled out.
 // At 0 the pale specks either go with it or they do not, and either answer is worth more
 // than another guess. Put it back to .85 once we know.
-const POST = { bloom: .85, bloom0: .85, bloomTh: 1.45, bloomKnee: .6, outline: .55, outline0: .55, outlineW: 1, vig: .45, exposure: 1.05 };
+const POST = { bloom: .35, bloom0: .35, bloomTh: 1.45, bloomKnee: .6, outline: .60, outline0: .60, outlineW: 1, vig: .45, exposure: 1.05 };
 const Q = { dpr: Math.min(devicePixelRatio || 1, 2) * (MOBILE ? .8 : 1), present: Math.min(devicePixelRatio || 1, 2), bloomDiv: 3 };
 Q.dpr0 = Q.dpr;   // the world is drawn at this and upscaled to `present`; /5 turns the gap off
 const CAR_FWD = 1;        // +1: the car mesh's local +Y is its nose. Flip to -1 if they drive backwards.
@@ -915,7 +938,7 @@ const SHADOW = { span: 48, dist: 160 };
 // real shadows came OFF, static things kept a baked map, and the moving things got the discs
 // instead. So `mode` picks one: 'map' is the shadow map alone (the default, and the one he
 // kept), 'blob' turns `sun.castShadow` off and draws the discs instead. Nothing draws both.
-const SHADE = { k: .38, mode: 'map' };
+const SHADE = { k: .32, mode: 'map' };
 const sc = sun.shadow.camera;
 sc.left = sc.bottom = -SHADOW.span; sc.right = sc.top = SHADOW.span;
 sc.near = SHADOW.dist - SHADOW.span * 1.6; sc.far = SHADOW.dist + SHADOW.span * 2.2;
@@ -1176,7 +1199,7 @@ function stepSlash(dt) {
 //     mark goes out at exactly the moment he is highest and has least idea where he is.
 //  4. `noHole` and `depthWrite: false`. It is under his feet, so the see-through hole must
 //     never dither it, and it must never write depth over the ground it is lying on.
-const BLOB = { n: 4, k: .46, fade: 12, spread: .085, lift: .045, r: .6, col: '#101a26' };
+const BLOB = { n: 4, k: .62, fade: 12, spread: .085, lift: .045, r: .6, col: '#101a26' };
 const _blob = { list: [], geo: null, tex: null, want: [] };
 function blobTex() {
   const cv = document.createElement('canvas'); cv.width = cv.height = 128;
@@ -3236,6 +3259,15 @@ function colinAnim(dt) {
     t['idle_neutral'] = 1 - w; t['walk_fwd_neutral'] = w * (1 - r); t['run_fwd'] = w * r;
     colinScale('walk_fwd_neutral', clamp(sp / GAIT.walkRef, GAIT.tsLo, GAIT.tsHi));
     colinScale('run_fwd', clamp(sp / GAIT.runRef, GAIT.tsLo, GAIT.tsHi));
+    // A FOURTH CLIP THE DAY THERE IS ONE. `GAIT.sprint` is empty until a sprint animation
+    // exists; name it and it blends in over the run past `sprintAt`, on its own reference
+    // speed, and the run clip gives way rather than being stretched to 5.6x. Written the same
+    // way `GAIT.windUp` is -- a hook, not a placeholder that plays the wrong clip meanwhile.
+    if (GAIT.sprint && colin.actions[GAIT.sprint]) {
+      const q = clamp((sp - GAIT.sprintAt) / Math.max(1, GAIT.runAt), 0, 1);
+      t[GAIT.sprint] = w * r * q; t['run_fwd'] = w * r * (1 - q);
+      colinScale(GAIT.sprint, clamp(sp / GAIT.sprintRef, GAIT.tsLo, GAIT.tsHi));
+    }
   }
   colinSet(t, dt);
 }
@@ -3727,7 +3759,10 @@ const OPT_ROWS = [
   ['tog', 'Map', () => MAP.on, v => { MAP.on = v; }],
   ['tog', 'Police', () => COP.on, v => { COP.on = v; }],
   ['num', 'Sky exposure', () => SKY.envB, v => { SKY.envB = v; }, 0, 8, .1],
-  ['num', 'Sprint x', () => MOVE.sprint, v => { MOVE.sprint = v; }, 1, 3, .05],
+  ['num', 'Sprint x', () => MOVE.sprint, v => { MOVE.sprint = v; }, 1, 4, .05],
+  ['num', 'Speed rush', () => CAM.fovRush, v => { CAM.fovRush = v; }, 0, 24, .5],
+  ['num', 'Rush blur', () => CAM.rushK, v => { CAM.rushK = v; }, 0, 1.5, .05],
+  ['num', 'Rush starts', () => CAM.rush0, v => { CAM.rush0 = v; }, 0, 20, .5],
 ];
 function optSave() {
   const o = {};
@@ -4135,7 +4170,21 @@ function stepFoot(dt) {
   // how long he has been asking, and how much of his legs that has bought him
   p.goT = want ? p.goT + dt : Math.max(0, p.goT - dt * MOVE.pushOut);
   const push = p.grounded ? MOVE.push0 + (1 - MOVE.push0) * smooth(0, MOVE.pushT, p.goT) : 1;
-  const ramp = (p.grounded ? 1 - MOVE.accFall * smooth(0, 1, sp0 / MOVE.max) : 1) * push;
+  // `accFall` THINS THE ACCELERATION NEAR TOP SPEED -- AND IT WAS MEASURING AGAINST THE WRONG
+  // TOP SPEED, WHICH IS THE WHOLE REASON THE SPRINT "DOES NOTHING".
+  // It asked `sp0 / MOVE.max`, the BASE ceiling of 9. So the instant he passed 9 m/s the ramp
+  // sat at its floor of `1 - .93 = .07` and his acceleration was 24 x .07 = 1.68 m/s^2 -- from
+  // 9 to a sprint target of 27 would take ELEVEN SECONDS of holding the pad. Which is
+  // indistinguishable from the sprint not existing, and it is what he reported twice:
+  //     c79 raised MOVE.sprint 1.55 -> 1.95   "no change"
+  //     c81 moved the gate to p.rHold         "I swear he's not actually running faster"
+  // Both of those were real bugs and neither was THIS one; the target has been going up since
+  // c79 and the acceleration that has to get him there was pinned at 7% the whole time.
+  // It measures against `want` -- the speed he is ACTUALLY being asked for. The shape is
+  // unchanged (the first units come quickly and the last take their time); it is now that
+  // curve against the right ceiling, so a sprint accelerates like a sprint.
+  const ceil = Math.max(MOVE.max * .5, want || MOVE.max);
+  const ramp = (p.grounded ? 1 - MOVE.accFall * smooth(0, 1, sp0 / ceil) : 1) * push;
   const rate = want ? (p.grounded ? MOVE.acc * ramp : MOVE.airAcc) : (p.grounded ? MOVE.drag : MOVE.airDrag);
   const ax = tvx - p.vel.x, az = tvz - p.vel.z;
   if (sp0 > .5) {
@@ -4780,9 +4829,9 @@ function stepCam(dt) {
   cam.pos.x = damp(cam.pos.x, wx, CAM.half, dt); cam.pos.y = damp(cam.pos.y, wy, CAM.half, dt); cam.pos.z = damp(cam.pos.z, wz, CAM.half, dt);
   const floor = hmAt(cam.pos.x, cam.pos.z) + .6; if (cam.pos.y < floor) cam.pos.y = floor;
   camera.position.copy(cam.pos); camera.lookAt(cam.tgt);
-  cam.rush = damp(cam.rush, clamp((sp - 8) / 18, 0, 1), .25, dt);   // saturated at 20; the top is 26 now
+  cam.rush = damp(cam.rush, clamp((sp - CAM.rush0) / CAM.rushSpan, 0, 1), .25, dt);
   camera.fov = CAM.fov + cam.rush * CAM.fovRush; camera.updateProjectionMatrix();
-  compMat.uniforms.uRush.value = cam.rush * .6;
+  compMat.uniforms.uRush.value = cam.rush * CAM.rushK;
   sky.position.copy(camera.position);
   // the sun's shadow box rides with him
   sun.position.copy(player.pos).addScaledVector(LIGHT.sunDir, 160); sun.target.position.copy(player.pos);
