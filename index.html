@@ -112,6 +112,18 @@
      without this the three keys would still take a thumb through the card at opacity 0, which
      is the `#startB` landmine one element over. */
   body.title #kitRow .key{pointer-events:none}
+  /* THE RETICLE. Four ticks around a gap, not a dot: a dot over a police officer at forty
+     metres is a pixel, and what has to read is WHICH THING is marked. `pointer-events:none`
+     without exception -- it sits in the middle of the play area and can never eat a thumb. */
+  #retic{position:fixed;z-index:5;width:46px;height:46px;margin:-23px 0 0 -23px;pointer-events:none;
+    animation:reticIn .12s ease-out}
+  #retic[hidden]{display:none}
+  #retic i{position:absolute;background:rgba(157,247,255,.95);box-shadow:0 0 8px rgba(120,238,255,.9)}
+  #retic i:nth-child(1){left:50%;top:0;width:2px;height:11px;margin-left:-1px}
+  #retic i:nth-child(2){left:50%;bottom:0;width:2px;height:11px;margin-left:-1px}
+  #retic i:nth-child(3){top:50%;left:0;height:2px;width:11px;margin-top:-1px}
+  #retic i:nth-child(4){top:50%;right:0;height:2px;width:11px;margin-top:-1px}
+  @keyframes reticIn{from{transform:scale(1.7);opacity:0}to{transform:scale(1);opacity:1}}
   /* The charge, wound round the right stick: it is the one thing on screen that says how big
      the shot you are about to take is, and it belongs where the thumb already is. */
   #sticks .stick .chg{position:absolute;inset:-6px;border-radius:50%;pointer-events:none;opacity:0;
@@ -182,12 +194,13 @@
   <div class="stick" id="stkR"><div class="chg" id="stkRChg"></div><div class="knob"></div><div class="lbl">LOOK</div></div>
 </div>
 <div id="kitRow"></div>
+<div id="retic" hidden><i></i><i></i><i></i><i></i></div>
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c101</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c102</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -200,7 +213,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c101';
+const BUILD = 'c102';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -589,7 +602,21 @@ const WEAP = {
   // barrel still points where he WAS while the bolt already flies where the stick pointed.
   // Clear of him, chest high, ON the shot line. (Its 1.6/.62 on a 2.8 m alien -> 1.0/.62.)
   out: 1.0, high: .62,
-  aimTurn: 2.6,         // while charging, left and right STEER him, in radians a second
+  // PLUTOPIA'S, AND THEY ARE THE MECHANIC RATHER THAN A TASTE SETTING.
+  aimAt: .32,           // stick magnitude that is an aim rather than a nudge. ANY direction
+                        // past this turns him -- that is how you look around with the gun out
+  camEase: 2.6,         // how briskly the camera swings in BEHIND the aim
+  aimTurn: 2.3,         // and the ceiling on it, radians a second: uncapped the feedback loop
+                        // runs at four and is unsteerable
+  // THE ASSIST LIVES IN WHETHER SOMETHING LOCKS, NOT IN HOW FAR TOWARD IT THE SHOT GETS.
+  // A 22-degree cone is narrow enough that pointing at open ground locks nothing and the bolt
+  // goes exactly where the stick pointed -- but once the reticle is ON something, the shot has
+  // to go to it, or the mark is drawing a promise the gun does not keep, which is worse than
+  // no assist at all. `grab` is how far of the way there it settles and `pull` the rate, so it
+  // is a lead-on and never a snap.
+  // `range` is Plutopia's 70 x .625, the borrowed-length rule; every other number here is a
+  // fraction or a rate and comes over raw.
+  lock: { cone: .38, range: 44, pull: 5.0, grab: .58, taper: .55, keep: .55 },
   len: .30,             // the blaster's length in his hand, measured to, not typed
   // Where it sits in his hand. NOT derived: Colin has no weapon bone (his rig is 66 joints and
   // every one of them mixamorig), so nothing in either file says where the grip goes. The
@@ -1844,40 +1871,147 @@ function gunSize() {
 // ---------- the trigger, the bolt and the thrust ----------
 // THE TRIGGER IS A FULL PULL, HELD -- see WEAP for why each of the four gates is there. This
 // runs BEFORE `stepFoot` reads the pad, so a charging thumb is not also a sprint.
+// THE AIM IS A TURN STICK AND THE CAMERA EASES IN BEHIND IT. PLUTOPIA'S, AND c84..c101 HAD
+// NONE OF IT -- which is the whole of "holding up just makes him, I don't know how to describe
+// it". What shipped here was `p.heading -= sx * aimTurn * dt`: a raw rate straight onto his
+// heading, with the camera left pointing wherever it already was. So the gun swung and the
+// picture did not, and there was never anything centred on what he was pointing at.
+//
+// What Plutopia does instead is ONE FEEDBACK LOOP and everything falls out of it:
+//   * the stick is read in the camera's LIVE frame, never one latched when the aim began;
+//   * the camera eases in behind that aim at `camEase`, capped at `aimTurn`;
+//   * so an off-centre stick SWEEPS him round at a rate set by how far off centre it is, and
+//     returning the stick to centre stops the sweep and leaves him facing the new direction.
+// Latched instead of live, the frame is whatever he happened to be facing when he raised the
+// gun and it never moves -- pushing right swings the aim right and releasing hands him back
+// the original forward. A turn is never a turn, only a lean he has to keep holding. That is
+// the version that was here.
+//
+// ANY direction past `aimAt` turns him -- that is how you look around with the gun out -- and
+// only a push within `fireArc` of straight UP arms a shot. So the pad is one control with two
+// jobs rather than two controls fighting over one thumb.
+//
+// THE ONE THING THAT DOES NOT PORT IS THE ANGLE FORMULA. Plutopia's `cam.az` is the bearing
+// from the player TO the camera; City's is the direction the camera LOOKS. Copying its
+// `atan2(sa*ry + ca*rx, ...)` across would have come out a half turn off and read as him
+// aiming behind himself. So the stick goes through CITY's own `stickWorld` mapping, which is
+// the convention this file already has, and the camera target is `aimH` rather than `aimH+PI`.
 function stepAim(dt) {
   const p = player;
-  const armed = KIT.on && KIT.cur === 'blaster' && !p.board && !p.hit && !p.mel && !p.hang && !p.lad;
-  // OUTSIDE the armed gate, because a recoil that only ticks while the gun is out is a recoil
-  // that welds itself on at full weight the moment he stows it mid-shot -- the `isRunning()`
-  // landmine's own shape, one state along.
+  const has = KIT.on && KIT.cur === 'blaster' && !p.board && !p.hit && !p.mel && !p.hang && !p.lad;
+  // OUTSIDE the armed gate: a recoil that only ticks while the gun is out welds itself on at
+  // full weight the moment he stows it mid-shot.
   p.fireT = Math.max(0, (p.fireT || 0) - dt);
-  if (!armed) { p.aim = 0; p.aimT = 0; p.chg = 0; stepChargeFx(0, dt); return; }
-  p.shotT = Math.max(0, (p.shotT || 0) - dt);
-  const sx = stick.R.x, sy = -stick.R.y, mag = Math.hypot(sx, sy);
-  // UP, inside a cone. `atan2(x, y)` is the angle off straight up, so the cone is one test.
-  const up = sy, off = Math.abs(Math.atan2(sx, Math.max(1e-4, sy)));
-  const inCone = up > 0 && off < WEAP.fireArc;
-  if (!p.aim) {
-    // arming: far enough up, inside the cone, for long enough
-    if (stick.R.down && inCone && mag > WEAP.fireAt) { p.aimT += dt; if (p.aimT >= WEAP.armT) { p.aim = 1; p.chg = 0; } }
-    else p.aimT = 0;
-  } else {
-    p.chg = Math.min(1, p.chg + dt / WEAP.chargeT);
-    // WHILE CHARGING, LEFT AND RIGHT STEER HIM. The whole pad is the aim once it is committed,
-    // which is what makes "hold up, sweep to aim, let go" one gesture rather than three.
-    p.heading -= sx * WEAP.aimTurn * dt;
-    p.faceH += wrapAngle(p.heading - p.faceH) * Math.min(1, MOVE.face0 * dt);
-    // LETTING GO IS THE SHOT, and so is sliding back down past `keepAt` -- the hysteresis gap
-    // between that and `fireAt` is what stops a thumb rolling inward on the way off cancelling
-    // the shot you meant.
-    if (!stick.R.down || mag < WEAP.keepAt || !inCone) {
-      if (p.shotT <= 0) { boltFire(WEAP.min + (1 - WEAP.min) * p.chg); p.shotT = WEAP.cool; p.fireT = WEAP.fireHold; }
-      p.aim = 0; p.aimT = 0; p.chg = 0;
-    }
+  if (!has) {
+    p.aim = 0; p.armT = 0; p.chg = 0; p.turning = 0; p.lock = null; p.aimAdj = 0;
+    stepChargeFx(0, dt); reticShow(null); return;   // ...and the mark goes with the gun
   }
-  // THE BALL WINDS UP AT THE MUZZLE while he holds it, which is the whole read of the charge
-  // -- the swirl closing in says the shot is getting bigger without a number on screen.
+  p.shotT = Math.max(0, (p.shotT || 0) - dt);
+  const rx = stick.R.x, ry = stick.R.y;            // raw pad; ry is NEGATIVE for up
+  const mag = Math.hypot(rx, ry);
+  const live = stick.R.down && mag > WEAP.aimAt;
+  // `upK` is 1 for straight up and 0 for dead sideways, so the arc test is one dot product.
+  // And it has to STILL be up when you let go: sliding out of the arc stands the shot down
+  // rather than firing it off in whatever direction the thumb happened to leave by, which is
+  // the only way to have a charge you can change your mind about.
+  const upK = live ? -ry / mag : -1;
+  const inArc = live && upK >= Math.cos(WEAP.fireArc);
+  if (inArc && mag >= WEAP.fireAt) p.armT = (p.armT || 0) + dt;
+  else if (!inArc || mag < WEAP.keepAt) p.armT = 0;
+  const armed = p.armT >= WEAP.armT;
+  p.turning = live ? 1 : 0;                        // `stepCam` hands the pad over while this is up
+  if (live) {
+    // CITY'S OWN STICK->WORLD MAPPING, the one `stickWorld` uses for the left pad, applied to
+    // the right one against the LIVE camera azimuth.
+    const sa = Math.sin(cam.az), ca = Math.cos(cam.az);
+    const raw = Math.atan2(-ry * sa - rx * ca, -ry * ca + rx * sa);
+    // WHAT HE IS POINTING AT, chosen from the TRUE stick heading and never from the corrected
+    // one. Feeding the corrected heading back in is a loop: once the aim has swung onto a
+    // target, the test for what to aim at is being made from a bearing already glued to it, so
+    // pointing the stick somewhere else cannot shake it off. And nothing locks unless armed.
+    p.lock = armed ? pickTarget(raw) : null;
+    // The ease is a CORRECTION THAT ACCUMULATES while the aim is held, not a fraction
+    // reapplied to a fresh stick reading every frame -- that version leaves a held aim a good
+    // five degrees off. It settles at `grab` of the way there, so a lock is forgiving without
+    // being a snap, and unwinds the moment the stick points somewhere else.
+    let e = 0;
+    if (p.lock) {
+      const b = Math.atan2(p.lock.x - p.pos.x, p.lock.z - p.pos.z);
+      const err = wrapAngle(b - raw);
+      const off = Math.min(1, Math.abs(err) / WEAP.lock.cone);   // full help when nearly on it
+      e = err * WEAP.lock.grab * (1 - off * WEAP.lock.taper);    // tailing off at the cone edge
+    }
+    p.aimAdj = lerp(p.aimAdj || 0, e, Math.min(1, dt * WEAP.lock.pull));
+    p.aimH = raw + p.aimAdj;
+    // AND THE CAMERA SWINGS IN BEHIND IT. `cam.az` here IS the forward the player looks along,
+    // so the target is `aimH` itself. Capped, because uncapped this feedback runs at four
+    // radians a second and is unsteerable.
+    const cd = wrapAngle(p.aimH - cam.az);
+    cam.az += clamp(cd * WEAP.camEase, -WEAP.aimTurn, WEAP.aimTurn) * dt;
+    cam.idle = 0;
+    // ARMED HE DOES NOT TURN TO WALK: he faces where he is aiming and travels wherever the
+    // LEFT stick says, which is what makes the strafe clips mean something.
+    p.heading = p.aimH;
+    p.aim = armed ? 1 : 0;
+    if (!armed) p.chg = 0;                         // out of the arc: whatever was spun up is let go
+    else p.chg = Math.min(1, p.chg + dt / WEAP.chargeT);
+  } else {
+    if (p.aim) {
+      // Released from inside the arc: it goes, ON THE HEADING THE ASSIST EASED HIM TO, which
+      // is where the reticle has been sitting. It does not jump to the target's centre at the
+      // instant of firing -- that makes every shot a guaranteed hit on whatever is nearest and
+      // the rest of the world unshootable.
+      p.heading = p.aimH;
+      if (p.shotT <= 0) { boltFire(WEAP.min + (1 - WEAP.min) * p.chg); p.shotT = WEAP.cool; p.fireT = WEAP.fireHold; }
+    }
+    p.aim = 0; p.chg = 0; p.lock = null; p.aimAdj = 0; p.armT = 0;
+  }
+  // THE BALL WINDS UP AT THE MUZZLE while he holds it -- the swirl closing in is the whole
+  // read of the charge, and it says the shot is getting bigger without a number on screen.
   stepChargeFx(p.aim ? WEAP.min + (1 - WEAP.min) * p.chg : 0, dt);
+  reticShow(p.lock);
+}
+// WHAT THE GUN IS POINTING AT. A cone about the aim, nearest-and-straightest first, and
+// whatever is ALREADY locked keeps it on a wider cone and a discount so the reticle does not
+// flicker between two things standing shoulder to shoulder.
+function targetScore(o, hx, hz, cone) {
+  const p = player, L = WEAP.lock;
+  const dx = o.x - p.pos.x, dz = o.z - p.pos.z, d = Math.hypot(dx, dz);
+  if (d < 3 || d > L.range) return -1;
+  const dot = (dx * hx + dz * hz) / d;
+  if (dot < Math.cos(cone)) return -1;
+  return (1 - dot) * 4 + d / L.range;              // straightness first, distance as the tiebreak
+}
+function pickTarget(h) {
+  const L = WEAP.lock, hx = Math.sin(h), hz = Math.cos(h), held = player.lock;
+  let best = null, bs = 1e9;
+  // A MAN ALREADY ON THE FLOOR IS NOT A TARGET -- `st` is the officer's state machine, and
+  // `down`/`up` are the knock-down and the get-up. Cars have no such state; a parked one is a
+  // perfectly good thing to zap, so they all count.
+  const ok = o => o && o.y !== undefined && o.st !== 'down' && o.st !== 'up';
+  if (held && ok(held)) { const sc = targetScore(held, hx, hz, L.cone * (1 + L.keep)); if (sc >= 0) { best = held; bs = sc * .7; } }
+  // Scored uniformly rather than police-first: nearest-and-straightest is what the thumb is
+  // actually pointing at, and a priority order would pull the mark off the car in front of him
+  // onto an officer forty metres away and twenty degrees off.
+  for (const c of cops) { if (c === held || !ok(c)) continue; const sc = targetScore(c, hx, hz, L.cone); if (sc >= 0 && sc < bs) { bs = sc; best = c; } }
+  for (const c of cars) { if (c === held) continue; const sc = targetScore(c, hx, hz, L.cone); if (sc >= 0 && sc < bs) { bs = sc; best = c; } }
+  return best;
+}
+// THE RETICLE. A wanted level you cannot see is one you cannot play around, and an aim assist
+// you cannot see is one you cannot trust: the mark is the promise the gun is making, so it has
+// to be ON the thing before the shot leaves. Projected through the real camera each frame,
+// hidden the moment nothing is locked.
+const _rt = new THREE.Vector3();
+let _reticEl = null;
+function reticShow(o) {
+  if (!_reticEl) _reticEl = document.getElementById('retic');
+  if (!_reticEl) return;
+  if (!o) { if (!_reticEl.hidden) _reticEl.hidden = true; return; }
+  _rt.set(o.x, (o.y || 0) + (o.hh ? o.hh * .9 : COLIN_HEIGHT * .6), o.z).project(camera);
+  if (_rt.z > 1) { _reticEl.hidden = true; return; }   // behind the lens
+  _reticEl.hidden = false;
+  _reticEl.style.left = ((_rt.x * .5 + .5) * innerWidth) + 'px';
+  _reticEl.style.top = ((-_rt.y * .5 + .5) * innerHeight) + 'px';
 }
 // ---------- glow sprites, Plutopia's ----------
 // EVERYTHING BELOW IS ADDITIVE SPRITES ON ONE SHARED TEXTURE, which is what the blaster and
@@ -4987,7 +5121,7 @@ function playerShot(dx, dz) {
   const p = player;
   p.hitFwd = Math.cos(wrapAngle(Math.atan2(-dx, -dz) - p.faceH)) < 0;
   p.hit = 'fly'; p.hitSnap = true; p.hitCool = HIT.cool;
-  p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.mel = ''; p.aim = 0; p.chg = 0; p.fireT = 0;
+  p.airT = 0; p.landT = 0; p.rollT = 0; p.popT = 0; p.mel = ''; p.aim = 0; p.chg = 0; p.fireT = 0; p.turning = 0; p.lock = null; p.aimAdj = 0; p.aimH = p.heading; p.armT = 0;
   p.pushing = false; p.pushT = 0; p.grounded = false;
   p.vel.x = dx * SHOT.push; p.vel.z = dz * SHOT.push; p.vel.y = SHOT.push * .45;
   if (p.board) dropBoard();
@@ -5196,6 +5330,7 @@ function kitTap(k) {
   if (KIT.cur === 'board' && player.board) toggleBoard();
   KIT.cur = k; KIT.on = 0;
   player.aim = 0; player.chg = 0; player.fireT = 0; player.jetK = 0;
+  player.turning = 0; player.lock = null; player.aimAdj = 0; player.armT = 0; player.aimH = player.heading;
   kitUse();                     // ...and pressing a key means you want the thing, so deploy it
 }
 function kitSave() { try { localStorage.setItem(KIT.key, KIT.cur); } catch (e) {} }
@@ -5685,7 +5820,10 @@ function stepFoot(dt) {
   //     step round to point down the barrel. At zero he goes where the thumb says while facing
   //     the shot, which is a strafe, and `rifle_strafe_left/right` are already in the pool for
   //     the day they are drawn.
-  const aiming = !!p.aim;
+  // `turning`, not `aim`: the pad steers him from `aimAt` onward, which is well before the
+  // trigger arms. Gating only on `aim` let the left thumb overwrite `p.heading` for the whole
+  // of the look, so the camera eased onto a bearing his body was already being pulled off.
+  const aiming = !!(p.turning || p.aim);
   if (s.mag > .1 && !aiming) p.heading = Math.atan2(s.x, s.z);   // the thumb, taken whole
   p.faceH += wrapAngle(p.heading - p.faceH) * Math.min(1,
     (aiming ? MOVE.face0 : lerp(MOVE.face0, MOVE.face1, clamp(sp0 / MOVE.max, 0, 1))) * dt);
@@ -6358,7 +6496,10 @@ document.getElementById('startB').addEventListener('click', startGame);
 function stepCam(dt) {
   // in the air on the board that pad is spending its travel on tricks, not on the lens
   const rx = (player.board && !player.grounded) ? 0 : stick.R.x;
-  if (Math.abs(rx) > .05) { cam.az -= rx * CAM.yawRate * dt; cam.idle = 0; }
+  // THE AIM OWNS THE PAD WHILE IT IS LIVE. `stepAim` eases `cam.az` in behind the aim, and a
+  // yaw drag on the same thumb in the same frame is two writers fighting over one number --
+  // the loop would never settle and the picture would shake.
+  if (!player.turning && Math.abs(rx) > .05) { cam.az -= rx * CAM.yawRate * dt; cam.idle = 0; }
   else cam.idle += dt;
   const sp = player.speed;
   // AND IT DOES NOT CHASE HIM ROUND EITHER. The auto-follow is what makes riding pleasant

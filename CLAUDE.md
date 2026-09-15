@@ -1257,6 +1257,63 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   when you unparent, so the wearer's own scale leaked into the inverse. `attachGear` computes
   it at LOAD time on a fresh clone that has never been parented, and the harness has to do it
   at the same moment or it is measuring a state the game never has.
+- **THE AIM IS A TURN STICK AND THE CAMERA EASES IN BEHIND IT — PLUTOPIA'S, AND c84..c101 HAD
+  NONE OF IT.** *"When you hold up on the right stick he needs to aim down the sight and the
+  camera needs to be centered on what he's aiming at. Right now holding up just makes him — I
+  don't know how to describe it."* What shipped was `p.heading -= sx * aimTurn * dt`: a raw
+  rate straight onto his heading with the camera left pointing wherever it already was. The gun
+  swung and the picture did not, so there was never anything centred on anything.
+  **IT IS ONE FEEDBACK LOOP AND EVERYTHING FALLS OUT OF IT:**
+      the stick is read in the camera's LIVE frame, never one latched when the aim began;
+      the camera eases in BEHIND that aim at `camEase`, capped at `aimTurn`;
+      so an off-centre stick SWEEPS him round at a rate set by how far off centre it is, and
+      returning the stick to centre stops the sweep and leaves him facing the new direction.
+  Latched instead of live, the frame is whatever he was facing when he raised the gun and it
+  never moves — pushing right swings the aim right and releasing hands him back the original
+  forward. **A turn is never a turn, only a lean he has to keep holding**, which is exactly the
+  thing he could not describe.
+  **ANY direction past `aimAt` turns him** — that is how you look around with the gun out — and
+  only a push within `fireArc` of straight UP arms a shot. One control, two jobs.
+  **AND THE CAMERA HAS TO LET GO OF THE PAD (`p.turning`).** `stepCam`'s yaw drag on the same
+  thumb in the same frame is two writers fighting over `cam.az`; the loop never settles and the
+  picture shakes. It stands down while the aim is live.
+  **`p.heading` LIKEWISE HAD TO BE GATED ON `turning`, NOT `aim`.** The pad steers from
+  `aimAt` onward, well before the trigger arms, so gating on `aim` let the left thumb overwrite
+  the heading for the whole of the look and the camera eased onto a bearing his body was being
+  pulled off.
+  **THE ONE THING THAT DOES NOT PORT IS THE ANGLE FORMULA, AND IT WOULD HAVE BEEN A HALF TURN
+  OUT.** Plutopia's `cam.az` is the bearing from the player TO the camera; City's is the
+  direction the camera LOOKS — which is why its step reads `cd = (aimH + PI) - cam.az` and
+  City's reads `cd = aimH - cam.az`. Copying its `atan2(sa*ry + ca*rx, ...)` across would have
+  had him aiming behind himself. The stick goes through **City's own `stickWorld` mapping**,
+  the convention this file already has. *Two engines' camera conventions are not interchangeable
+  even when the mechanic is.*
+- **THE LOCK IS AN ASSIST, NOT A LOCK, AND IT LIVES IN WHETHER SOMETHING LOCKS AT ALL.**
+  `WEAP.lock` = `{ cone .38, range 44, pull 5.0, grab .58, taper .55, keep .55 }` — Plutopia's,
+  with only `range` scaled (its 70 x .625; everything else is a fraction or a rate).
+  A 22-degree cone is narrow enough that pointing at open ground locks nothing and the bolt
+  goes exactly where the stick pointed. **But once the reticle is ON something the shot has to
+  go to it**, or the mark is drawing a promise the gun does not keep, which is worse than no
+  assist at all.
+  **The target is chosen from the TRUE stick heading, never the corrected one.** Feeding the
+  corrected heading back in is a loop: once the aim has swung onto something, the test for what
+  to aim at is being made from a bearing already glued to it, and pointing the stick elsewhere
+  cannot shake it off.
+  **The ease ACCUMULATES while the aim is held** rather than being a fraction reapplied to a
+  fresh stick reading each frame — that version leaves a held aim five degrees off the target.
+  **And the bolt leaves on the eased heading, NOT the target's centre.** Snapping at the
+  instant of firing makes every shot a guaranteed hit on whatever is nearest and the rest of
+  the world unshootable.
+  **Whatever is already locked keeps it on a wider cone and a discount (`keep`)**, so the mark
+  does not flicker between two things standing shoulder to shoulder. Scored uniformly across
+  police and cars rather than police-first: nearest-and-straightest is what the thumb is
+  actually pointing at, and a priority order pulls the mark off the car in front of him onto an
+  officer forty metres away.
+  **THE RETICLE IS NOT DECORATION.** An aim assist you cannot see is one you cannot trust — the
+  mark IS the promise, so it has to be on the thing before the shot leaves. Four ticks round a
+  gap rather than a dot, because a dot on an officer at forty metres is one pixel and what has
+  to read is WHICH THING is marked. `pointer-events: none` without exception: it sits in the
+  middle of the play area.
 - **WHILE THE GUN IS OUT THE RIGHT PAD IS THE GUN, AND NOTHING ELSE.** `p.rHold` is "how long
   that pad has been down" and it feeds the SPRINT — so holding the pad up to charge a shot was
   also winding him to x3 top speed while `stepAim` steered him with the same thumb. Aiming
