@@ -1614,6 +1614,12 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
 - **THE SPLASH (`BOOT`, `images/splash_screen_01.png`) IS THE LOADING SCREEN, AND THE ONLY REAL
   DECISION IN IT IS `min`.** His key art — 941x1672 portrait, the SHREDWORLD wordmark, Colin
   over a ramp with the officer and an alien. Three things:
+  0. **IT IS THE WEBP (c106): 2.65 MB -> 270 KB for the same picture**, on the one asset that
+     is first on the wire and the first thing anybody looks at. The PNG stays as `BOOT.png` and
+     is worth its two lines — a phone that cannot decode WebP would otherwise show a blank card
+     for the whole load, and blank is indistinguishable from a bug.
+     **The wordmark is still a PNG** because it needs the alpha; lossy WebP with alpha at ~1200
+     wide would take its 2.09 MB to about 80 KB the same way.
   1. **IT FADES IN AND NEVER BLOCKS THE FIRST PAINT.** 2.65 MB is not something to hold the
      first frame on. The gradient and the bar are up immediately the way they always were, and
      the poster arrives over the top whenever it arrives. The fetch is started at the TOP of

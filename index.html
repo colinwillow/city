@@ -249,7 +249,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c105</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c106</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -262,7 +262,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c105';
+const BUILD = 'c106';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -3699,7 +3699,11 @@ function stepTraffic(dt) {
 // under a second, and a title card that flashes past is one nobody sees -- which is
 // indistinguishable from never having added it. It is held from the moment the art is LIT
 // rather than from page load, so a slow arrival is not also a long wait afterwards.
-const BOOT = { art: 'images/splash_screen_01.png', min: 1.5, lit: 0 };
+// HIS WEBP, AND IT IS A TENTH OF THE PNG. 2.65 MB -> 270 KB for the same picture, on the one
+// asset that is first on the wire and the first thing anybody looks at. `png` is the fallback
+// and it is worth the two lines: a phone that cannot decode WebP would otherwise show a blank
+// card for the whole load, and "blank" is indistinguishable from a bug.
+const BOOT = { art: 'images/splash_screen_01.webp', png: 'images/splash_screen_01.png', min: 1.5, lit: 0 };
 // HIS WORDMARK. `shredworld_title_01.png` is the other cut of it -- `city.TITLE.art` and a
 // reload swaps them, or set it here. Loaded through `A()` like everything else, so repainting
 // it under the same filename actually arrives on a phone that has already seen the old one.
@@ -3713,7 +3717,10 @@ const bootBar = document.getElementById('bootBar'), bootMsg = document.getElemen
   const im = document.getElementById('bootArt'), h1 = document.getElementById('bootH1');
   im.decoding = 'async'; im.fetchPriority = 'high';
   im.onload = () => { im.classList.add('lit'); h1.classList.add('gone'); BOOT.lit = performance.now(); };
-  im.onerror = () => { console.warn('[boot] no splash art at ' + BOOT.art); BOOT.lit = -1; };
+  im.onerror = () => {
+    if (BOOT.png && im.src.indexOf(BOOT.png) < 0) { console.warn('[boot] webp refused, falling back to the png'); im.src = A(BOOT.png); return; }
+    console.warn('[boot] no splash art at ' + BOOT.art); BOOT.lit = -1;
+  };
   im.src = A(BOOT.art);
   // AND THE WORDMARK ON THE SAME BREATH. It is wanted the instant the boot card lifts, and
   // fetching it here means it is decoded and waiting rather than popping in a beat late.
