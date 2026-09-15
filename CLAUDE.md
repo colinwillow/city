@@ -1201,6 +1201,60 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   and **the chip says `· NO WEAPON JOINT`** while it is still hand-placed, because "it is in
   the wrong place" and "his rig has no joint yet" are different problems that look identical
   from a phone. `WEAP.clip` is the hook for a shoot animation the day there is one.
+- **A WEAPON FILE'S OWN RIG IS NOT THE WEARER'S, AND APPLYING BOTH IS WHY THE BLASTER WAS
+  INVISIBLE (`npm run gun`).** `blaster.glb` is `Scene > Armature > weapon_root > mesh`, and
+  that Armature carries the hundredth scale every one of these exports has. `attachGear` cloned
+  the WHOLE SCENE and `weapFit` parented it onto Colin's `weapon_root` — which is already inside
+  HIS hundredth-scaled armature — so the 0.01 was applied twice. Measured through the real
+  loader against the shipped `measureSkin`:
+      blaster.glb is 0.730 m in its own file
+      (a) whole scene onto the joint      0.9 cm   1/184 of a 1.71 m man
+      (b) neutralised above weapon_root  93.0 cm   54% of his height, a carbine
+  **The chip said `blaster OUT` and it WAS out.** Nine millimetres wide, which from a phone is
+  indistinguishable from never having loaded — and the muzzle flash comes off `weapon_tip`, a
+  BONE, so the shots, the charge ball and the bolts all kept working and hid it.
+  **THE POLICE PISTOL NEVER HAD THIS, AND THE DIFFERENCE IS THE WHOLE LESSON.** `buildCops`
+  takes the MESH off the joint and adds that, so it only ever carried the transforms BELOW
+  `weapon_root`. Two mounts in one file for the same idea and only one of them right; the fix
+  makes the blaster agree with the pistol. One matrix, computed in `attachGear`: the inverse of
+  the file's own chain down to `weapon_root`, so that node lands at identity and the art sits
+  exactly where the joint says. `fitOne`'s hand fallback is untouched — it normalises by
+  bounding box and overwrites the transform anyway.
+  **"As authored" means PROPORTIONAL TO THE WEARER, not absolute**: 0.730 m becomes 0.930 on
+  Colin because his armature is 1.273x (he is scaled up to `COLIN_HEIGHT`). That is the same
+  arithmetic the pistol does on an officer at 2.016x, and `WEAP.fit.s` + `city.weapFit()` is
+  the dial if the art wants shortening.
+  **AND THE TOOL'S FIRST ANSWER WAS 73 METRES, WHICH IS WORTH WRITING DOWN.** It computed the
+  neutralising matrix AFTER unparenting the group — and three does not clear a `matrixWorld`
+  when you unparent, so the wearer's own scale leaked into the inverse. `attachGear` computes
+  it at LOAD time on a fresh clone that has never been parented, and the harness has to do it
+  at the same moment or it is measuring a state the game never has.
+- **WHILE THE GUN IS OUT THE RIGHT PAD IS THE GUN, AND NOTHING ELSE.** `p.rHold` is "how long
+  that pad has been down" and it feeds the SPRINT — so holding the pad up to charge a shot was
+  also winding him to x3 top speed while `stepAim` steered him with the same thumb. Aiming
+  launched him across the street sideways: *"when you have your rifle equipped the locomotion
+  gets all messed up, he gets locked in"*.
+  **THE COMMENT ABOVE `stepAim` CLAIMED THE ORDERING ALREADY PREVENTED THIS** — "runs BEFORE
+  stepPlayer, so a thumb holding a charge is not also read as a sprint". It does not and never
+  did: `rHold` is counted in `stepFoot` off `stick.R.down` alone and has never once looked at
+  `p.aim`. **A protection asserted only in a comment is not a protection**, and this file now
+  has two of those (the other was `KIT.on`'s "one owner").
+  The melee flick is already suppressed exactly this way in `boardFlick`, so this is the rule
+  that pad already follows, applied to the meaning that was still leaking through. The charge
+  jump stands down with it. **A tap is still a jump** — that is a separate event, not `rHold`.
+- **THE KIT IS THREE PLAIN KEYS IN A ROW NOW, NOT A RADIAL MENU.** The fan was one button doing
+  two jobs — tap to toggle, press-and-hold to choose — and *"let's just get rid of the Swiss
+  Army button thing"*. A long press is a gesture you have to be told about; three keys say what
+  they are by being on screen. One tap: press the key for what you want, and if it is already
+  what you are holding the press puts it away.
+  **THEY GO ABOVE THE STICKS, AND THAT IS ARITHMETIC RATHER THAN TASTE.** The pads are 132 px
+  wide and sit 20 px from each edge, so on a phone there is about **110 px** between them —
+  which will not hold three keys at any size worth pressing. The band over them is empty and
+  both thumbs reach it.
+  **`body.title #kitRow .key{pointer-events:none}` IS LOAD-BEARING.** `body.title .key` fades
+  every key out on the card, but `#kitRow .key` wins on specificity for `pointer-events`, so
+  without it three invisible buttons sit over the title screen taking thumbs — the `#startB`
+  landmine one element over.
 - **`npm run joints [glb ...]` ANSWERS "DOES THIS RIG CARRY A WEAPON JOINT" IN A SECOND.**
   "I can't remember if I added that blaster with the joint rigs or not" is a question the file
   answers, and guessing at it cost two builds of hand-nudging. It reports `weapon_root` /
@@ -1209,7 +1263,7 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
       blaster.glb        weapon_root at the armature, tip -0.562,0,0.099  -> barrel along -X
       pistol.glb         tip -0.233, 0.008, 0.054                         -> barrel along -X
       police_officer     weapon_root on mixamorig_LeftHand, tip +0.233    -> barrel along +X
-      colin.glb          no weapon nodes at all (as of c94)
+      colin.glb          weapon_root on mixamorig_RightHand, tip -0.562,0,0.099 (c96)
   **And it says whether two files AGREE**, which is the whole question when a weapon is meant
   to drop onto a character with no placement: equal, or equal with X mirrored (a left hand
   against a right). The officer and his pistol read 0.015 apart on a 0.24 barrel — **six per
