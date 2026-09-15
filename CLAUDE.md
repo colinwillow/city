@@ -1542,6 +1542,28 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   left behind on a man who has gone.
   **`weapFit()` is NOT called at load time**: the gear finishes loading three awaits before
   Colin does, so there is no hand to hang it on yet. `wear` is the one place that knows.
+- **THE SPLASH (`BOOT`, `images/splash_screen_01.png`) IS THE LOADING SCREEN, AND THE ONLY REAL
+  DECISION IN IT IS `min`.** His key art — 941x1672 portrait, the SHREDWORLD wordmark, Colin
+  over a ramp with the officer and an alien. Three things:
+  1. **IT FADES IN AND NEVER BLOCKS THE FIRST PAINT.** 2.65 MB is not something to hold the
+     first frame on. The gradient and the bar are up immediately the way they always were, and
+     the poster arrives over the top whenever it arrives. The fetch is started at the TOP of
+     the module rather than in `init()`, which is three awaits and fifteen megabytes of GLB
+     away — this is the first thing anybody looks at, so it should be on the wire first.
+  2. **`min` (1.5 s) EXISTS BECAUSE A CARD THAT FLASHES PAST IS ONE NOBODY SEES.** On a warm
+     cache the whole load can be under a second, and a splash that is gone before the eye
+     reaches it is indistinguishable from never having been added — which is the same failure
+     as the sky shipped at .55, three builds running. It is timed from the moment the art is
+     LIT, not from page load, so a slow arrival is not also a long wait afterwards; and a hold
+     is skipped entirely if the art never came, because a blank hold is only a delay.
+  3. **`object-position: 50% 28%`, ABOVE CENTRE.** The art is portrait and its wordmark is at
+     the top; a landscape phone crops the vertical, and centred it would take the logo off.
+  The bar and the message sit UNDER the art on a scrim rather than across it, so they never
+  cross a face, and `#bootH1` ("City") is only the stand-in until the art lands — it fades out
+  when the poster carries its own wordmark. **`images/` is in `bump.mjs`'s `DIRS`**, so the
+  splash goes through `A()` and a repaint under the same filename actually arrives.
+  **THE ART SAYS SHREDWORLD AND THE TITLE CARD SAYS SKATECITY.** Not resolved here — the card,
+  the `<title>`, the manifest and the icons all still say City.
 - **THE TITLE CARD IS THE GAME, NOT A SECOND SCENE (`TITLE`, `titleFrame`, `camAim`).**
   Plutopia builds a whole disposable planet for its card (`DIO.*`) because its world is
   procedural and the shot wants something that does not exist in play. This one already has

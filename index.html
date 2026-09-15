@@ -34,10 +34,24 @@
   #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;
     background:radial-gradient(circle at 50% 40%,#182a52,#0b1020 70%);z-index:20;transition:opacity .5s}
   #boot.off{opacity:0;pointer-events:none}
-  #boot h1{font-weight:700;font-size:38px;letter-spacing:.18em;margin:0;text-transform:uppercase;color:#bff4ff;text-shadow:0 0 24px rgba(120,238,255,.6)}
-  #boot .bar{width:220px;height:6px;border-radius:3px;background:rgba(157,247,255,.15);overflow:hidden}
+  /* HIS KEY ART, AND IT FADES IN RATHER THAN BLOCKING. 2.65 MB is not something to hold the
+     first paint on: the gradient and the bar are up on the first frame the way they always
+     were, and the poster arrives over the top of them whenever it arrives. `object-position`
+     is biased ABOVE centre because the art is portrait and the logo is at the top of it -- a
+     landscape phone crops the vertical, and centred it would take the wordmark off. */
+  #bootArt{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 28%;
+    opacity:0;transition:opacity .45s ease-out}
+  #bootArt.lit{opacity:1}
+  #boot h1{position:relative;font-weight:700;font-size:38px;letter-spacing:.18em;margin:0;text-transform:uppercase;
+    color:#bff4ff;text-shadow:0 0 24px rgba(120,238,255,.6);transition:opacity .3s}
+  #boot h1.gone{opacity:0}          /* the art carries its own wordmark; this is the stand-in */
+  /* The bar sits UNDER the art rather than across it, on a scrim, so it never crosses a face */
+  #boot .foot{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;gap:10px;
+    padding:0 20px calc(30px + env(safe-area-inset-bottom));
+    background:linear-gradient(transparent,rgba(6,9,22,.72) 42%,rgba(6,9,22,.9))}
+  #boot .bar{width:min(240px,62vw);height:6px;border-radius:3px;background:rgba(157,247,255,.2);overflow:hidden;margin-top:66px}
   #boot .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7ee7ff,#e8fbff);transition:width .15s}
-  #boot .msg{font-size:13px;letter-spacing:.2em;text-transform:uppercase;opacity:.7}
+  #boot .msg{font-size:13px;letter-spacing:.2em;text-transform:uppercase;opacity:.75;text-shadow:0 2px 10px rgba(0,0,0,.8)}
   #boot .err{color:#ffb4b4;font-size:13px;max-width:80vw;text-align:center;white-space:pre-wrap;opacity:.9}
   /* ---- title card ----
      THE PICTURE BEHIND IT IS THE GAME. Plutopia builds a whole second scene for its title
@@ -187,7 +201,7 @@
 </style>
 </head>
 <body class="title">
-<div id="boot"><h1>City</h1><div class="bar"><i id="bootBar"></i></div><div class="msg" id="bootMsg">loading the city</div><div class="err" id="bootErr"></div></div>
+<div id="boot"><img id="bootArt" alt=""><h1 id="bootH1">City</h1><div class="foot"><div class="bar"><i id="bootBar"></i></div><div class="msg" id="bootMsg">loading the city</div><div class="err" id="bootErr"></div></div></div>
 <div id="title"><h1 class="word">Skate<i>City</i></h1><div id="chars"></div><div class="sub">swipe to change &middot; two thumbs</div><button id="startB">Start</button></div>
 <div id="sticks">
   <div class="stick" id="stkL"><div class="knob"></div><div class="lbl">MOVE</div></div>
@@ -200,7 +214,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c102</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c103</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -213,7 +227,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c102';
+const BUILD = 'c103';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -853,7 +867,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/splash_screen_01.png":"6113e27e","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -3644,7 +3658,31 @@ function stepTraffic(dt) {
 }
 
 // ---------- loading ----------
+// THE SPLASH. His key art, shown while the city loads and held long enough to be READ.
+// `min` is the whole reason there is a constant here: on a warm cache the whole load can be
+// under a second, and a title card that flashes past is one nobody sees -- which is
+// indistinguishable from never having added it. It is held from the moment the art is LIT
+// rather than from page load, so a slow arrival is not also a long wait afterwards.
+const BOOT = { art: 'images/splash_screen_01.png', min: 1.5, lit: 0 };
 const bootBar = document.getElementById('bootBar'), bootMsg = document.getElementById('bootMsg'), bootErr = document.getElementById('bootErr');
+{
+  // STARTED HERE RATHER THAN IN `init()`, which is three awaits and fifteen megabytes of GLB
+  // away: this is the first thing anybody looks at and it should be on the wire first.
+  // THROUGH `A()` LIKE EVERY OTHER ASSET -- he repaints and re-uploads under the same name,
+  // and a phone that already has that URL keeps what it has for ever.
+  const im = document.getElementById('bootArt'), h1 = document.getElementById('bootH1');
+  im.decoding = 'async'; im.fetchPriority = 'high';
+  im.onload = () => { im.classList.add('lit'); h1.classList.add('gone'); BOOT.lit = performance.now(); };
+  im.onerror = () => { console.warn('[boot] no splash art at ' + BOOT.art); BOOT.lit = -1; };
+  im.src = A(BOOT.art);
+}
+// HOW LONG IS LEFT OF THE SPLASH. Nothing if the art never arrived -- a blank hold is just a
+// delay -- and nothing if it has already been up for `min`.
+function bootHold() {
+  if (BOOT.lit <= 0) return Promise.resolve();
+  const left = BOOT.min * 1000 - (performance.now() - BOOT.lit);
+  return left <= 0 ? Promise.resolve() : new Promise(r => setTimeout(r, left));
+}
 const setBoot = (t, p) => { bootMsg.textContent = t; if (p != null) bootBar.style.width = (p * 100).toFixed(0) + '%'; };
 const draco = new DRACOLoader(); draco.setDecoderPath('vendor/draco/'); draco.setDecoderConfig({ type: 'wasm' });
 const loader = new GLTFLoader(); loader.setDRACOLoader(draco);
@@ -6660,6 +6698,8 @@ frame();
     player.pos.y = sg.hit ? sg.floor : hmAt(player.pos.x, player.pos.z); player.safe.copy(player.pos);
     buildMap();
     ready = true;
+    setBoot('shredworld', 1);
+    await bootHold();                  // the splash is a card, not a flicker
     document.getElementById('boot').classList.add('off');
     titleEl.classList.add('on');
     // whoever he was last time, fetched now rather than on the boot path: the card shows
@@ -6667,7 +6707,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
