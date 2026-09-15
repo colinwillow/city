@@ -84,6 +84,31 @@ function sim(cars, rule, T = 14) {
   return { all, cleared: all ? cleared : Infinity, worstGap, inBox: inBox / 60,
            maxWait: Math.max(...waited.values()) };
 }
+// THE RELEASE PROPERTY, asserted directly against the shipped rule rather than simulated:
+// a car that has been sitting still longer than `stuck` MUST go, whatever else is true of it.
+// Nothing in the sims below could catch its absence, because the deadlock it caused needs a
+// queue feeding a queue -- and the whole map stopping is not something a four-car standoff
+// reproduces. One line of truth table is enough.
+{
+  const T = TRAF, far = 99, near = 1;
+  const rows = [
+    // name                                         myD  myV  hisD hisV myStop hisStop blocked  wanted
+    ['committed, already in the box',                 1,  8,   5,   8,    0,     0,   true,  false],
+    ['blocked box, just arrived',                    10,  8,   5,   8,    0,     0,   true,  true ],
+    ['blocked box, waited out the stuck timer',      10,  0,   5,   0,   T.stuck + 1, 0, true, false],
+    ['clear box, he gets there first',               20,  8,   5,   8,    0,     0,   false, true ],
+    ['clear box, I get there first',                  5,  8,  20,   8,    0,     0,   false, false],
+  ];
+  let bad = 0;
+  console.log('=== the release property: can a stopped car ever go again? ===');
+  for (const [nm, myD, myV, hisD, hisV, ms, hs, bl, want] of rows) {
+    const got = crossGive(myD, myV, hisD, hisV, 0, 1, ms, hs, bl, T);
+    const ok = got === want; if (!ok) bad++;
+    console.log('  ' + (ok ? 'ok  ' : 'FAIL') + '  ' + nm.padEnd(44) + ' yields: ' + got + (ok ? '' : '   WANTED ' + want));
+  }
+  if (bad) { console.log('\n  ' + bad + ' of ' + rows.length + ' wrong -- a blocked car that never reaches the failsafe is a map of stopped traffic'); process.exitCode = 1; }
+}
+
 const cases = [
   ['two cars, 90 deg, equal',        () => [make('N', 25, 0, 10), make('E', 25, 1, 10)]],
   ['two cars, 90 deg, one closer',   () => [make('N', 18, 0, 10), make('E', 28, 1, 10)]],

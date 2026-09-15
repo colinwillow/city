@@ -87,6 +87,13 @@ playwright unless he asks for it by name.
   by `PARK.spots` at coordinates `npm run spots` found. Their triangles go into the SAME
   triangle collider as the roads, so a ramp is a surface he rolls up rather than a box he
   stops against, and `stepSkate`'s slope term does the rest with no new code.
+  **A RAMP IS A FLOOR, NOT A SOLID, AND THAT IS ON PURPOSE.** `triAdd` rejects steep faces, so
+  a ramp's SIDE WALLS are not in the collider: meet one side-on and you pass straight through
+  it, roll at it up the slope and you ride it. "I went through it and then I was able to drive
+  on it" is that, working as designed — the alternative is a box you stop dead against.
+  **And the ramps carry NO TEXTURES AT ALL**: `skate_ramps_fun_boxes.glb` has zero images and
+  two flat-colour materials, `ramp_color` (0.42, 0.32, 0.17) and `metal` (0.13). Untextured is
+  the asset, not the pipeline.
   Their materials come with them and are toon shaded for free —
   `MeshStandardMaterial.prototype.onBeforeCompile` is the patch, so anything loaded anywhere
   gets it without being told.
@@ -263,6 +270,20 @@ playwright unless he asks for it by name.
   a reason that does not exist. And "in the box" must mean **stopped on somebody's crossing
   point**, not merely near the middle: a car halted on its own stop line is doing the right
   thing and must not be counted.
+- **THE FAILSAFE MUST OUTRANK `blocked`, AND FOR ONE BUILD IT OUTRANKED NOTHING.** c64 tested
+  `blocked` first in `crossGive`, and `blocked` returns an unconditional yield — so a car that
+  could not enter the box never reached the stuck timer, and the thing blocking it was another
+  car in exactly that state. That is not a jam that clears slowly, it is a jam with no exit,
+  and it spreads: every car stopped behind a stopped car becomes the reason for the next one.
+  It cost **a whole map of stationary traffic**.
+  **And `blocked` needs `qd > ta`.** Blocking the box means the obstruction is PAST the
+  crossing; a stopped car BEFORE it is just a queue you are joining anyway. Without that half,
+  every car in every queue refused every junction it could see — which, with the failsafe
+  unreachable underneath, is the whole map at once.
+  **`npm run cross` asserts the release property directly against the shipped rule**, as a
+  five-row truth table, because no four-car standoff can reproduce a deadlock that needs a
+  queue feeding a queue. The row that matters is "blocked box, waited out the stuck timer →
+  goes". `stuck` came back down to 2.2 once it was reachable again.
 - **`npm run junc` SAYS WHY THERE ARE NO TRAFFIC LIGHTS.** A junction-reservation or signal
   scheme — the obvious answer, and a real one — needs junctions, and this road graph has none
   to find. 489 road slabs, 171 of them with both axes present, and **99% of those touch
@@ -321,6 +342,13 @@ playwright unless he asks for it by name.
   phantom hit, where the box touches you and the mesh plainly does not. `resolveBoxes` tests
   any box carrying a `yaw` in its own frame, and its roof is a floor on its real footprint,
   which is what makes standing on one possible. The AABB is still there as the broad phase.
+- **ONLY A CAR'S NOSE CAN LAUNCH HIM, AND THAT PUT `hard` OUT OF REACH.** `w` is the car's
+  speed along the CONTACT NORMAL, and on a flank that normal is perpendicular to the way the
+  car is going — so a side-swipe scores near zero however fast it is, which is right. But a
+  car tops out at `hy*(0.8..1.2)`, 9.6 to 14.4 in town, and the junction rules slow it further:
+  against `hard: 12` the launch existed on paper and never once fired. **9** is the number at
+  which a car at cruising speed that noses into him puts him on the road while one crawling out
+  of a junction still only shoulders him. `graze` came to 5.5 with it.
 - **A CAR IS A CUSHION, NOT A WALL. `carHit` works along the CONTACT NORMAL.** The face is
   whichever of the two axes he is least deep into — nose or flank — and everything is
   expressed along the normal out of it: the closing speed that picks the tier, the

@@ -135,7 +135,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c72</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c73</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -147,7 +147,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c72';
+const BUILD = 'c73';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1726,7 +1726,7 @@ const TRAF = {
   r: 2.4,          // the circle a car is treated as, for the PREDICTION only
   look: 2.2,       // how many seconds ahead it looks
   gap: 6.5,        // the following distance in a queue
-  stuck: 3.5,      // stopped this long and it takes priority whatever the order says
+  stuck: 2.2,      // stopped this long and it takes priority whatever the order says
   sep: .92,        // how much of (hl + hl) two cars are pushed back out to
   brake: 14, acc: 4,
   // --- the crossing rules (see CROSSING POINTS below) ---
@@ -1751,8 +1751,15 @@ const TRAF = {
 /* CROSS:START */
 function crossGive(myD, myV, hisD, hisV, myId, hisId, myStop, hisStop, blocked, T) {
   if (myD < T.commit) return false;              // already in it: stopping here IS the pile-up
+  // THE FAILSAFE OUTRANKS EVERYTHING, AND IT USED TO OUTRANK NOTHING. `blocked` was tested
+  // first and returns an unconditional yield, so a car that could not enter the box never
+  // reached the stuck timer -- and the thing blocking it was another car in the same state.
+  // That is not a jam that clears slowly, it is a jam with no exit at all, and it spread:
+  // every car stopped behind a stopped car became the reason for the next one. It cost a
+  // whole map of stationary traffic. A car that has waited this long goes, whatever else
+  // the rules think.
+  if (myStop > T.stuck && myStop >= hisStop) return false;
   if (blocked) return true;                      // no room on the far side, so it cannot be entered
-  if (myStop > T.stuck && myStop >= hisStop) return false;   // the failsafe, if the order ever jams
   const mt = Math.max(0, myD) / Math.max(myV, T.vmin);
   const ht = Math.max(0, hisD) / Math.max(hisV, T.vmin);
   return Math.abs(mt - ht) > T.slot ? mt > ht : myId > hisId;
@@ -1794,7 +1801,14 @@ const HIT = {
   // same rate, but only one of them should put you on the road: `mine` is how much of his
   // own approach speed counts toward the score that picks the tier. At .45 a car has to be
   // doing most of the work to launch him, and skating hard into a parked flank ricochets.
-  min: 2.5, graze: 8, hard: 12, mine: .45,
+  // `hard` WAS OUT OF REACH OF THE TRAFFIC. A car tops out at hy*(0.8..1.2), which is 9.6 to
+  // 14.4 in town, and only its NOSE scores anything: `w` is its speed along the CONTACT
+  // NORMAL, and on a flank that normal is perpendicular to the way it is going, so a
+  // side-swipe scores near zero however fast it is. Between that and cars slowing for
+  // junctions, a 12 threshold meant the launch existed on paper and never once fired.
+  // At 9 a car at its cruising speed that noses into him puts him on the road, and one
+  // crawling out of a junction still only shoulders him.
+  min: 2.5, graze: 5.5, hard: 9, mine: .45,
   // BILLIARDS. Restitution on the contact face: the component of his velocity going INTO
   // it comes back out at this fraction, the component ALONG it is untouched. So a glancing
   // hit costs him his line and not his speed, and a square one sends him back the way he
@@ -1992,7 +2006,11 @@ function stepTraffic(dt) {
       // DO NOT BLOCK THE BOX. Right of way is permission to cross, never permission to stop
       // halfway across: if the queue ahead is stationary and its tail is inside the junction,
       // entering it strands a car in everybody else's path and the jam stops being local.
-      const blocked = qv < 1.6 && qd - ta < TRAF.clear;
+      // `qd > ta` IS THE HALF THAT WAS MISSING. Blocking the box means the obstruction is
+      // PAST the crossing. A stopped car BEFORE it is just a queue I am joining anyway, and
+      // counting that as blocked made every car in every queue refuse every junction it could
+      // see -- which, with the failsafe unreachable underneath it, is the whole map at once.
+      const blocked = qv < 1.6 && qd > ta && qd - ta < TRAF.clear;
       if (!crossGive(ta, c.speed, _cf[i + 1], _cf[i + 2], c.id, _cf[i + 4], c.stop, _cf[i + 3], blocked, TRAF)) continue;
       // v = sqrt(2 a d) is the fastest he can be going and still stop on the line. A linear
       // taper either slams on at the last moment or rolls through; this is just the physics.
