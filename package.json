@@ -25,7 +25,8 @@
     "dens": "node tools/dens.mjs",
     "cop": "node tools/cop.mjs",
     "check:boot": "node tools/boot.mjs",
-    "check": "npm run check:syntax && npm run check:boot"
+    "check": "npm run check:syntax && npm run check:boot",
+    "joints": "node tools/joints.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

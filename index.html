@@ -191,7 +191,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c94</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c95</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -204,7 +204,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c94';
+const BUILD = 'c95';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1734,19 +1734,40 @@ function fitOne(slot, bone, want, fit) {
 // one at the console would otherwise do nothing and read as the setting not existing. That
 // hole has been fallen into twice now (SHADE.k inside applyDbg, COP.gun at parent time), so
 // every hand-placed thing in this file gets a re-apply next to it.
+// WHEN THE RIG HAS THE JOINT, USE THE JOINT -- and change nothing else.
+// That is what happened with the police pistol at c86 and it ended two builds of nudging in
+// one line: the officer's export grew `weapon_root`, `blaster.glb`/`pistol.glb` are built
+// round the same node, so the alignment is ALREADY DONE and the right answer is to parent
+// with identity and apply no scale, offset or rotation at all.
+// Colin's rig does not have one YET. So this looks for it every time a skin is worn and takes
+// it the moment it appears -- his next export needs no code change, it just stops being
+// hand-placed. Until then `WEAP.fit` is the nudge and `WEAP.len` the size, which is the only
+// honest thing to do when nothing in either file says where the grip goes.
 function weapFit() {
   const root = colin.root && colin.model ? colin.model : null;
   if (!root) return 'no skin yet';
-  gear.hand = null; gear.spine = null;
-  root.traverse(o => { if (o.name === 'mixamorig_RightHand') gear.hand = o; });
+  gear.hand = null; gear.spine = null; gear.mount = null;
+  root.traverse(o => {
+    if (o.name === 'weapon_root') gear.mount = gear.mount || o;
+    if (o.name === 'mixamorig_RightHand') gear.hand = o;
+  });
   gear.spine = gearBone(root, JET.bone);
-  if (gear.blaster && gear.hand) fitOne(gear.blaster, gear.hand, WEAP.len, WEAP.fit);
+  if (gear.blaster) {
+    if (gear.mount) {
+      // AS AUTHORED. Its own local transform, straight onto his joint: no fit, no offset.
+      const m = gear.blaster.model, g = gear.blaster.g;
+      m.position.set(0, 0, 0); m.rotation.set(0, 0, 0); m.scale.setScalar(1);
+      g.position.set(0, 0, 0); g.rotation.set(0, 0, 0); g.scale.setScalar(WEAP.fit.s || 1);
+      if (g.parent !== gear.mount) gear.mount.add(g);
+    } else if (gear.hand) fitOne(gear.blaster, gear.hand, WEAP.len, WEAP.fit);
+  }
   if (gear.jet && gear.spine) {
     fitOne(gear.jet, gear.spine, JET.size * COLIN_HEIGHT,
       { x: JET.at[0], y: JET.at[1], z: JET.at[2], rx: JET.rot[0], ry: JET.rot[1], rz: JET.rot[2], s: 1 });
   }
   gearShow();
-  return { hand: !!gear.hand, spine: gear.spine ? gear.spine.name : null, fit: WEAP.fit, at: JET.at };
+  return { mount: gear.mount ? 'weapon_root (as authored)' : 'hand + WEAP.fit (no weapon joint on this rig yet)',
+           hand: !!gear.hand, spine: gear.spine ? gear.spine.name : null, fit: WEAP.fit, at: JET.at };
 }
 function gearShow() {
   const out = KIT.cur !== 'board' && KIT.on;
@@ -2587,6 +2608,9 @@ function missing() {
   // WHAT IS IN HIS HAND, because "the blaster doesn't work" and "the blaster is not equipped"
   // are different bugs and they look identical from a phone.
   if (KIT.cur !== 'board') m += ' · ' + KIT.cur + (kitOut() ? ' OUT' : ' away');
+  // WHICH PLACEMENT THE BLASTER GOT. "It is in the wrong place" and "his rig has no weapon
+  // joint yet" are different problems and they look identical from a phone.
+  if (KIT.cur === 'blaster' && kitOut() && !gear.mount) m += ' · NO WEAPON JOINT';
   if (!cops.length) m += ' · NO COP GLB';
   else if (!cops[0].gun) m += ' · NO PISTOL GLB';
   if (JAM.n) m += ' · JAM ' + JAM.n + '@' + JAM.x.toFixed(0) + ',' + JAM.z.toFixed(0);

@@ -1124,9 +1124,32 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   sprint. And **the melee flick had to be gated on it**: the trigger is a long push up, which
   travels far enough and fast enough to arm the flick detector too, so without `p.aim` every
   shot also threw a punch.
-  **Colin has no weapon bone and no shoot clip** — `WEAP.fit` is the hand offset, hand-placed
-  because nothing in either file says where the grip goes, and **`city.weapFit()` re-applies
-  it**. `WEAP.clip` is the hook for a shoot animation the day there is one.
+  **WHEN THE RIG HAS THE JOINT, USE THE JOINT — AND CHANGE NOTHING ELSE.** That is what
+  happened with the police pistol at c86 and it ended two builds of nudging in one line: the
+  officer's export grew `weapon_root`, `pistol.glb` is built round the same node, so the
+  alignment is ALREADY DONE and the right answer is to parent with identity and apply no
+  scale, offset or rotation at all.
+  `weapFit` looks for `weapon_root` on whatever skin is worn, every time one is worn, and
+  takes it the moment it appears — **so the export that adds it needs no code change**. Until
+  then `WEAP.fit` is the hand offset and `WEAP.len` the size, which is the only honest thing
+  to do when nothing in either file says where the grip goes. `city.weapFit()` re-applies both,
+  and **the chip says `· NO WEAPON JOINT`** while it is still hand-placed, because "it is in
+  the wrong place" and "his rig has no joint yet" are different problems that look identical
+  from a phone. `WEAP.clip` is the hook for a shoot animation the day there is one.
+- **`npm run joints [glb ...]` ANSWERS "DOES THIS RIG CARRY A WEAPON JOINT" IN A SECOND.**
+  "I can't remember if I added that blaster with the joint rigs or not" is a question the file
+  answers, and guessing at it cost two builds of hand-nudging. It reports `weapon_root` /
+  `weapon_tip`, what they hang off, and the muzzle offset — **which is the BARREL AXIS**, so it
+  also says which way the gun points. With no argument it sweeps `models/` and `models/chars/`.
+      blaster.glb        weapon_root at the armature, tip -0.562,0,0.099  -> barrel along -X
+      pistol.glb         tip -0.233, 0.008, 0.054                         -> barrel along -X
+      police_officer     weapon_root on mixamorig_LeftHand, tip +0.233    -> barrel along +X
+      colin.glb          no weapon nodes at all (as of c94)
+  **And it says whether two files AGREE**, which is the whole question when a weapon is meant
+  to drop onto a character with no placement: equal, or equal with X mirrored (a left hand
+  against a right). The officer and his pistol read 0.015 apart on a 0.24 barrel — **six per
+  cent, the same joint exported twice** — so the tolerance is a tenth of the barrel, not two
+  per cent of it. A tolerance that called that pair "no" would have sent me back to nudging.
 - **THE BLASTER IS PLUTOPIA'S, PORTED — AND c84 SHIPPED A PARAPHRASE OF IT, WHICH IS NOT THE
   SAME THING.** One flat sphere and a slash mark where the original is: a HEAD that is a stack
   of three additive sprites (violet corona, cyan body, white-hot core) so it reads as a ball
