@@ -1748,6 +1748,14 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   on the board it is tap to OLLIE and then hold to fly, which is the same gesture and needed no
   case of its own. Holding UP in the air is now a jetpack AND a charged shot at once, because
   the two gates no longer overlap on the ground where the choice has to be made.
+  **AND `p.rHold` HAD TO BE COUNTED FOR BOTH BODIES (c117).** It was incremented inside
+  `stepFoot`, which only runs when he is NOT on the board — so riding, the clock never started
+  and `rHold > JET.from` could never once be true. *"I'm still unable to fire my jetpack when I
+  skate."* **Not a gate that said no: a clock that was never running.** It lives above the
+  board/foot branch in `stepPlayer` now, so both paths read a current value.
+  **That is the second time a shared quantity has been wrong because of WHERE it was updated**
+  (the first was the aim test baked into `rHold` itself). A number several systems read should
+  be maintained somewhere all of them run, not inside whichever one happened to need it first.
   **THE PRESS HAS TO BEGIN IN THE AIR (`jetArm`).** `!p.grounded` alone would light the motor
   for a thumb that was already down and then walked off a kerb — a sprint that turns into
   flight at the edge of a pavement. It arms on the frame the pad goes down, only if he is off

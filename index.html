@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c116</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c117</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c116';
+const BUILD = 'c117';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -6327,13 +6327,6 @@ function stepFoot(dt) {
   // The comment above `stepAim` used to claim the call ordering already prevented all this.
   // It does not and never did: `rHold` is counted here off `stick.R.down` and has never once
   // looked at the aim. A protection asserted only in a comment is not a protection.
-  // A TAP IS STILL A JUMP -- that is a separate event and it is not gated here.
-  // AND `rHold` MEANS ONE THING AGAIN: how long that pad has been down, full stop. c108 put
-  // the aim test HERE, which was the right rule in the wrong place -- with the jetpack and the
-  // blaster out at once it also cut the THRUST the instant you pushed up to charge, and
-  // dropping out of the sky because you aimed is not a trade anybody asked for.
-  // The sprint applies its own condition where the sprint is computed, a few lines down.
-  p.rHold = stick.R.down ? p.rHold + dt : 0;
   if (p.rollT > 0) { stepRoll(dt); return; }
   if (p.mel) { stepMelee(dt); return; }
   if (p.hang) { stepHang(dt); return; }
@@ -6711,6 +6704,16 @@ function stepSkate(dt) {
 
 }
 function stepPlayer(dt) {
+  // HOW LONG THAT PAD HAS BEEN DOWN, AND IT HAS TO BE COUNTED FOR BOTH BODIES.
+  // It lived in `stepFoot`, which only runs when he is NOT on the board -- so riding, `rHold`
+  // never grew, and the jetpack's `rHold > JET.from` could never once be true. *"I'm still
+  // unable to fire my jetpack when I skate."* That is the whole of it: not a gate that said
+  // no, a clock that never started.
+  // Above the branch, so both `stepSkate` and `stepFoot` read a current value.
+  // AND IT MEANS ONE THING, full stop. c108 put the aim test inside it, which was the right
+  // rule in the wrong place -- it also cut the thrust the instant you pushed up to charge.
+  // The sprint applies its own condition where the sprint is computed.
+  player.rHold = stick.R.down ? player.rHold + dt : 0;
   // the crouch: a thumb resting on the right pad that has not turned into a look
   const wantC = stick.R.down && (stick.R.far || 0) < .35;
   player.crouch = clamp(player.crouch + (wantC ? dt * 9 : -dt * 11), 0, 1);
