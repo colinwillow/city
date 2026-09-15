@@ -29,7 +29,8 @@
     "joints": "node tools/joints.mjs",
     "gun": "node tools/gun.mjs",
     "gait": "node tools/gait.mjs",
-    "sheet": "node tools/sheet.mjs"
+    "sheet": "node tools/sheet.mjs",
+    "jam": "node tools/jam.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

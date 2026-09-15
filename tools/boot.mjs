@@ -60,6 +60,11 @@ export { FakePMREM as PMREMGenerator };
 function mkCanvas() { return globalThis.document.createElement('canvas'); }
 `);
 
+// STUBS:START -- lifted verbatim by `tools/jam.mjs`, which needs the same headless page but a
+// REAL fetch. A second harness with its own copy of these is two things to keep in step, which
+// is the mistake `normals.mjs` made about `normGeo`; markers mean there is one copy.
+
+
 // ---- the DOM, stubbed to the surface this file touches ----
 const CTX2D = ['clearRect','fillRect','beginPath','moveTo','lineTo','arc','arcTo','closePath','fill','stroke',
   'save','restore','translate','rotate','scale','drawImage','fillText','strokeText','setTransform','clip','quadraticCurveTo',
@@ -124,6 +129,7 @@ globalThis.AudioContext = globalThis.webkitAudioContext = class { constructor() 
   decodeAudioData() { return Promise.resolve({ duration: 1, getChannelData: () => new Float32Array(8) }); }
   resume() { return Promise.resolve(); } close() { return Promise.resolve(); } };
 
+// STUBS:END
 // ---- run it ----
 let src = m[1].replace(/(from\s*)['"]three['"]/g, `$1'${pathToFileURL(path.join(TMP, 'three-shim.mjs')).href}'`);
 src = src.replace(/(from\s*)['"]\.\/vendor\//g, `$1'${ROOT}vendor/`);

@@ -345,6 +345,61 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   says `· JAM n@x,z` unasked, the same way `· NO CLOUD GLB` does, with the coordinate of the
   biggest knot in `JAM.cell`-metre buckets. `npm run spots` prints coordinates in the same
   frame, so the number is walkable to.
+- **`npm run jam` BUILDS THE REAL CITY HEADLESS AND WATCHES IT JAM (c121).** Four hypotheses
+  had now been measured and all four were wrong; the fifth was not going to be a guess either.
+  This is `check:boot` WITH A REAL `fetch` — the same headless page (lifted between that file's
+  `STUBS:START/END` markers, so there is one copy and not two to keep in step), a `file://`
+  base, and a disk-backed fetch. `init()` then runs for real: the real `city.glb`, the real
+  road graph, 341 real cars, the real `stepTraffic` at a fixed 60 Hz. Nothing in it restates a
+  rule.
+  **THREE THINGS HAD TO BE STUBBED AND EACH ONE FAILED SILENTLY:**
+  1. **`Request`.** three's `FileLoader` does `fetch(new Request(url))` with a RELATIVE string,
+     so node's real `Request` throws `ERR_INVALID_URL` before any custom `fetch` is reached.
+  2. **DRACO.** `city.glb` is compressed and `DRACOLoader` decodes on a Worker built from a
+     Blob URL. The city is decompressed ONCE offline into a temp copy and served in its place —
+     same geometry, same names, same graph, and no Worker to fake.
+  3. **`<img>`.** GLTFLoader resolves the GLB's embedded TEXTURES before it resolves the parse.
+     boot.mjs's inert img is right for a gate that exits after 400 ms and is **a silent hang**
+     for a harness that waits: no throw, no rejection, no progress, for ever. That one cost
+     three runs and is the thing to suspect first if this ever stops building.
+  **AND IT WAITS FOR THE CARS, NOT FOR `ready`.** `ready` is set at the END of `init()`, after
+  Colin and the clouds — none of which any traffic rule has heard of. Waiting on the whole boot
+  reports "the city never loaded" when the thing under test has been up for a minute.
+- **THE JAM WAS A THROUGHPUT COLLAPSE, NOT A DEADLOCK — AND THE FAILSAFE WAS CANCELLED BY ITS
+  OWN SUCCESS (c121, `TRAF.commitT`).** `c.stop` resets the instant a car is over .5 m/s. So
+  the stuck failsafe released a car, the car crept forward, **its timer went to zero**, it was
+  now the LEAST stuck car at that junction, it yielded to everyone again, and it waited another
+  `stuck` seconds to move another car length. Service rate at every junction fell to roughly
+  one car per 2.2 s, arrivals stayed above that, and the count climbed for ever.
+  **THAT IS WHY IT LOOKED LIKE A DEADLOCK AND WAS NOT ONE.** A deadlock settles; this grew
+  monotonically — 0 at t=15 to 154 at t=90 and still going — which is the signature of a queue,
+  not a lock. Measured, with every follow-stuck car walked up its `led` chain to the car at the
+  front:
+      OLD   154 stuck of 341   follow 111, cross 32, blocked 11
+            83 queued behind a head that was CROSS, 13 behind BLOCKED, queue depth median 2
+      NEW    43 stuck of 341   follow 43, cross 0, blocked 0
+            EVERY head MOVING -- what is left is ordinary congestion, and it plateaus
+  `myGo` is the remaining grant: once the failsafe releases a car it STAYS released until it is
+  through, which is what "permission to cross" already meant everywhere else in this file.
+  **MY OWN HYPOTHESIS WAS WRONG TOO, AND THE TOOL IS WHAT KILLED IT.** Mutual follow-lock — two
+  cars each reading the other as ahead-and-in-lane, which the `dot > .55` test makes
+  geometrically reachable at every angle, on a path with no failsafe at all — reads **MUTUAL 0**
+  in every run. It was a good story and it is not what happens. Five hypotheses, five wrong,
+  and the sixth was a measurement rather than a sixth story.
+  **THE CARS SAY WHY THEY ARE STOPPED NOW (`c.why`), IN THE CHIP.** `JAM 43@-218,95 f43x0b0m0`
+  — follow / cross / blocked / MUTUAL. Which letter is big IS the diagnosis, and the four call
+  for completely different fixes. `/nan map`'s rule applied to traffic: record it, do not
+  reason about it.
+  **AND `npm run cross` DOES NOT TEST THE GRANT.** It calls `crossGive` with ten arguments, so
+  `myGo` arrives `undefined` and every case there measures the rule with no grant outstanding —
+  which is right for what those cases are about (the priority rule in isolation) and is a real
+  gap in coverage of the shipped behaviour. Pass an eleventh argument there before trusting it
+  on anything to do with the failsafe.
+- **THERE ARE 341 DRIVING CARS, NOT THE 197 THE DENSITY NOTE ASSUMES.** `npm run dens`'s 14%
+  occupancy was computed against 197, and the count has nearly doubled since. At 341 it is
+  **25%**, which is a different regime — so "fewer cars" stopped being obviously wrong somewhere
+  between those two builds, and the old note should not be quoted at him as though it settled
+  it. Re-run `dens` before repeating that argument.
 - **`npm run junc` SAYS WHY THERE ARE NO TRAFFIC LIGHTS.** A junction-reservation or signal
   scheme — the obvious answer, and a real one — needs junctions, and this road graph has none
   to find. 489 road slabs, 171 of them with both axes present, and **99% of those touch

@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c120</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c121</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c120';
+const BUILD = 'c121';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -979,7 +979,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1141,7 +1141,13 @@ const MUSIC = {
   // A value can be one stem or a LIST. With a list the pieces are not looped: one plays
   // through and another of the set that is NOT the one just heard takes over, so it reads as
   // a soundtrack rather than as a loop going round.
-  files: { theme: ['plutopia_song_03', 'plutopia_song_04'] },
+  // HIS OWN TWO NOW (c121). `plutopia_song_03/04` stay in `audio/` as the things to flip back
+  // to -- `city.MUSIC.files.theme = ['plutopia_song_03','plutopia_song_04']` before the first
+  // press -- but the borrowed pair is not what this game sounds like.
+  // The path is relative to `audio/`, so a subfolder needs no code change at all; what it DOES
+  // need is `audio/songs` in `bump.mjs`'s `DIRS`, or `A()` finds no hash for it and a replaced
+  // file would never arrive. `readdirSync` is not recursive -- a new folder is a new entry.
+  files: { theme: ['songs/shredworld_song_01', 'songs/shredworld_song_02'] },
   bus() {
     if (!SFX.ctx) return null;
     if (!this.gain) { this.gain = SFX.ctx.createGain(); this.gain.gain.value = this.vol; this.gain.connect(SFX.master); }
@@ -3167,7 +3173,10 @@ function missing() {
   }
   if (!cops.length) m += ' · NO COP GLB';
   else if (!cops[0].gun) m += ' · NO PISTOL GLB';
-  if (JAM.n) m += ' · JAM ' + JAM.n + '@' + JAM.x.toFixed(0) + ',' + JAM.z.toFixed(0);
+  // f=queued behind a car, x=yielding at a crossing, b=refusing a blocked box, m=MUTUAL
+  // (two cars each queued behind the other). Which letter is big IS the diagnosis.
+  if (JAM.n) m += ' · JAM ' + JAM.n + '@' + JAM.x.toFixed(0) + ',' + JAM.z.toFixed(0)
+    + ' f' + JAM.f + 'x' + JAM.x2 + 'b' + JAM.b + 'm' + JAM.m;
   return m;
 }
 // "THE CARS ARE KIND OF JAMMING UP AGAIN" IS AN IMPRESSION, AND AN IMPRESSION CANNOT BE
@@ -3185,7 +3194,7 @@ function missing() {
 // a car stopped longer than `JAM.at` is stuck, and if enough of them are stuck the chip says
 // how many and the map coordinate of the biggest knot, unasked, the same way `NO CLOUD GLB`
 // does. `npm run spots` prints coordinates in the same frame, so the number is walkable to.
-const JAM = { at: 3, show: 8, cell: 40, n: 0, x: 0, z: 0, every: .5, t: 0 };
+const JAM = { at: 3, show: 8, cell: 40, n: 0, x: 0, z: 0, every: .5, t: 0, f: 0, x2: 0, b: 0, m: 0 };
 const _jamC = new Map();
 function jamScan(dt) {
   JAM.t += dt; if (JAM.t < JAM.every) return; JAM.t = 0;
@@ -3200,6 +3209,17 @@ function jamScan(dt) {
   let tot = 0; for (const e of _jamC.values()) tot += e.n;
   JAM.n = tot >= JAM.show ? tot : 0;
   if (JAM.n && best) { JAM.x = best.x / best.n; JAM.z = best.z / best.n; }
+  // AND WHAT IS HOLDING THEM. "The cars are jamming" is an impression; f/x/b/m is a diagnosis,
+  // and they call for completely different fixes -- a follow lock is a missing failsafe, a
+  // cross lock is the priority rule, a blocked lock is the box test. MUTUAL is the one that
+  // cannot be anything else: two cars each queued behind the OTHER, which no timer releases.
+  JAM.f = JAM.x2 = JAM.b = JAM.m = 0;
+  for (const c of cars) {
+    if (c.stop < JAM.at) continue;
+    if (c.why === 'follow') { JAM.f++; if (c.led && c.led.led === c) JAM.m++; }
+    else if (c.why === 'cross') JAM.x2++;
+    else if (c.why === 'blocked') JAM.b++;
+  }
 }
 function census() {
   let pts = 0, spr = 0, ln = 0, mesh = 0, bone = 0, skin = 0;
@@ -3657,6 +3677,9 @@ const TRAF = {
   zone: 4.6,       // how far SHORT of the crossing a yielding car puts its stop line
   yieldA: 5.5,     // the deceleration that stop line is planned against
   commit: 3.2,     // inside this of the crossing he is committed and never stops
+  // HOW LONG A FAILSAFE RELEASE LASTS. Long enough to clear a 12 m slab at a crawl, because
+  // the whole point is that the grant outlives `c.stop` resetting to zero the moment he moves.
+  commitT: 2.5,
   clear: 8.0,      // road that must be free PAST the crossing before he may enter it
   slot: .5,        // seconds of headway inside which two arrivals count as a tie
   vmin: 3,         // the speed a stopped car is credited with, so its arrival time is finite
@@ -3672,7 +3695,7 @@ const TRAF = {
 // Ties inside `slot` go to the lower id, which is arbitrary and stable -- and stable is the
 // property that matters, because a tiebreak that flips is two cars alternately lurching.
 /* CROSS:START */
-function crossGive(myD, myV, hisD, hisV, myId, hisId, myStop, hisStop, blocked, T) {
+function crossGive(myD, myV, hisD, hisV, myId, hisId, myStop, hisStop, blocked, T, myGo) {
   if (myD < T.commit) return false;              // already in it: stopping here IS the pile-up
   // THE FAILSAFE OUTRANKS EVERYTHING, AND IT USED TO OUTRANK NOTHING. `blocked` was tested
   // first and returns an unconditional yield, so a car that could not enter the box never
@@ -3681,6 +3704,15 @@ function crossGive(myD, myV, hisD, hisV, myId, hisId, myStop, hisStop, blocked, 
   // every car stopped behind a stopped car became the reason for the next one. It cost a
   // whole map of stationary traffic. A car that has waited this long goes, whatever else
   // the rules think.
+  // AND A GRANT HAS TO SURVIVE THE CAR TAKING IT (c121). `c.stop` resets the instant it is
+  // over .5 m/s, so the failsafe was CANCELLED BY ITS OWN SUCCESS: the car creeps, its timer
+  // goes to zero, it is now the LEAST stuck car at the junction, it yields to everyone again,
+  // and it waits another `stuck` seconds to move another car length. Throughput at every
+  // junction collapsed to roughly one car per `stuck` -- which is not a deadlock, it is an
+  // arrival rate above a service rate, and that is why the count climbed for ever instead of
+  // settling. `myGo` is the remaining grant: once released, it stays released until it is
+  // through, which is what "permission to cross" already meant everywhere else in here.
+  if (myGo > 0) return false;
   if (myStop > T.stuck && myStop >= hisStop) return false;
   if (blocked) return true;                      // no room on the far side, so it cannot be entered
   const mt = Math.max(0, myD) / Math.max(myV, T.vmin);
@@ -3899,12 +3931,17 @@ function stepTraffic(dt) {
     // says nothing about whether we are going to meet, and the old test (`is he pointing
     // roughly the way I am?`) threw every crossing car away. That is why they drove through
     // each other: they were never looking.
-    let cap = c.top; const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), rx = -fz, rz = fx;
+    // WHY IT IS STOPPED, RECORDED RATHER THAN REASONED ABOUT. Three hypotheses about this jam
+    // have been measured and all three were wrong, so the next move is not a fourth guess: it
+    // is to make the car say which rule is holding it. `/nan map`'s lesson, applied to traffic.
+    let cap = c.top, why = ''; c.led = null;
+    const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw), rx = -fz, rz = fx;
     // SHOT WITH THE PLASMA. It needs no new case anywhere in the crossing rules: a stopped car
     // is exactly what `blocked` and the stuck failsafe already know how to route round, so
     // one field on the car is the whole mechanic.
-    if (c.zap > 0) { c.zap -= dt; cap = 0; c.speed = Math.max(0, c.speed - TRAF.brake * 2 * dt); }
+    if (c.zap > 0) { c.zap -= dt; cap = 0; why = 'zap'; c.speed = Math.max(0, c.speed - TRAF.brake * 2 * dt); }
     c.stop = c.speed < .5 ? c.stop + dt : 0;
+    c.go = Math.max(0, (c.go || 0) - dt);      // the failsafe's grant, counting down
     let qd = 1e9, qv = 0;                      // the nearest car ahead IN MY LANE, and its speed
     _cf.length = 0;
     for (const o of carsNear(c.x, c.z, 28, _cn)) {
@@ -3914,7 +3951,11 @@ function stepTraffic(dt) {
       const ahead = ox * fx + oz * fz, side = ox * rx + oz * rz;
       const ofx = Math.sin(o.yaw), ofz = Math.cos(o.yaw);
       if (ofx * fx + ofz * fz > .55 && ahead > 0 && Math.abs(side) < 2.6) {
-        if (d2 < 324) cap = Math.min(cap, Math.max(0, o.speed + (ahead - TRAF.gap) * .9));  // queue behind him
+        // QUEUE BEHIND HIM -- and `c.led` is who, which is what makes a MUTUAL lock visible.
+        // Two cars converging at a shallow angle can EACH read the other as ahead-and-in-lane
+        // (the test is dot > .55, so anything inside 57 degrees), and this path has no failsafe
+        // of any kind: `TRAF.stuck` lives only inside `crossGive`.
+        if (d2 < 324) { const q = Math.max(0, o.speed + (ahead - TRAF.gap) * .9); if (q < cap) { cap = q; why = 'follow'; c.led = o; } }
         if (ahead < qd) { qd = ahead; qv = o.speed; }
         continue;
       }
@@ -3946,11 +3987,16 @@ function stepTraffic(dt) {
       // counting that as blocked made every car in every queue refuse every junction it could
       // see -- which, with the failsafe unreachable underneath it, is the whole map at once.
       const blocked = qv < 1.6 && qd > ta && qd - ta < TRAF.clear;
-      if (!crossGive(ta, c.speed, _cf[i + 1], _cf[i + 2], c.id, _cf[i + 4], c.stop, _cf[i + 3], blocked, TRAF)) continue;
+      // EARNED IT: the failsafe would fire for this pair, so the grant starts now and rides
+      // through the junction rather than evaporating on the first metre of movement.
+      if (c.stop > TRAF.stuck && c.stop >= _cf[i + 3]) c.go = Math.max(c.go, TRAF.commitT);
+      if (!crossGive(ta, c.speed, _cf[i + 1], _cf[i + 2], c.id, _cf[i + 4], c.stop, _cf[i + 3], blocked, TRAF, c.go)) continue;
       // v = sqrt(2 a d) is the fastest he can be going and still stop on the line. A linear
       // taper either slams on at the last moment or rolls through; this is just the physics.
-      cap = Math.min(cap, Math.sqrt(2 * TRAF.yieldA * Math.max(0, ta - TRAF.zone)));
+      const yc = Math.sqrt(2 * TRAF.yieldA * Math.max(0, ta - TRAF.zone));
+      if (yc < cap) { cap = yc; why = blocked ? 'blocked' : 'cross'; }
     }
+    c.why = c.speed < .5 ? (why || 'clear') : '';
     c.speed = cap < c.speed ? Math.max(cap, c.speed - TRAF.brake * dt) : Math.min(cap, c.speed + TRAF.acc * dt);
     c.x += fx * c.speed * dt; c.z += fz * c.speed * dt;
     // progress along the segment = projection of our position onto it
@@ -7403,7 +7449,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
