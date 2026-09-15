@@ -1100,7 +1100,7 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   several effects: `jet` and `puff` are the same twelve cells three frames apart, `boom` and
   `hit` likewise. **Adding a look to a new weapon is a row of drawing in `fxTex` plus a line in
   `FX.bank`, never a second particle system.** 7×7 = 49 cells: a burn (0–11, no word), a punch
-  (12–23, POW), a hit (24–35, BOOM), the plasma (36–48, ZAP and cold forked arcs).
+  (12–23, POW), a hit (24–35, BOOM), the plasma (36–48, ZAP). NO STROKED LINES ANYWHERE — see below.
   **THE WORD BELONGS WHERE THERE IS ONE EVENT TO NAME.** Plutopia's own note, and it was learnt
   by over-applying it there: a motor running is not a punchline, and an onomatopoeia four times
   a second is a joke told four times a second. **The jetpack has no word**; a punch landing, a
@@ -1109,8 +1109,6 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   forty pixels across on a phone and still reads as ink laid on top of the render.
   **A blob is ONE FILL, not a run of strokes**, the slash mark's lesson again: overlapping
   round caps accumulate alpha at every join and come out as a slab.
-  **AND ELECTRICITY IS A LINE, NOT A MASS.** The plasma's `arcs` are thin forked strokes rather
-  than blobs, because drawing one as the other makes both read as neither.
   **`gl_PointSize` IS DERIVED, NOT TUNED**: half the framebuffer height over the tangent of
   half the vertical lens, so a card is `aSize` world metres. A tuned constant would change size
   whenever the fov does — and **the fov here MOVES**, because `CAM.rush` widens it with speed.
@@ -1124,6 +1122,36 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   Wired to: the cop's muzzle (at `weapon_tip`, so it is right through the draw and the recoil),
   a round stopping or ricocheting, a round hitting him, the blaster's muzzle, a bolt landing, a
   car being zapped, a punch landing on an officer, and the jetpack's putt.
+- **I INVENTED A THIRTEENTH EFFECT IN A VOCABULARY THE SHEET DOES NOT HAVE, AND IT WAS THE
+  WHOLE COMPLAINT.** *"I don't even know what are those like branches of a tree electric tree
+  branches, they look nothing like each other."* He was right. Plutopia's sheet is thirty-six
+  cells and **not one stroked line appears in any of them** — every drawing on it is a filled
+  star, a filled blob, or a drawn word. The `arcs` helper, the forked cyan lightning and the
+  whole plasma row were MINE, on the reasoning that "electricity is a line and smoke is a
+  mass". The reasoning is fine and the result is not: a cold forked line drawn 2.4 m across and
+  laid over a road does not read as *a car was zapped*, it reads as a bug. **Gone.** The plasma
+  row is the same three beats as every other one — a cold burst, ZAP, smoke going cool.
+  **This is the c91 lesson a second time and the shape is identical**: the ported parts were
+  right (`smoke` is byte-identical to Plutopia's, `JET.puff`/`blast`/`drift` are its numbers
+  x.625 to two decimals) and **the part I added on top is what looked wrong**. When a thing is
+  being ported, the additions are the first suspects, not the last.
+- **AND THE JET ROW WAS NOT ITS FRAME SPLIT EITHER.** Plutopia spends 2 frames on the crack,
+  3 on flame and **SEVEN on smoke**; mine spent 3, 3 and six — a quarter less cloud on a
+  twelve-frame bank, and the cloud is the entire thing you look at. `puff` is its `[2,10]`, not
+  `[3,9]`, and `FX.size` is its 2.6 x .625 = 1.63 rather than a rounded 1.5.
+- **`npm run sheet` RENDERS THE SHEET AND LABELS IT (`FX:START/END`).** "What is that drawing"
+  is a question about the contents of a texture that is generated in code at runtime, and
+  reading that code three times did not settle it. The tool runs the SHIPPED `fxTex` against a
+  real 2D canvas (`@napi-rs/canvas`, dev-only) and writes two PNGs: the sheet, and a copy with
+  every cell numbered and each bank's window boxed. **One look ends the argument** — it is
+  `/nan map`'s rule applied to a texture instead of a framebuffer: measure the buffer, do not
+  reason about it. It also proved the jet bank was drawing a burn and not arcs, which ruled out
+  the obvious hypothesis before any of it was changed.
+- **AN UNRELATED `npm i` USED TO BREAK `check:boot`, AND IT FAILED LOOKING EXACTLY LIKE THE
+  BUG IT CATCHES.** `wear.mjs` writes the bare-`three` shim that `vendor/GLTFLoader.js` needs;
+  installing anything at all rewrites `node_modules` and takes it away, and the gate then dies
+  with a module-not-found that reads as a blank page. `boot.mjs` writes its own shim now. **A
+  gate that cries wolf after an unrelated install is a gate nobody runs.**
 - **THE JETPACK PUTTS, IT DOES NOT JET (`JET.every`).** A continuous stream is a shader effect;
   a rhythm of discrete puffs is drawn animation, and that is the difference between a motor and
   a jet of gas. The FIRST card is the ignition bank, every one after it is `puff` — the same

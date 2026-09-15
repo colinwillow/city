@@ -28,12 +28,14 @@
     "check": "npm run check:syntax && npm run check:boot",
     "joints": "node tools/joints.mjs",
     "gun": "node tools/gun.mjs",
-    "gait": "node tools/gait.mjs"
+    "gait": "node tools/gait.mjs",
+    "sheet": "node tools/sheet.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",
     "@gltf-transform/extensions": "^4.5.0",
     "@gltf-transform/functions": "^4.5.0",
+    "@napi-rs/canvas": "^1.0.9",
     "draco3dgltf": "^1.5.7",
     "meshoptimizer": "^0.22.0",
     "sharp": "^0.33.5"

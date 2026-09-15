@@ -187,7 +187,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c100</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c101</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -200,7 +200,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c100';
+const BUILD = 'c101';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1271,11 +1271,12 @@ function holePatch(sh) {
 // AND THE WORD BELONGS WHERE THERE IS ONE EVENT TO NAME. Plutopia's own note: a motor running
 // is not a punchline, and an onomatopoeia four times a second is a joke told four times a
 // second. The jetpack has no word; a punch landing and a bolt arriving do.
+/* FX:START */
 const FX = {
   url: null,          // a PNG of his own, when there is one; null draws the placeholder below
   cols: 7,            // a square sheet, 7 x 7: 49 cells
   fps: 8,             // 24 over 3 -- the hold IS the look
-  size: 1.5,          // the card, in world metres
+  size: 1.63,         // the card in world metres -- Plutopia's 2.6 on its 2.8 m alien, x.625
   cell: 128,          // placeholder resolution per cell
   n: 180,             // the pool. A spent one is discarded in the shader.
   t: 0,               // its own clock, because the card's step needs a monotonic second count
@@ -1283,12 +1284,12 @@ const FX = {
   // WHICH CELLS EACH EFFECT OWNS, as [first, count].
   bank: {
     jet:   [0, 12],   // the jetpack lighting: a crack, then flame going to smoke
-    puff:  [3, 9],    // every putt after it -- no crack, no word: a motor is not a punchline
+    puff:  [2, 10],   // every putt after it -- no crack, no word: a motor is not a punchline
     flash: [0, 4],    // a muzzle: the crack and the first flame, and nothing after it
     pow:   [14, 10],  // a punch landing: spark, POW, and a little smoke
     boom:  [24, 12],  // a bolt arriving: the star, BOOM, and debris going grey
     hit:   [29, 7],   // a smaller one -- the same debris with no star and no word
-    zap:   [36, 12],  // the plasma on a car: a crackle, ZAP, and arcs fading cold
+    zap:   [36, 12],  // the plasma on a car: a cold burst, ZAP, and smoke
   },
 };
 FX.life = Object.keys(FX.bank).reduce((m, k) => Math.max(m, FX.bank[k][1]), 1) / FX.fps;
@@ -1345,35 +1346,21 @@ function fxTex() {
     blob(-r * .34, r * .20, r * .62, 4, f * 1.3, 'rgba(' + rgb(26) + ',' + (a * .9) + ')');
     blob(r * .30, -r * .16, r * .52, 4, f * 2.0, 'rgba(255,255,255,' + (a * .5) + ')');
   };
-  // Cold arcs, for the plasma: thin forked lines rather than a blob, because electricity is a
-  // line and smoke is a mass, and drawing one as the other is what makes both read as neither.
-  const arcs = (c, k, f) => {
-    g.lineCap = 'round'; g.lineJoin = 'round';
-    for (let n = 0; n < 5; n++) {
-      const a0 = (n / 5) * Math.PI * 2 + f * .7, len = c * (.35 + .55 * (1 - k));
-      g.beginPath(); g.moveTo(0, 0);
-      let x = 0, y = 0, a = a0;
-      for (let s = 0; s < 4; s++) {
-        a += Math.sin(n * 2.3 + s * 1.9 + f) * .7;
-        x += Math.cos(a) * len * .33; y += Math.sin(a) * len * .33;
-        g.lineTo(x, y);
-      }
-      g.lineWidth = c * (.075 - k * .045); g.strokeStyle = 'rgba(120,226,255,' + (.9 - k * .7) + ')'; g.stroke();
-      g.lineWidth = c * (.032 - k * .02); g.strokeStyle = 'rgba(246,253,255,' + (.95 - k * .7) + ')'; g.stroke();
-    }
-  };
   for (let f = 0; f < N * N; f++) {
     const ox = (f % N) * S, oy = ((f / N) | 0) * S, c = S * .5;
     g.save(); g.beginPath(); g.rect(ox, oy, S, S); g.clip();
     g.translate(ox + c, oy + c);
     if (f < 12) {
-      // ---- 0..11  A BURN. No word: the jetpack and the muzzle both live here. ----
-      if (f < 3) {
-        const k = f / 2;
-        star(0, 0, c * (.50 + k * .34), 7 + f, .32, f * 1.7, 'rgba(255,214,150,' + (.95 - k * .3) + ')');
-        star(0, 0, c * (.32 + k * .22), 6, .34, f * 1.1 + .6, 'rgba(255,252,242,1)');
-      } else if (f < 6) { const k = (f - 3) / 2; g.translate(0, c * .10 * k); flame(c * (.74 - k * .16), k, f); }
-      else smoke(c, (f - 6) / 5, f, true);
+      // ---- 0..11  THE JET. No word: a motor is not a punchline. ----
+      // PLUTOPIA'S SPLIT, TO THE FRAME: 2 of crack, 3 of flame, SEVEN of smoke. Mine spent an
+      // extra frame on the crack and one fewer on the smoke, which is a quarter less cloud on
+      // a twelve-frame bank -- and the cloud is the whole thing he is looking at.
+      if (f < 2) {                                   // the crack at ignition
+        const k = f;
+        star(0, 0, c * (.50 + k * .30), 7 + f, .32, f * 1.7, 'rgba(255,214,150,' + (.95 - k * .3) + ')');
+        star(0, 0, c * (.32 + k * .20), 6, .34, f * 1.1 + .6, 'rgba(255,252,242,1)');
+      } else if (f < 5) { const k = (f - 2) / 2; g.translate(0, c * .10 * k); flame(c * (.74 - k * .16), k, f); }
+      else smoke(c, (f - 5) / 6, f, true);
     } else if (f < 24) {
       // ---- 12..23  A PUNCH LANDING. Spark, POW, and it is gone quickly. ----
       const j = f - 12;
@@ -1395,14 +1382,21 @@ function fxTex() {
       } else if (j < 5) word('BOOM', (j - 3), .16);
       else smoke(c, (j - 5) / 6, f, false);
     } else {
-      // ---- 36..48  THE PLASMA. A crackle, ZAP, and arcs fading cold. ----
+      // ---- 36..48  THE PLASMA. A cold burst, ZAP, and smoke going cool. ----
+      // THE FORKED ARCS THAT USED TO BE HERE WERE MINE, NOT PLUTOPIA'S, AND THEY WERE THE
+      // WHOLE COMPLAINT: *"I don't even know what are those like electric tree branches"*.
+      // Plutopia's sheet has thirty-six cells and NOT ONE stroked line in any of them -- every
+      // drawing on it is a filled star, a filled blob or a drawn word. I invented a thirteenth
+      // effect in a vocabulary the sheet does not have, and a cold forked line drawn 2.4 m
+      // across and laid over a road does not read as "a car was zapped", it reads as a bug.
+      // Same row, same three beats as every other effect here, in the vocabulary that ports.
       const j = f - 36;
-      if (j < 2) {
-        const k = j;
-        star(0, 0, c * (.58 + k * .34), 11, .22, j * 1.5, 'rgba(146,232,255,' + (.95 - k * .25) + ')');
-        star(0, 0, c * (.34 + k * .22), 8, .26, j * 2.4, 'rgba(250,254,255,1)');
-      } else if (j < 5) word('ZAP', (j - 2) / 2, .12, 'rgba(120,196,255,' + (.6 - (j - 2) / 2 * .4) + ')');
-      else arcs(c, (j - 5) / 6, f);
+      if (j < 3) {
+        const k = j / 2;
+        star(0, 0, c * (.58 + k * .38), 11, .22, j * 1.5, 'rgba(146,232,255,' + (.95 - k * .25) + ')');
+        star(0, 0, c * (.34 + k * .24), 8, .26, j * 2.4, 'rgba(250,254,255,1)');
+      } else if (j < 5) word('ZAP', (j - 3), .12, 'rgba(120,196,255,' + (.6 - (j - 3) * .4) + ')');
+      else smoke(c, (j - 5) / 7, f, false);
     }
     g.restore();
   }
@@ -1412,6 +1406,7 @@ function fxTex() {
   return t;
 }
 
+/* FX:END */
 function fxInit() {
   if (_fx) return _fx;
   const N = FX.n;

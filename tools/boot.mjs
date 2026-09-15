@@ -13,6 +13,21 @@
 import fs from 'fs'; import os from 'os'; import path from 'path';
 import { pathToFileURL } from 'url';
 
+// THE `three` SHIM, WRITTEN HERE RATHER THAN ASSUMED. `vendor/GLTFLoader.js` imports the bare
+// specifier 'three', which the page resolves through its <script type="importmap"> and node
+// cannot resolve at all. `wear.mjs` writes a three-line shim package for it -- but an ordinary
+// `npm i` of ANYTHING rewrites node_modules and takes it away, and then this gate fails with a
+// module-not-found that looks exactly like the blank page it exists to catch. A gate that
+// cries wolf after an unrelated install is a gate nobody runs, so it writes its own. It has to
+// point at the VENDORED build: testing r180's loader against some other r180 is the same class
+// of mistake as testing a copy of the code.
+if (!fs.existsSync('node_modules/three/package.json')) {
+  fs.mkdirSync('node_modules/three', { recursive: true });
+  fs.writeFileSync('node_modules/three/package.json', JSON.stringify({
+    name: 'three', version: '0.180.0-vendored', type: 'module', main: 'index.js', exports: { '.': './index.js' } }, null, 2));
+  fs.writeFileSync('node_modules/three/index.js', "export * from '../../vendor/three.module.min.js';\n");
+}
+
 const html = fs.readFileSync('index.html', 'utf8');
 const m = html.match(/<script type="module">([\s\S]*?)<\/script>/);
 if (!m) { console.error('no module script'); process.exit(1); }
