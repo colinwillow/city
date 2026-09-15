@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c115</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c116</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c115';
+const BUILD = 'c116';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -2448,17 +2448,38 @@ function stepJet(dt) {
   // than after: a hoverboard that drops the deck every time you set down is not a hoverboard.
   const on = KIT.out.jet && !p.hit && !p.hang && !p.lad && !p.mel;
   if (p.fuel === undefined) p.fuel = 1;
+  // ARMED ABOVE THE EARLY RETURN, because `jetWas` is edge detection and an edge detector that
+  // stops running goes stale: equip the pack mid-hold and it would see no new press, so the
+  // motor would light on a thumb that was already down.
+  // AND DISARMED THE MOMENT HE IS GROUNDED. Without that a hold carried through a landing
+  // keeps its arming, and the next frame on the road has `down`, `rHold` and `jetArm` all
+  // true -- which is the ground thrust this whole change exists to remove, straight back.
+  const down = stick.R.down;
+  if (!down || p.grounded) p.jetArm = 0;
+  else if (!p.jetWas) p.jetArm = 1;      // the frame it went down, and he was already in the air
+  p.jetWas = down;
   if (!on) { p.jetK = 0; p.fuel = Math.min(1, p.fuel + JET.fill * dt); return; }
-  // Past the jump's own tap, so a tap still jumps and a HOLD is what lights it.
-  // HOLD THE PAD AND HE FLIES, WHEREVER THE THUMB IS. The first version also wanted the thumb
-  // near the middle (`rm < .55`), which is the wrong test twice over: `stick.R.far` is a
+  // THE FIRST TAP IS THE JUMP, THE SECOND TAP HELD IS THE PACK.
+  // It used to be any hold at all, wherever the thumb was -- which was fine while the pack was
+  // the only thing on that pad. c113 took the aim test out of `p.rHold` (rightly: it was
+  // cutting the thrust mid-flight), and the two then collided on the ONE gesture the blaster
+  // needs most: *"now you press up, which is what is supposed to initiate blaster."*
+  // Requiring him to be AIRBORNE separates them completely and costs no new control:
+  //     on the ground   a hold is the blaster's charge and the sprint, and nothing else
+  //     in the air      a hold is thrust, whichever way the thumb is pointing
+  // So the sequence is the one he already plays: tap to jump, then press and hold to fly. On
+  // the board that is tap to OLLIE and then hold to fly, which is the same gesture and needed
+  // no case of its own -- and holding UP in the air is a jetpack AND a charged shot, because
+  // the two gates no longer overlap on the ground where the choice actually has to be made.
+  // THE PRESS HAS TO BEGIN IN THE AIR, which is what `jetArm` (set above) is for. Testing
+  // `!p.grounded` alone would light the motor for a thumb that was already down and then
+  // walked off a kerb -- a sprint that turns into flight at the edge of a pavement.
+  // `far` IS NEVER TESTED, and the first version's `rm < .55` was wrong twice over: it is a
   // HIGH-WATER MARK for the whole touch, so one look would have killed the thrust for the rest
   // of it -- the bug that held the sprint at 9 m/s for three builds -- and even the
   // instantaneous magnitude fights the camera, because the pad is still the look and you
-  // cannot fly and see where you are going at the same time.
-  // So the gate is just "held past the tap". A TAP still jumps (`onRel` needs `far < .42` and
-  // `from` is .10 s), a HOLD flies, and a drag does both, which is what flying wants.
-  const want = stick.R.down && p.rHold > JET.from && p.fuel > 0 ? 1 : 0;
+  // cannot fly and see where you are going at once.
+  const want = p.jetArm && down && p.rHold > JET.from && p.fuel > 0 ? 1 : 0;
   p.jetK = damp(p.jetK || 0, want, JET.ease, dt);
   // The puffs come out of the nozzle, which is the pack on his back, and are thrown DOWN and
   // BEHIND him -- a puff that hangs where it was born reads as a sticker rather than as

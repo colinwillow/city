@@ -1736,13 +1736,33 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   list of patterns and the earliest match wins.
   **`up` is deliberately over `MOVE.g`** so he climbs while it burns, and `cap` is what stops
   that being a launch: it is a ride.
-  **HOLD THE PAD AND HE FLIES, WHEREVER THE THUMB IS.** The first version also wanted the
-  thumb near the middle, which is the wrong test twice over: `stick.R.far` is a HIGH-WATER MARK
-  for the whole touch, so one look would have killed the thrust for the rest of it (the bug
-  that held the sprint at 9 m/s for three builds) — and even the *instantaneous* magnitude
-  fights the camera, because that pad is still the look and you cannot fly and see where you
-  are going at once. The gate is just "held past the tap": a TAP still jumps, a HOLD flies, and
-  a drag does both, which is what flying wants.
+  **THE FIRST TAP IS THE JUMP, THE SECOND TAP HELD IS THE PACK (c116).** It used to be any hold
+  at all, wherever the thumb was — fine while the pack was the only thing on that pad. c113
+  took the aim test out of `p.rHold` (rightly: it was cutting the thrust mid-flight), and the
+  two then collided on the ONE gesture the blaster needs most: *"now you press up, which is
+  what is supposed to initiate blaster."*
+  **Requiring him to be AIRBORNE separates them completely and costs no new control:**
+      on the ground   a hold is the blaster's charge and the sprint, and nothing else
+      in the air      a hold is thrust, whichever way the thumb is pointing
+  So the sequence is the one he already plays — tap to jump, then press and hold to fly — and
+  on the board it is tap to OLLIE and then hold to fly, which is the same gesture and needed no
+  case of its own. Holding UP in the air is now a jetpack AND a charged shot at once, because
+  the two gates no longer overlap on the ground where the choice has to be made.
+  **THE PRESS HAS TO BEGIN IN THE AIR (`jetArm`).** `!p.grounded` alone would light the motor
+  for a thumb that was already down and then walked off a kerb — a sprint that turns into
+  flight at the edge of a pavement. It arms on the frame the pad goes down, only if he is off
+  the ground at that moment.
+  **AND TWO THINGS ABOUT THAT EDGE DETECTOR ARE LOAD-BEARING.** It lives ABOVE the early
+  return, because an edge detector that stops running goes stale — equip the pack mid-hold and
+  it would see no new press and fire on a thumb already down. And it DISARMS the moment he is
+  grounded, or a hold carried through a landing keeps its arming and the next frame on the road
+  has `down`, `rHold` and `jetArm` all true, which is the ground thrust this change exists to
+  remove, straight back.
+  **`far` IS NEVER TESTED**, and the first version's `rm < .55` was wrong twice over: it is a
+  HIGH-WATER MARK for the whole touch, so one look would have killed the thrust for the rest of
+  it (the bug that held the sprint at 9 m/s for three builds) — and even the *instantaneous*
+  magnitude fights the camera, because that pad is still the look and you cannot fly and see
+  where you are going at once.
   **AND IT REPLACES THE DOUBLE JUMP.** One thumb cannot mean both — a tap in the air would
   spend the second jump on a flip at the exact moment the hold is meant to be lighting the
   motor, and the two would fight every time you flew out of a jump. While the pack is out the
