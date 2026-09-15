@@ -249,7 +249,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c107</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c108</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -262,7 +262,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c107';
+const BUILD = 'c108';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -5931,19 +5931,20 @@ function stepRoll(dt) {
 }
 function stepFoot(dt) {
   const s = stickWorld(); const p = player;
-  // WHILE THE GUN IS OUT THE RIGHT PAD IS THE GUN, AND NOTHING ELSE. `p.rHold` is "how long
-  // that pad has been down" and it feeds the SPRINT -- so holding the pad up to charge a shot
-  // was also winding him up to x3 top speed, while `stepAim` steered him with the same thumb.
-  // Aiming therefore launched him across the street sideways, which is "the locomotion gets
-  // all messed up, he gets locked in".
-  // The comment above `stepAim` claimed the ordering already prevented this ("runs BEFORE
-  // stepPlayer, so a thumb holding a charge is not also read as a sprint"). It does not:
-  // `rHold` is counted here off `stick.R.down` alone and has never once looked at `p.aim`.
-  // A protection that is only asserted in a comment is not a protection.
-  // The melee flick is already suppressed exactly this way in `boardFlick`, so this is the
-  // rule that pad already follows, applied to the one meaning that was still leaking through.
+  // A COMMITTED SHOT STANDS THE SPRINT DOWN. CARRYING THE GUN DOES NOT.
+  // `p.rHold` is "how long that pad has been down" and it feeds the sprint -- so holding the
+  // pad up to charge a shot was also winding him to x3 top speed while `stepAim` steered him
+  // with the same thumb, and aiming launched him across the street sideways.
+  // c98 fixed that by gating on `gunOut()`, WHICH WAS THE WRONG HALF: *"I didn't mean he can't
+  // run fast when he has a blaster, I just meant if you've already initiated a shot."* Holding
+  // the pad is how you sprint and it is also how you steer the aim, and those two do not
+  // actually fight -- one reads how LONG the thumb has been down, the other reads WHERE it is.
+  // Only the committed shot needs him planted, so only `p.aim` takes the sprint away.
+  // The comment above `stepAim` used to claim the call ordering already prevented all this.
+  // It does not and never did: `rHold` is counted here off `stick.R.down` and has never once
+  // looked at the aim. A protection asserted only in a comment is not a protection.
   // A TAP IS STILL A JUMP -- that is a separate event and it is not gated here.
-  p.rHold = (stick.R.down && !gunOut()) ? p.rHold + dt : 0;
+  p.rHold = (stick.R.down && !p.aim) ? p.rHold + dt : 0;
   if (p.rollT > 0) { stepRoll(dt); return; }
   if (p.mel) { stepMelee(dt); return; }
   if (p.hang) { stepHang(dt); return; }
@@ -6323,8 +6324,11 @@ function stepPlayer(dt) {
   const wantC = stick.R.down && (stick.R.far || 0) < .35;
   player.crouch = clamp(player.crouch + (wantC ? dt * 9 : -dt * 11), 0, 1);
   // the wind-up is on foot only; on the board that same thumb is the ollie and the crouch
-  // ...and the charge jump is the same thumb, so it stands down for the same reason.
-  const winding = wantC && !player.board && !gunOut() && player.grounded && !player.hit;
+  // ...and the charge jump is the same thumb, so it stands down for the same reason -- on the
+  // COMMITTED shot, not on carrying the gun. (`wantC` already needs `far < .35` and arming
+  // needs .80, so the two can barely overlap anyway; gating it on `gunOut()` only managed to
+  // take the charge jump away from anyone holding a blaster.)
+  const winding = wantC && !player.board && !player.aim && player.grounded && !player.hit;
   player.charge = winding ? Math.min(MOVE.chargeMax, player.charge + dt) : (player.jump ? player.charge : 0);
   player.landT = Math.max(0, player.landT - dt);
   player.rollT = Math.max(0, player.rollT - dt);

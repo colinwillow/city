@@ -1338,7 +1338,7 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   gap rather than a dot, because a dot on an officer at forty metres is one pixel and what has
   to read is WHICH THING is marked. `pointer-events: none` without exception: it sits in the
   middle of the play area.
-- **WHILE THE GUN IS OUT THE RIGHT PAD IS THE GUN, AND NOTHING ELSE.** `p.rHold` is "how long
+- **A COMMITTED SHOT STANDS THE SPRINT DOWN; CARRYING THE GUN DOES NOT (c108 fixed c98).** `p.rHold` is "how long
   that pad has been down" and it feeds the SPRINT — so holding the pad up to charge a shot was
   also winding him to x3 top speed while `stepAim` steered him with the same thumb. Aiming
   launched him across the street sideways: *"when you have your rifle equipped the locomotion
@@ -1348,9 +1348,15 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   did: `rHold` is counted in `stepFoot` off `stick.R.down` alone and has never once looked at
   `p.aim`. **A protection asserted only in a comment is not a protection**, and this file now
   has two of those (the other was `KIT.on`'s "one owner").
-  The melee flick is already suppressed exactly this way in `boardFlick`, so this is the rule
-  that pad already follows, applied to the meaning that was still leaking through. The charge
-  jump stands down with it. **A tap is still a jump** — that is a separate event, not `rHold`.
+  The charge jump stands down with it. **A tap is still a jump** — a separate event, not `rHold`.
+  **AND c98 GATED IT ON THE WRONG HALF.** It used `gunOut()`, so merely equipping the blaster
+  took the sprint away: *"I didn't mean he can't run fast when he has a blaster, I just meant
+  if you've already initiated a shot."* Holding the pad is how you sprint and it is also how
+  you steer the aim, and **those two do not actually fight** — one reads how LONG the thumb has
+  been down, the other reads WHERE it is. Only `p.aim` takes the sprint away now.
+  The same over-reach had taken the charge jump off anyone holding a blaster, and there it was
+  redundant as well as wrong: `wantC` needs `far < .35` and arming needs `.80`, so the crouch
+  and the trigger can barely overlap in the first place.
 - **`npm run gait` SAYS WHETHER A BORROWED GAIT CLIP FITS THIS BODY, AND IT IS TWO SEPARATE
   QUESTIONS.** *"It makes him go up and down really quickly"* has two causes that need
   different fixes, so guessing costs a round:
