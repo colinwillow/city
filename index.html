@@ -39,6 +39,36 @@
   #boot .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7ee7ff,#e8fbff);transition:width .15s}
   #boot .msg{font-size:13px;letter-spacing:.2em;text-transform:uppercase;opacity:.7}
   #boot .err{color:#ffb4b4;font-size:13px;max-width:80vw;text-align:center;white-space:pre-wrap;opacity:.9}
+  /* ---- title card ----
+     THE PICTURE BEHIND IT IS THE GAME. Plutopia builds a whole second scene for its title
+     (`DIO.*`) because its world is procedural and the card wants a thing that does not exist
+     in play. This one already has the shot in it -- he is stood in the street with his board,
+     the traffic is running, the clouds are going over -- so the card is the ordinary scene
+     and the ordinary post chain with a different CAMERA, and this is only type on glass. */
+  #title{position:fixed;inset:0;z-index:6;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+    gap:16px;padding:0 24px calc(48px + env(safe-area-inset-bottom));pointer-events:none;opacity:0;transition:opacity .8s ease}
+  /* pointer-events only once it is VISIBLE. #title is none throughout, so an invisible
+     button over the boot card cannot be pressed -- which it could, and it started the
+     game underneath the loading screen. */
+  #title.on{opacity:1}
+  #title.on #startB{pointer-events:auto}
+  #title.go #startB{pointer-events:none}
+  #title.go{opacity:0;transition:opacity .45s ease}
+  #title .word{margin:0 0 auto;padding-top:calc(40px + env(safe-area-inset-top));text-align:center;
+    font-weight:700;font-size:clamp(40px,14vw,104px);line-height:.9;letter-spacing:.05em;text-transform:uppercase;color:#fff;
+    text-shadow:0 3px 0 rgba(8,22,42,.5),0 0 38px rgba(120,238,255,.5),0 0 100px rgba(255,186,110,.4)}
+  #title .word i{display:block;font-style:normal;color:#ffd79a;
+    text-shadow:0 3px 0 rgba(8,22,42,.5),0 0 42px rgba(255,176,86,.75)}
+  #title .sub{font-size:11.5px;letter-spacing:.34em;text-transform:uppercase;opacity:.7}
+  #startB{touch-action:manipulation;cursor:pointer;border:0;font-family:var(--disp);
+    font-weight:700;font-size:17px;letter-spacing:.24em;text-transform:uppercase;color:#06131f;
+    padding:17px 48px;border-radius:999px;background:linear-gradient(180deg,#eafdff,#7ee7ff);
+    box-shadow:0 10px 30px rgba(8,18,38,.45),0 0 30px rgba(120,238,255,.45);animation:startPulse 2.4s ease-in-out infinite}
+  #startB:active{animation:none;transform:scale(.97)}
+  @keyframes startPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
+  /* THE HUD DOES NOT EXIST UNTIL HE HAS PRESSED IT -- except the build badge, which is how he
+     tells one build from the one before it and is wanted MOST on the first screen. */
+  body.title #sticks,body.title .key,body.title #map,body.title #speed,body.title #help{opacity:0;pointer-events:none}
   /* ---- sticks (from Plutopia) ---- */
   #sticks .stick{position:fixed;bottom:calc(26px + env(safe-area-inset-bottom));width:132px;height:132px;border-radius:50%;z-index:4;touch-action:none;
     background:radial-gradient(circle,rgba(157,247,255,.10),rgba(157,247,255,.03) 58%,rgba(157,247,255,0) 74%);
@@ -85,8 +115,9 @@
   @media (pointer:coarse){#help{display:none}}
 </style>
 </head>
-<body>
+<body class="title">
 <div id="boot"><h1>City</h1><div class="bar"><i id="bootBar"></i></div><div class="msg" id="bootMsg">loading the city</div><div class="err" id="bootErr"></div></div>
+<div id="title"><h1 class="word">Skate<i>City</i></h1><div class="sub">low poly &middot; two thumbs</div><button id="startB">Start</button></div>
 <div id="sticks">
   <div class="stick" id="stkL"><div class="knob"></div><div class="lbl">MOVE</div></div>
   <div class="stick" id="stkR"><div class="knob"></div><div class="lbl">LOOK</div></div>
@@ -95,7 +126,7 @@
 <div class="key" id="resetB">&#8635;</div>
 <div class="key on" id="soundB">&#9834;</div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c64</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c66</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -107,7 +138,7 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
-const BUILD = 'c64';
+const BUILD = 'c66';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -289,6 +320,43 @@ const TRICK = {
 // comes after it. So the elevation is a constant: a shallow look-down that keeps him
 // and the street he is on both in frame, and the pad's whole travel means yaw.
 const CAM = { dist: 6.4, distV: .11, el: .17, look: 1.3, yawRate: 2.4, follow: 1.8, idle: .55, half: .07, fov: 52, fovRush: 9 };
+// THE TITLE CARD'S SHOT. The scene is the game's own, so all that is here is a camera.
+const TITLE = {
+  on: true, t: 0,
+  // Low and close, aimed at his chest: the horizon sits high in the frame, which is what
+  // leaves the top half of it for the sky and the cloud models.
+  dist: 8.6, el: .085, look: 1.18,
+  // AIMED AT THE SKYLINE, AND THAT BEARING IS MEASURED. The spawn is the farm edge -- the
+  // eight things over 14 m tall are all downtown, centred on (245, 67), which from
+  // (-100.8, 0) is atan2(345.8, 67) = 1.379 rad and 352 m away. At 352 m a 51 m tower stands
+  // atan(51/352) = 8.2 degrees up, and with `el` pitching the lens 4.9 degrees down the frame
+  // runs from -31 to +21 degrees -- so the towers land in the upper third. `FogExp2(.0021)`
+  // leaves them 42% hazed at that range, which is the look, not a problem.
+  // THE SUN IS NOT IN FRAME AND CANNOT BE. `LIGHT.sunDir` (.55, 1, .35) is 1.004 rad round
+  // -- near enough the same way, which is why he is backlit -- but 57 degrees UP, against a
+  // lens that sees to +21. Craning up to find the disc points the camera at nothing but sky.
+  // What the "sun theme" actually is here is the warm part of his painted panorama behind
+  // the skyline and the light coming over his shoulder. Do not chase the disc.
+  // 1.34 rather than 1.379 so the sway does not take the towers off the near edge: the swing
+  // is +-.26, and a phone held PORTRAIT has only .24 rad of half-frame across.
+  az: 1.34,
+  turn: .38,       // and he stands a little off square to it, so it is a three-quarter view
+  // A HELD SHOT THAT SWAYS, NEVER AN ORBIT -- Plutopia's title learnt this the expensive way.
+  // Half of a full turn is spent round the back of the subject, so the composition the card
+  // exists FOR is on screen for half the time and you are never looking at the good frame.
+  sweep: .26, rate: .055, breathe: .035, breatheT: 19,
+  // The descent. It swings from in front of him round to behind him as it comes in, which is
+  // the reveal: the card turns into the camera he plays with rather than cutting to it.
+  dive: 0, diveT: 2.4, az0: 0, el0: 0, dist0: 0, look0: 0,
+  // HE HOLDS THE DECK. There is no clip for it -- `idle_neutral` simply has his arms down --
+  // so the board is hung off the hand BONE's world matrix each frame. Not PARENTED to it:
+  // his armature is scaled 0.01, so a board added as a child of a bone comes out a hundredth
+  // of its size, which is the same trap `Box3.setFromObject` sets three hundred lines down.
+  hand: 'mixamorig_RightHand',
+  grip: .34,               // the deck's centre hangs this far under his hand: he holds the nose
+  yaw: Math.PI / 2,        // which way the grip tape faces. One sign is against his leg, the other out
+};
+TITLE.face = TITLE.az + Math.PI + TITLE.turn;   // facing back down the barrel, turned off square
 const TOON = { k: 1, bands: 2, soft: .055, floor: .34, rim: .26, rim0: .26, rimP: 3.4, rimCol: new THREE.Color('#dcefff'),
   spec: 1, specG: .06,     // how much specular survives overall, and at the GRAZING end
   // 1 = the rim takes the colour of the surface it is on, 0 = flat white on everything.
@@ -2341,6 +2409,9 @@ function buildColin(gltf) {
     m.needsUpdate = true;
   }
   colin.model = model; colin.root.add(model);
+  // the title card hangs his deck off this. Named, not guessed: the rig is Mixamo's.
+  colin.hand = model.getObjectByName(TITLE.hand) || model.getObjectByName('mixamorig_LeftHand') || null;
+  if (!colin.hand) console.warn('[colin] no hand bone ' + TITLE.hand + ' -- the title board will stand beside him');
   colin.mixer = new THREE.AnimationMixer(model);
   for (const clip of gltf.animations) {
     const a = colin.mixer.clipAction(clip); a.enabled = true; a.setEffectiveWeight(0);
@@ -3067,6 +3138,71 @@ function buildBoard(gltf) {
 }
 
 // ---------- camera ----------
+// The placement stepCam ends with, without the damping -- the title and the descent drive the
+// rig directly, because a lag on a shot that is already slow is just a shot that is late.
+function camAim(az, el, dist, look) {
+  cam.az = az; cam.el = el;
+  cam.tgt.set(player.pos.x, player.pos.y + look, player.pos.z);
+  const ce = Math.cos(el);
+  cam.pos.set(cam.tgt.x - Math.sin(az) * ce * dist, cam.tgt.y + Math.sin(el) * dist, cam.tgt.z - Math.cos(az) * ce * dist);
+  const floor = hmAt(cam.pos.x, cam.pos.z) + .6; if (cam.pos.y < floor) cam.pos.y = floor;
+  camera.position.copy(cam.pos); camera.lookAt(cam.tgt);
+  sky.position.copy(camera.position);
+  sun.position.copy(player.pos).addScaledVector(LIGHT.sunDir, 160); sun.target.position.copy(player.pos);
+}
+const _hand = new THREE.Vector3();
+// The deck in his hand. `poseColin` owns the board only while he is ON it (`player.board`),
+// which he is not here, so nothing fights over it.
+function titleBoard() {
+  board.visible = true;
+  const h = colin.hand;
+  if (h) { h.updateWorldMatrix(true, false); h.getWorldPosition(_hand); board.position.copy(_hand); board.position.y -= TITLE.grip; }
+  else { board.position.copy(player.pos); board.position.y += .95; }   // no bone: stand it beside him
+  // The deck's length is on its local Z (buildBoard guarantees it), and Euler YXZ is
+  // Ry * Rx * Rz -- so the X term stands the board up and the Y term then swings it round
+  // with him, which is the order that keeps it hanging vertically whichever way he faces.
+  board.rotation.set(-Math.PI / 2, player.faceH + TITLE.yaw, 0, 'YXZ');
+}
+function titleFrame(dt) {
+  TITLE.t += dt;
+  // He stands where he SPAWNS. That is the point of doing the card in the live scene: START
+  // is a camera move and not a teleport, so the street on the card is the street he starts in.
+  player.vel.set(0, 0, 0); player.speed = 0; player.heading = player.faceH = TITLE.face;
+  if (colin.ready) { colinSet({ idle_neutral: 1 }, dt); poseColin(dt); titleBoard(); }
+  camAim(TITLE.az + Math.sin(TITLE.t * TITLE.rate * Math.PI * 2) * TITLE.sweep, TITLE.el,
+         TITLE.dist * (1 + Math.sin(TITLE.t / TITLE.breatheT * Math.PI * 2) * TITLE.breathe), TITLE.look);
+}
+// The descent into the playing rig. Slow at both ends so it reads as an arrival, not a cut.
+function diveFrame(dt) {
+  TITLE.dive = Math.max(0, TITLE.dive - dt);
+  const k = 1 - TITLE.dive / TITLE.diveT, e = k * k * (3 - 2 * k);
+  // round to BEHIND him: the follow camera looks along his facing, so that is where az lands.
+  camAim(TITLE.az0 + wrapAngle(player.faceH - TITLE.az0) * e, lerp(TITLE.el0, CAM.el, e),
+         lerp(TITLE.dist0, CAM.dist, e), lerp(TITLE.look0, CAM.look, e));
+  // The deck stays in his hand THROUGH the descent and only goes away once the camera has
+  // arrived. Dropping it on the press pops it out of frame dead centre, which is the one
+  // moment he is looking straight at it. The hook for "he starts ON the board" is here:
+  // set `player.board = true` in startGame and this line becomes a handover rather than a cut.
+  if (!player.board) titleBoard();
+  if (TITLE.dive <= 0) { cam.idle = 0; board.visible = player.board; }
+}
+const titleEl = document.getElementById('title');
+function startGame() {
+  if (!TITLE.on || !ready) return;
+  TITLE.on = false; TITLE.dive = TITLE.diveT;
+  TITLE.az0 = cam.az; TITLE.el0 = TITLE.el; TITLE.dist0 = TITLE.dist; TITLE.look0 = TITLE.look;
+  // THE BUTTON IS THE GESTURE, and that is worth more than the button. A browser will not
+  // build an AudioContext outside one, so until now the first ollie was also the thing that
+  // started the decode. `SFX.init` fetches, decodes and puts the theme on, all off one press
+  // he was always going to make.
+  SFX.wake();
+  player.jump = 0; player.charge = 0; player.rHold = 0;   // nothing held over the card is spent on entry
+  stick.L.x = stick.L.y = stick.R.x = stick.R.y = 0; for (const k in keys) keys[k] = 0;
+  titleEl.classList.add('go'); setTimeout(() => titleEl.remove(), 900);
+  document.body.classList.remove('title');
+}
+document.getElementById('startB').addEventListener('click', startGame);
+
 function stepCam(dt) {
   // in the air on the board that pad is spending its travel on tricks, not on the lens
   const rx = (player.board && !player.grounded) ? 0 : stick.R.x;
@@ -3140,11 +3276,13 @@ function frame() {
   const dt = Math.min(clock.getDelta(), .05);
   if (!ready) return;
   toonSync();
-  stepPlayer(dt);
+  // The card runs the WHOLE scene -- traffic, clouds, his mixer, the post chain. Only the
+  // player is suspended, and only because he is being posed rather than driven.
+  if (TITLE.on) titleFrame(dt); else stepPlayer(dt);
   stepTraffic(dt);
   stepClouds(dt);
-  WHEELS.set(player.speed, player.board && player.grounded && !player.hit, !!player.rail && SFX.on);
-  stepCam(dt);
+  WHEELS.set(player.speed, !TITLE.on && player.board && player.grounded && !player.hit, !!player.rail && SFX.on);
+  if (TITLE.dive > 0) diveFrame(dt); else if (!TITLE.on) stepCam(dt);
   stepHole();
   drawMap(dt);
   if (colin.mixer) colin.mixer.update(dt);
@@ -3180,9 +3318,10 @@ frame();
     buildMap();
     ready = true;
     document.getElementById('boot').classList.add('off');
+    titleEl.classList.add('on');
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.city = { BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
+window.city = { TITLE, startGame, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, player, cam, cars, tiles, solids, hmAt, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

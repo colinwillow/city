@@ -524,6 +524,46 @@ playwright unless he asks for it by name.
       charge  50%   top 11.5      jump 4.11 m       1.28 s, 17.9 m
       charge 100%   top 14.0      jump 5.66 m       1.51 s, 28.5 m
   On the board that thumb is still the ollie, so the wind-up is on foot only.
+- **THE TITLE CARD IS THE GAME, NOT A SECOND SCENE (`TITLE`, `titleFrame`, `camAim`).**
+  Plutopia builds a whole disposable planet for its card (`DIO.*`) because its world is
+  procedural and the shot wants something that does not exist in play. This one already has
+  the shot in it — he is stood in the street with his deck, the traffic is running, the clouds
+  are going over — so the card is **the ordinary scene, the ordinary post chain, a different
+  CAMERA**, and the DOM is only type on glass. The player is the one thing suspended, and only
+  because he is being posed rather than driven.
+  - **He stands where he SPAWNS, so START is a camera move and not a teleport.** The street on
+    the card is the street he starts in. That is the whole reason to do it in the live scene.
+  - **THE SHOT IS AIMED, AND THE BEARING IS MEASURED.** The spawn is the farm edge: nothing
+    near it is over 11 m. The eight buildings over 14 m are all downtown, centred on
+    (245, 67), which from (−100.8, 0) is **atan2(345.8, 67) = 1.379 rad, 352 m out**. At that
+    range a 51 m tower stands 8.2° up and `FogExp2(.0021)` leaves it 42% hazed — a skyline on
+    the horizon, which is the look. `az` is 1.34 rather than 1.379 so the ±.26 sway cannot
+    push it off the near edge: **a phone held PORTRAIT has only .24 rad of half-frame across**,
+    against .77 in landscape.
+  - **THE SUN IS NOT IN FRAME AND CANNOT BE.** `LIGHT.sunDir` is 1.004 rad round — near enough
+    the same way, which is why he reads as backlit — but **57° UP**, against a lens that sees
+    to +21°. Craning up to find the disc points the camera at nothing but sky. The "sun" here
+    is the warm part of his painted panorama behind the skyline. **Do not chase the disc.**
+  - **A HELD SHOT THAT SWAYS, NEVER AN ORBIT** — Plutopia learnt that one expensively. Half a
+    full turn is spent round the back of the subject, so the composition the card exists FOR
+    is on screen half the time and you are never looking at the good frame.
+  - **THE DECK IS HUNG OFF THE HAND BONE'S WORLD MATRIX, NEVER PARENTED TO IT.** There is no
+    holding clip — `idle_neutral` just has his arms down — so `titleBoard` reads
+    `mixamorig_RightHand` each frame. Adding the board as a CHILD of a bone is the trap: his
+    armature is scaled 0.01, so it would come out a hundredth of its size. Euler `YXZ` is
+    `Ry·Rx·Rz`, so the X term stands the deck up (its length is on local Z) and the Y term
+    then swings it with him — that order is what keeps it vertical whichever way he faces.
+    It stays in his hand THROUGH the descent and goes away when the camera arrives; dropping
+    it on the press pops it out of frame dead centre, the one moment he is looking at it.
+    **The hook for "he starts on the board" is one line in `startGame`.**
+  - **THE START BUTTON IS THE AUDIO GESTURE, and that is worth more than the button.** A
+    browser will not build an `AudioContext` outside one, so until c65 his first ollie was
+    also the thing that started the decode. Now the fetch, the decode and the theme all land
+    on a press he was always going to make.
+  - **`pointer-events` goes on `#title.on`, never on `#startB`.** An invisible button over the
+    boot card is still a button: it started the game underneath the loading screen.
+  - The build badge deliberately stays visible on the card — it is how he tells one build from
+    the one before it, and it is wanted MOST on the first screen.
 - **THE MAP (`MAP`, `buildMap`, `drawMap`) IS A SCHEMATIC, NOT A RADAR.** The whole city at
   once, north up, because the question it answers is "where is the park from here" and he
   could not find the ramps at all. **The road network IS the map** — `tiles` already holds
