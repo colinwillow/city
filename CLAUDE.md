@@ -2244,6 +2244,47 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
     It stays in his hand THROUGH the descent and goes away when the camera arrives; dropping
     it on the press pops it out of frame dead centre, the one moment he is looking at it.
     **The hook for "he starts on the board" is one line in `startGame`.**
+  - **THE CARD IS A LINE-UP NOW (`LINE`, `lineStep`, c131).** *"All of the characters should
+    stand on the start screen -- Colin in the middle, Moussa one side, the alien the other --
+    and everybody who is not selected is slightly back."*
+    **THIS COST ALMOST NOTHING BECAUSE `PARADE` HAD ALREADY PAID FOR IT.** "Every character owns
+    his own root, always in the scene" was written so TWO of them could be on the street during
+    a swap; having all five is the same property, used harder. `colin.root` is still an alias
+    for whoever is current, so `poseColin` still never learns any of this happened.
+    **THE LAYOUT IS DERIVED FROM THE SHOT, NOT TYPED.** The line runs along the CAMERA'S right
+    and is centred on the roster, so it stays square to `TITLE.az` whatever that is set to, and
+    adding a character shuffles everybody out by half a gap instead of growing the row off one
+    end. The unselected stand back AND angled inward — that inward angle is the whole difference
+    between a group and a police line-up, and it is what makes three read as his "triangle"
+    while eight read as a line, with no second case.
+    **AND `poseColin` IS NOT CALLED ON THE CARD ANY MORE.** It puts the current character
+    wherever the PLAYER is, which is a second writer on the same root — whichever ran last would
+    win the frame.
+    **THE CURRENT SKIN'S MIXER MUST NOT BE UPDATED HERE.** `frame()` already updates
+    `colin.mixer`, and that IS this skin's mixer when it is the one worn: driving it in the
+    line-up as well advances his clips TWICE a frame, so the man you have selected idles at
+    double speed and nobody else does.
+    **`wear` HAS TO RUN AGAIN AFTER `TITLE.on` GOES FALSE.** It owns that visibility, and run
+    before the flag flips it decides everybody is still standing there — and they would be, for
+    the whole game, rooted at the spawn.
+    **THEY LOAD IN BEHIND THE CARD, ONE AT A TIME (`lineFill`).** Five skins is twenty-three
+    megabytes and none of it belongs on the boot path: the card comes up with whoever was worn
+    last time and the rest take their places as they land. Which is also exactly what "when you
+    unlock more characters they will be on there" looks like, with nothing extra to build. A
+    failure is REMEMBERED, because retrying a missing file every frame is a request storm that
+    looks identical to the file being slow.
+    **THE SHIP GOES OVER (`SHIPFLY`)** — a clone, because the real one is parked on a roof four
+    hundred metres away and moving it would mean putting it back. It crosses on the camera's own
+    right axis, so it is in frame BY CONSTRUCTION whatever `TITLE.az` is: the clouds' rule, that
+    anything meant to be SEEN is placed in the frame's terms and never in metres.
+    `startParade` stays for the case it was written for — no line-up, one man, walking in from
+    off frame — and `LINE.on = 0` gets you back to it.
+- **`camClear` AND `camFree` WERE THE SAME FUNCTION (c131).** c129 wrote the play camera's boom
+  probe without noticing the title camera had had one since c65. They answer one question, so
+  there is one of them now: `camClear` delegates. The newer body is strictly better — 0.6 m
+  steps rather than seven samples at 12%, so it cannot step over a railing, and it honours
+  `CAM.min`. **Two functions answering one question is two things to keep in step**, which is
+  the same argument as a variable with three owners and a harness with its own roster.
   - **CHANGING CHARACTER IS A CHANGING OF THE GUARD (`PARADE`).** The one you have walks out of
     frame and the one you picked walks in from the other side. That is why **every skin owns
     its own root group, always in the scene** — one shared root can only hold one character,

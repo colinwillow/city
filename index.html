@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c130</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c131</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c130';
+const BUILD = 'c131';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -936,6 +936,30 @@ TITLE.face = TITLE.az + Math.PI + TITLE.turn;   // facing back down the barrel, 
 // CHANGING CHARACTER IS A CHANGING OF THE GUARD, not a swap. The one you have walks out of
 // frame and the one you picked walks in from the other side, which is the whole reason each
 // skin owns its own root: for a second and a half there are two of them on the street.
+// THE TITLE CARD IS A LINE-UP (c131). *"All of the characters should stand on the start screen
+// -- Colin in the middle, Moussa one side, the alien the other -- and everybody who is not
+// selected is slightly back. When you pick one, they sort of swap places."*
+// EVERY LOADED SKIN IS ON THE STREET AT ONCE, which is exactly what "every character owns his
+// own root, always in the scene" was already built for (see PARADE below): one shared root can
+// only hold one character, and that decision is what makes this three lines rather than a
+// rewrite. `colin.root` stays an alias for whoever is current, so `poseColin` still never
+// learns any of this happened.
+// THE LAYOUT IS DERIVED, NOT TYPED. The line runs along the CAMERA'S right, so it is square to
+// the shot whatever `TITLE.az` is set to, and it is CENTRED on the roster -- add a character
+// and everybody shuffles out by half a gap rather than the row growing off one end.
+// THE UNSELECTED STAND BACK AND ANGLED IN, which is what makes three of them read as a group
+// rather than a police lineup -- his "almost in a triangle". With more of them it becomes a
+// line with one man forward, which is the same rule and needs no second case.
+// AND THE SWAP IS A WALK, NOT A CUT: the one you leave steps back, the one you pick steps
+// forward, both at once, both with the gait blended by the speed they are actually moving at.
+// THEY LOAD IN BEHIND THE CARD, one at a time. Five skins is twenty-three megabytes and none of
+// it belongs on the boot path -- the card comes up with whoever was worn last time and the rest
+// arrive and take their places. Which is also what "when you unlock more characters they will
+// be on there" looks like, with nothing extra to build.
+const LINE = {
+  on: 1, gap: 1.45, back: 1.25, ease: .80, lean: .34, pan: .6, fill: 1,
+  t: {},          // per-key 0..1, back..front
+};
 const PARADE = {
   // A FIXED DURATION, NOT A FIXED SPEED, and the gait falls out of it. The frame is four times
   // wider in landscape than in portrait, so the walk-off is 3.7 m one way up and 10.9 m the
@@ -5346,7 +5370,9 @@ function wear(key) {
   // man who has gone. The kit moves with whoever is current.
   gearRehome();
   // everybody who is not him and not mid-walk goes away
-  for (const k in CHARS.skins) { const o = CHARS.skins[k]; o.root.visible = (o === skin) || PARADE.walk.some(w => w.skin === o); }
+  // ON THE CARD EVERYBODY IS ON THE STREET; in play only the man you are.
+  for (const k in CHARS.skins) { const o = CHARS.skins[k];
+    o.root.visible = (TITLE.on && LINE.on) || (o === skin) || PARADE.walk.some(w => w.skin === o); }
   CHARS.cur = key; try { localStorage.setItem(CHARS.key, key); } catch (e) {}
   chipHL(key);
   return true;
@@ -5374,7 +5400,12 @@ function pickChar(key, dir, snap) {
 // A walk-on only means anything while the card is up and somebody is there to walk off. Boot
 // and the game itself just put him on.
 function enterChar(key, dir, snap) {
-  if (!snap && TITLE.on && colin.ready && CHARS.cur && CHARS.cur !== key) startParade(key, dir);
+  // ON THE CARD THE LINE-UP OWNS THE SWAP -- the one you leave steps back and the one you pick
+  // steps forward, both already standing there. `startParade`'s walk-on is what that replaces,
+  // and it stays for the case it was written for: no line-up, one man, walking in from off
+  // frame. Everywhere else `wear` is still an instant change of who is current.
+  if (!snap && TITLE.on && colin.ready && LINE.on) wear(key);
+  else if (!snap && TITLE.on && colin.ready && CHARS.cur && CHARS.cur !== key) startParade(key, dir);
   else wear(key);
 }
 function cycleChar(dir) {
@@ -7747,20 +7778,17 @@ const _cq = [];
 // whatever is behind him -- at the spawn, the house. Walk the boom in from the far end and
 // stop at the first sample that is not inside a solid box. Cheap: one grid query per step,
 // and only the title and the descent use it, which are the only shots nobody is steering.
-function camClear(tx, ty, tz, dx, dy, dz, dist) {
-  for (let i = 0; i <= 6; i++) {
-    const d = dist * (1 - i * .12);
-    const x = tx + dx * d, y = ty + dy * d, z = tz + dz * d;
-    gridQuery(x, z, .4, _cq);
-    let hit = false;
-    for (const b of _cq) if (x > b.minx - .35 && x < b.maxx + .35 && z > b.minz - .35 && z < b.maxz + .35 && y > b.miny - .35 && y < b.maxy + .35) { hit = true; break; }
-    if (!hit) return d;
-  }
-  return dist * .28;
-}
+// ONE IMPLEMENTATION, NOT TWO. c129 wrote `camFree` for the play camera without noticing this
+// already existed for the title -- same job, same grid, and the newer one is strictly better
+// (0.6 m steps rather than seven samples at 12%, so it cannot step over a railing, and it
+// honours `CAM.min`). Two functions answering one question is two things to keep in step.
+function camClear(tx, ty, tz, dx, dy, dz, dist) { return camFree(tx, ty, tz, dx, dy, dz, dist); }
 function camAim(az, el, dist, look) {
   cam.az = az; cam.el = el;
-  cam.tgt.set(player.pos.x, player.pos.y + look, player.pos.z);
+  // THE LINE-UP SLIDES THE LENS, not the row. Centring the man you picked is what makes the
+  // pick read as a decision rather than as a list scrolling underneath a fixed camera.
+  const px = (TITLE.on && LINE.on && LINE.px) || 0, pz = (TITLE.on && LINE.on && LINE.pz) || 0;
+  cam.tgt.set(player.pos.x + px, player.pos.y + look, player.pos.z + pz);
   const ce = Math.cos(el);
   const dx = -Math.sin(az) * ce, dy = Math.sin(el), dz = -Math.cos(az) * ce;
   dist = camClear(cam.tgt.x, cam.tgt.y, cam.tgt.z, dx, dy, dz, dist);
@@ -7811,6 +7839,101 @@ function startParade(key, dir) {
   if (cur && cur !== next && !P.walk.some(w => w.skin === cur))
     P.walk.push({ skin: cur, from: 0, to: -dir * P.ex, s: 0, e: 0, dur: P.dur, lead: 0, settle: 0 });
   P.walk.push({ skin: next, from: dir * P.ex, to: 0, s: dir * P.ex, e: 0, dur: P.dur, lead: 1, settle: 0 });
+}
+// WHERE EACH CHARACTER STANDS. Everything here falls out of the shot rather than being typed:
+// the line is along the camera's RIGHT, the group is centred on the roster, and "forward" is
+// toward the lens. Move `TITLE.az` and the whole arrangement stays square to it.
+function lineStep(dt) {
+  const L = LINE;
+  if (!L.on) return false;
+  const list = CHARS.list.filter(c => CHARS.skins[c.key]);
+  if (!list.length) return false;
+  // camera-right and camera-toward, the same convention `paradeAim` uses
+  const rx = -Math.cos(TITLE.az), rz = Math.sin(TITLE.az);
+  const fx = -Math.sin(TITLE.az), fz = -Math.cos(TITLE.az);    // from the subject TOWARD the lens
+  const mid = (list.length - 1) / 2;
+  let selOff = 0;
+  for (let i = 0; i < list.length; i++) {
+    const key = list[i].key, skin = CHARS.skins[key];
+    readySkin(skin);
+    const sel = key === CHARS.want ? 1 : 0;
+    // EASED, and the gait comes off how fast that ease is actually moving him -- the same rule
+    // the parade used, for the same reason: a clip time-scaled to a speed he is not travelling
+    // at is feet sliding on the road.
+    const was = L.t[key] === undefined ? sel : L.t[key];
+    const now = damp(was, sel, L.ease * .35, dt);
+    L.t[key] = now;
+    const moved = Math.abs(now - was) * L.back / Math.max(1e-4, dt);
+    const side = (i - mid) * L.gap;
+    if (sel) selOff = side;
+    const fwd = (now - 1) * L.back;                            // 0 at the front mark, -back behind
+    const x = player.pos.x + rx * side + fx * fwd;
+    const z = player.pos.z + rz * side + fz * fwd;
+    const g = groundAt(x, z, player.pos.y + 2, 1.5);
+    skin.root.visible = true;
+    skin.root.position.set(x, g.hit ? g.floor : hmAt(x, z), z);
+    skin.root.rotation.z = 0;
+    // FACING THE LENS, and the ones standing back are turned slightly INWARD -- that inward
+    // angle is the whole difference between a group and a police line-up.
+    const inward = -Math.sign(side) * L.lean * (1 - now);
+    skin.root.rotation.y = TITLE.face + inward;
+    const run = clamp((moved - GAIT.walkAt) / Math.max(.01, GAIT.runAt - GAIT.walkAt), 0, 1);
+    const w = clamp(moved / Math.max(.2, GAIT.walkAt), 0, 1);
+    if (w > .04) {
+      skinScale(skin, 'walk_fwd_neutral', clamp(moved / GAIT.walkRef, GAIT.tsLo, GAIT.tsHi));
+      // stepping BACK is the walk run backwards, `WEAP.aimBack`'s own trick
+      if (now < was) skinScale(skin, 'walk_fwd_neutral', -clamp(moved / GAIT.walkRef, GAIT.tsLo, GAIT.tsHi));
+      skinWeights(skin, { idle_neutral: 1 - w, walk_fwd_neutral: w * (1 - run), run_fwd: w * run }, dt);
+    } else skinWeights(skin, { idle_neutral: 1 }, dt);
+    // NOT THE CURRENT ONE. `frame()` already updates `colin.mixer`, which IS this skin's mixer
+    // when it is the one worn -- driving it here too advances his clips twice a frame, so the
+    // man you have selected idles at double speed and nobody else does.
+    if (skin.mixer && skin !== CHARS.skins[CHARS.cur]) skin.mixer.update(dt);
+  }
+  // AND THE CAMERA SLIDES TO WHOEVER IS PICKED rather than the row sliding under a fixed lens:
+  // the man you chose ends up centred, which is what makes the pick feel like a decision.
+  L.pan_ = damp(L.pan_ === undefined ? selOff : L.pan_, selOff, .5, dt);
+  L.px = rx * L.pan_ * L.pan; L.pz = rz * L.pan_ * L.pan;
+  return true;
+}
+// THEY ARRIVE ONE AT A TIME, BEHIND THE CARD. Twenty-three megabytes of skin has no business on
+// the boot path -- the card comes up with whoever was worn last time and the rest take their
+// places as they land. A failure is remembered, because retrying a missing file every frame is
+// a request storm that looks exactly like the file being slow.
+function lineFill() {
+  if (!LINE.fill || !TITLE.on || !colin.ready) return;
+  for (const k in CHARS.loading) if (CHARS.loading[k]) return;
+  CHARS.failed = CHARS.failed || {};
+  const next = CHARS.list.find(c => !CHARS.skins[c.key] && !CHARS.failed[c.key]);
+  if (!next) return;
+  CHARS.loading[next.key] = true;
+  loadGLB(next.url, 'loading ' + next.name)
+    .then(g => buildSkin(g, next.key))
+    .catch(e => { console.warn('[line] ' + next.key + ' failed', e); CHARS.failed[next.key] = 1; CHARS.miss = (CHARS.miss || 0) + 1; })
+    .finally(() => { CHARS.loading[next.key] = false; });
+}
+// THE SHIP GOES OVER. A clone rather than the parked one: that is on a roof four hundred metres
+// away and moving it would mean putting it back. It crosses the shot on the camera's own right
+// axis, so it is in frame by construction whatever `TITLE.az` is -- the clouds' rule, which is
+// that anything meant to be SEEN is placed in the frame's terms and never in metres.
+const SHIPFLY = { on: 1, out: 78, up: 26, span: 130, dur: 15, bank: .30, g: null, t: 0 };
+function stepShipFly(dt) {
+  if (!SHIPFLY.on || !SHIP.g) return;
+  if (!SHIPFLY.g) {
+    SHIPFLY.g = SHIP.g.clone(true);
+    SHIPFLY.g.traverse(o => { if (o.isMesh) o.castShadow = false; });
+    scene.add(SHIPFLY.g);
+  }
+  SHIPFLY.t = (SHIPFLY.t + dt / SHIPFLY.dur) % 1;
+  const k = SHIPFLY.t * 2 - 1;
+  const rx = -Math.cos(TITLE.az), rz = Math.sin(TITLE.az);
+  const fx = Math.sin(TITLE.az), fz = Math.cos(TITLE.az);
+  SHIPFLY.g.position.set(
+    player.pos.x + fx * SHIPFLY.out + rx * k * SHIPFLY.span,
+    player.pos.y + SHIPFLY.up + Math.sin(SHIPFLY.t * Math.PI * 2) * 3,
+    player.pos.z + fz * SHIPFLY.out + rz * k * SHIPFLY.span);
+  SHIPFLY.g.rotation.set(0, Math.atan2(rx, rz), -SHIPFLY.bank, 'YXZ');
+  SHIPFLY.g.visible = TITLE.on;
 }
 const _bt = new THREE.Vector3();
 function stepParade(dt) {
@@ -7868,9 +7991,14 @@ function titleFrame(dt) {
   // He stands where he SPAWNS. That is the point of doing the card in the live scene: START
   // is a camera move and not a teleport, so the street on the card is the street he starts in.
   player.vel.set(0, 0, 0); player.speed = 0; player.heading = player.faceH = TITLE.face;
-  if (colin.ready && !stepParade(dt)) { colinSet({ idle_neutral: 1 }, dt); poseColin(dt); titleBoard(); }
+  // THE LINE-UP OWNS EVERY PLACEMENT ON THE CARD, including the current character's -- so
+  // `poseColin` (which puts him wherever the PLAYER is) is not called here at all. It would be
+  // a second writer on the same root, and whichever ran last would win the frame.
+  if (colin.ready && lineStep(dt)) { titleBoard(); lineFill(); }
+  else if (colin.ready) { colinSet({ idle_neutral: 1 }, dt); poseColin(dt); titleBoard(); }
   camAim(TITLE.az + Math.sin(TITLE.t * TITLE.rate * Math.PI * 2) * TITLE.sweep, TITLE.el,
          TITLE.dist * (1 + Math.sin(TITLE.t / TITLE.breatheT * Math.PI * 2) * TITLE.breathe), TITLE.look);
+  stepShipFly(dt);
 }
 // The descent into the playing rig. Slow at both ends so it reads as an arrival, not a cut.
 function diveFrame(dt) {
@@ -7898,6 +8026,11 @@ function startGame() {
   // he was always going to make.
   SFX.wake();
   HOLE.on = HOLE.was;
+  // THE REST OF THE LINE-UP LEAVES WITH THE CARD. `wear` is what owns that visibility, and it
+  // has to be re-run AFTER `TITLE.on` goes false or it decides everybody is still standing
+  // there -- and they would be, for the whole game, rooted at the spawn.
+  wear(CHARS.cur);
+  if (SHIPFLY.g) SHIPFLY.g.visible = false;
   player.jump = 0; player.charge = 0; player.rHold = 0;   // nothing held over the card is spent on entry
   stick.L.x = stick.L.y = stick.R.x = stick.R.y = 0; for (const k in keys) keys[k] = 0;
   titleEl.classList.add('go'); setTimeout(() => titleEl.remove(), 900);
@@ -8159,7 +8292,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
