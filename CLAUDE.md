@@ -1198,6 +1198,48 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE BLASTER: HIS JOINTS WERE RIGHT AND THE MOUNT ONLY USED ONE OF THEM (c165, `WEAP.aimTip`).**
+  *"Are you gonna correct the blaster or am I? My two joints are correct. You're rigging the
+  blaster based on the rotation of the blaster root, but if you were to attach the blaster to the
+  root and then POINT IT AT THE TIP, then you would get the perfect rotation."*
+  **He is exactly right, and it took five re-exports to get here because every check I ran asked
+  the wrong question.** c158 measured whether the joints MOVED, c162 measured where `weapon_root`
+  sits (on his hand, 5% of his height, in every clip) -- both fine, both irrelevant. The mount
+  parented with identity, which carries the BLASTER FILE's own convention onto his joint and
+  **throws `weapon_tip` away**: it was read for the muzzle flash and never for the DIRECTION,
+  which is the thing it is for. `npm run gunpose` reads both axes in the mount's own local space:
+      blaster.glb   weapon_root -> weapon_tip   -0.985,  0.000,  0.174
+      colin.glb     weapon_root -> weapon_tip   -0.396,  0.009, -0.918
+      BETWEEN THEM  **76.7 degrees**
+      after the minimal rotation `weapFit` now applies:  0.000 degrees off
+  **NO RE-EXPORT COULD EVER HAVE FIXED THAT**, which is why he was right to keep pushing back and
+  why "they look identical" and "the joint is on his hand" were both true and both useless. A
+  file cannot correct a mount that is ignoring half of what the file says.
+  **ATTACH TO THE ROOT, THEN TURN UNTIL THE BARREL LIES ON ROOT->TIP.** Both directions are taken
+  in the MOUNT's local space (`worldToLocal` on the two tip positions, scale-safe because the
+  mount origin is that space's zero), so the correction is a pure rotation about `weapon_root` --
+  which is `barPlace`'s rule one mount along, and it means the export stops being something this
+  code has an opinion about.
+  **A MINIMAL ROTATION, so whatever roll the art had is kept**, and `WEAP.grip`'s three angles now
+  ride ON TOP in the AIMED frame -- which is what finally makes "Grip roll" roll the BARREL.
+  **ONE-SHOT RATHER THAN PER FRAME, AND c162 IS WHY THAT IS SOUND**: the marker tracks are
+  stripped at load, so root->tip is a constant of the rest pose and cannot drift under a clip.
+  `WEAP.aimTip = 0` (or the Aim barrel at tip row) puts the old behaviour back for an A/B.
+- **AND THE COLLIDER VIEW WAS DRAWING 78 cm ABOVE THE COLLIDER (c165).** *"I need to see the
+  collider. I need to see the collider. I need a debug code to turn on the collider."* Three
+  times, and it has existed since c161 -- on tap **TWELVE** of the build badge and buried two
+  thirds of the way down the settings list. **A control he cannot find is a control that does not
+  exist**, which is this file's own rule about the charge ring, applied to the one thing he was
+  asking for in order to check my work.
+  **AND IT WAS WRONG WHERE IT MATTERED MOST.** The car box was drawn from `c.y` upward, and the
+  real collider is `c.y - c.lift` upward -- **`lift` is 0.78 m, half a car** -- so the wire box
+  floated above the thing it was supposed to be describing. It comes off `c.box.miny/maxy` now,
+  which IS the collider, so it cannot drift from it again. **A debug view that disagrees with the
+  thing it draws is worse than no debug view**, because it is a second thing to be wrong.
+  So: the FIRST row of the settings panel under a `Debug` heading (the gear is next to the
+  badge), `city.boxes()` in the console, and **the chip says `· COLLIDERS`** when it is on --
+  because "did the toggle take" must not be something he has to infer from whether boxes
+  appeared. Badge tap 12 still works and is still the diagnostic half.
 - **THE BAR IS A HOLD AND A SWIPE NOW, AND THE CAMERA IS FREE AGAIN (c164, `npm run bar`'s
   placement check, `JAM_PROBE=tools/probe-bar6.mjs`).** *"I actually think the camera should still
   be able to orbit. The way we solve his ability to swing is: if you're holding down on the right

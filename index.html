@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c164</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c165</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c164';
+const BUILD = 'c165';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1042,6 +1042,20 @@ const WEAP = {
   // a correction applied behind his back -- and it is in the settings panel, because where a
   // gun sits in a hand is a LOOK-AT-IT decision and this panel is the half of the tuning that
   // exists for those. `city.grip()` nudges it live and prints the line to keep.
+  // POINT THE BARREL AT `weapon_tip` (c165). *"You're rigging the blaster based on the rotation
+  // of the blaster root, but if you were to attach the blaster to the root and then point it at
+  // the tip, then you would get the perfect rotation."* He is right, and the two files say by
+  // how much -- `npm run gunpose` reads both barrel axes:
+  //     colin.glb    weapon_root -> weapon_tip   (0.064, -0.945, 0.320)   nearly straight DOWN
+  //     blaster.glb  weapon_root -> weapon_tip   (-0.985, 0.000, 0.174)   along -X
+  //     between them: NINETY DEGREES
+  // Parenting with identity carries the blaster's own convention onto his joint and throws the
+  // second joint away entirely -- so `weapon_tip` was only ever read for the muzzle FLASH, and
+  // the thing it is actually for, which is the DIRECTION, was never used. Five re-exports could
+  // not have fixed that: his joints were right the whole time and the mount ignored one of them.
+  // Aligning the measured axis is `barPlace`'s rule one mount along, and it means the export
+  // stops being something this code has an opinion about.
+  aimTip: 1,
   grip: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, s: 1 },
   // THE ARMED GAIT, AND THE HOOK IS FILLED. `clip` was a name with nothing reading it, written
   // the way `GAIT.sprint` is -- and the c96 export lands the clips: six `rifle_*` animations in
@@ -2958,6 +2972,7 @@ function attachGear(gl, kind) {
 // hundred units here. Measured off the geometry and divided, the skateboard's rule -- a
 // re-export at any size lands right with no edit.
 const _gs = new THREE.Vector3(), _gb = new THREE.Box3();
+const _wA = new THREE.Vector3(), _wB = new THREE.Vector3(), _wQ = new THREE.Quaternion();
 // AND IT HAS TO BE IDEMPOTENT, WHICH IT WAS NOT -- THIS IS WHY THE JETPACK VANISHED ON A
 // CHARACTER SWITCH. `updateMatrixWorld(true)` walks UP the chain, so on the FIRST call (nothing
 // parented yet) `_gb` comes back in the model's own file units and the arithmetic is right,
@@ -3021,9 +3036,10 @@ function gripFit(o) {
 function weapFit() {
   const root = colin.root && colin.model ? colin.model : null;
   if (!root) return 'no skin yet';
-  gear.hand = null; gear.spine = null; gear.mount = null;
+  gear.hand = null; gear.spine = null; gear.mount = null; gear.mountTip = null;
   root.traverse(o => {
     if (o.name === 'weapon_root') gear.mount = gear.mount || o;
+    if (o.name === 'weapon_tip') gear.mountTip = gear.mountTip || o;
     if (o.name === 'mixamorig_RightHand') gear.hand = o;
   });
   gear.spine = gearBone(root, JET.bone);
@@ -3049,9 +3065,32 @@ function weapFit() {
       // identity, so this changes nothing until it is dialled. `city.grip()` prints it.
       const f = WEAP.grip;
       g.position.set(f.x, f.y, f.z);
-      g.rotation.set(f.rx, f.ry, f.rz);
+      g.quaternion.identity();
       g.scale.setScalar(f.s);
       if (g.parent !== gear.mount) gear.mount.add(g);
+      // AND NOW POINT IT AT THE TIP. See `WEAP.aimTip`: his two joints were always right and
+      // this mount used ONE of them, so the barrel inherited the blaster file's own convention
+      // -- ninety degrees off what his rig says. Both directions are taken in the MOUNT's own
+      // local space (`worldToLocal` on the two tip positions, which is scale-safe because the
+      // mount origin is the zero of that space), so the correction is a pure rotation about
+      // `weapon_root` -- attach to the root, then turn until the barrel lies on root->tip.
+      // A minimal rotation, so whatever roll the art had is kept; `WEAP.grip`'s three angles
+      // then ride ON TOP in the AIMED frame, which is what makes "Grip roll" roll the BARREL.
+      // ONE-SHOT RATHER THAN PER FRAME, and c162 is why that is sound: the markers' tracks are
+      // stripped at load, so root->tip is a constant of the rest pose and cannot drift.
+      gear.aimOff = 0;
+      if (WEAP.aimTip && gear.mountTip && gear.blaster.tip) {
+        colin.model.updateMatrixWorld(true);
+        const a = gear.mount.worldToLocal(gear.blaster.tip.getWorldPosition(_wA));
+        const b = gear.mount.worldToLocal(gear.mountTip.getWorldPosition(_wB));
+        if (a.lengthSq() > 1e-12 && b.lengthSq() > 1e-12) {
+          a.normalize(); b.normalize();
+          gear.aimOff = Math.acos(clamp(a.dot(b), -1, 1)) * 180 / Math.PI;
+          _wQ.setFromUnitVectors(a, b);
+          g.quaternion.premultiply(_wQ);
+        }
+      }
+      g.rotateX(f.rx); g.rotateY(f.ry); g.rotateZ(f.rz);
     } else if (gear.hand) fitOne(gear.blaster, gear.hand, WEAP.len, WEAP.fit);
   }
   if (gear.jet && gear.spine) {
@@ -3059,7 +3098,10 @@ function weapFit() {
       { x: JET.at[0], y: JET.at[1], z: JET.at[2], rx: JET.rot[0], ry: JET.rot[1], rz: JET.rot[2], s: 1 });
   }
   gearShow();
-  return { mount: gear.mount ? 'weapon_root (as authored)' : 'hand + WEAP.fit (no weapon joint on this rig yet)',
+  if (gear.mount && gear.blaster) console.log('[gun] on weapon_root, barrel turned '
+    + (gear.aimOff || 0).toFixed(1) + ' deg onto weapon_tip' + (gear.mountTip ? '' : ' -- NO weapon_tip on this rig'));
+  return { mount: gear.mount ? 'weapon_root, barrel aimed at weapon_tip' : 'hand + WEAP.fit (no weapon joint on this rig yet)',
+           aimOff: gear.aimOff,
            hand: !!gear.hand, spine: gear.spine ? gear.spine.name : null, fit: WEAP.fit, at: JET.at };
 }
 /* TWIST:START */
@@ -4520,6 +4562,10 @@ function missing() {
   if (!colin.ready) m += ' · NO COLIN GLB';
   // A HOLE IN THE WORLD, WHICH IS WHAT c141 SHIPPED AND COULD NOT SAY.
   if (CITY.lost) m += ' · LOST ' + CITY.lost + ' CHUNKS';
+  // AND WHETHER THE COLLIDER VIEW IS ON. Asked for three times, so "did the toggle take" must
+  // not be a thing he has to infer from whether wire boxes appeared -- if it says COLLIDERS and
+  // he still sees none, that is a different bug from the switch not working.
+  if (BOXES.on || DBG === 12) m += ' · COLLIDERS';
   // WHERE THE NEAREST BAR IS. *"How do I initiate a swing? I'm trying to swing around a light
   // pole."* Most poles are not bars -- 67 in the whole city -- so "am I even near one" is a real
   // question with no answer on screen. `JAM n@x,z`'s own idiom: the number, and a coordinate
@@ -4711,11 +4757,19 @@ function stepBoxes() {
   const px = player.pos.x, pz = player.pos.z, R = BOXES.near;
   // CARS, in their own frame -- `hl` is the LENGTH and lies along the car's forward.
   { const a = _bxCar.geometry.attributes.position.array, n = { i: 0 };
-    for (const c of carsNear(px, pz, R, _cn)) _bxPush(a, n, c.x, c.y + c.hh * .5, c.z, c.hw, c.hh * .5, c.hl, c.yaw);
+    // THE VERTICAL COMES OFF `c.box`, WHICH IS THE COLLIDER, NOT OFF `c.y` (c165). The real span
+    // is `c.y - c.lift` to `+ hh` -- a car HOVERS over the deck by `lift` -- so drawing it from
+    // `c.y` put the wire box `lift` too high everywhere. A debug view that disagrees with the
+    // thing it is drawing is worse than none, which is the whole reason he asked for it.
+    for (const c of carsNear(px, pz, R, _cn))
+      _bxPush(a, n, c.x, (c.box.miny + c.box.maxy) * .5, c.z, c.hw, (c.box.maxy - c.box.miny) * .5, c.hl, c.yaw);
     _bxCar.geometry.setDrawRange(0, n.i); _bxCar.geometry.attributes.position.needsUpdate = true; _bxCar.visible = n.i > 0; }
   // THE STATIC GRID, which is what he actually walks into. Axis-aligned by construction.
   { const a = _bxSolid.geometry.attributes.position.array, n = { i: 0 };
-    _sbox.length = 0; gridQuery(px, pz, Math.ceil(R / 8), _sbox);
+    // `gridQuery` TAKES METRES, NOT CELLS (c165). It divides by `CELL` itself, so `R / 8` asked
+    // for a THREE-METRE radius of static boxes instead of `BOXES.near`'s 26 -- which on open road
+    // is often nothing at all, and is why the green half of this view looked dead.
+    _sbox.length = 0; gridQuery(px, pz, R, _sbox);
     for (const b of _sbox) _bxPush(a, n, (b.minx + b.maxx) / 2, (b.miny + b.maxy) / 2, (b.minz + b.maxz) / 2,
       (b.maxx - b.minx) / 2, (b.maxy - b.miny) / 2, (b.maxz - b.minz) / 2, 0);
     _bxSolid.geometry.setDrawRange(0, n.i); _bxSolid.geometry.attributes.position.needsUpdate = true; _bxSolid.visible = n.i > 0; }
@@ -8413,6 +8467,14 @@ const OPT = { key: 'city.opt', on: false, el: null };
 const OPT_VAL = { num: 1, tog: 1, seg: 1 };
 const OPT_SLOTS = [['a', 'A'], ['b', 'B'], ['c', 'C']];
 const OPT_ROWS = [
+  // FIRST ROW IN THE PANEL, AND DELIBERATELY (c165). *"I need to see the collider. I need a
+  // debug code to turn on the collider."* Three times -- and it has existed since c161, on tap
+  // TWELVE of the build badge and buried two thirds of the way down this list. A control he
+  // cannot find is a control that does not exist, which is this file's own rule about the
+  // charge ring. The gear is next to the badge, this is the top row behind it, `city.boxes()`
+  // is the console word, and the chip says COLLIDERS when it is on.
+  ['h', 'Debug'],
+  ['tog', 'Show colliders', () => !!BOXES.on, v => { BOXES.on = v ? 1 : 0; }],
   // PRESETS (c141). *"We can save our current preset and then play with these presets."*
   // Exactly right, and it costs almost nothing: `optSave` already serialises every row in this
   // panel by its label, so a preset IS that same object under a different key. Three slots,
@@ -8482,7 +8544,7 @@ const OPT_ROWS = [
   ['seg', 'Muzzle flash', () => WEAP.flash, v => { WEAP.flash = v; }, [['plasma', 'Plasma'], ['tight', 'Tight'], ['card', 'Card'], ['both', 'Both']]],
   ['seg', 'Jet exhaust', () => JET.look, v => { JET.look = v; }, [['flame', 'Flame'], ['cards', 'Cards'], ['glow', 'Glow'], ['both', 'Both']]],
   ['seg', 'Slash mark', () => SLASH.lay, v => { SLASH.lay = v; }, [['ground', 'Flat'], ['card', 'Card']]],
-  ['tog', 'Show colliders', () => !!BOXES.on, v => { BOXES.on = v ? 1 : 0; }],
+
   ['num', 'Slash tilt', () => SLASH.tilt, v => { SLASH.tilt = v; }, 0, 1.2, .02],
   ['num', 'Impact size', () => FX.impact, v => { FX.impact = v; }, .2, 1.5, .05],
   ['num', 'Jet flame width', () => JET.flame.wide, v => { JET.flame.wide = v; }, .02, .4, .005],
@@ -8496,6 +8558,7 @@ const OPT_ROWS = [
   // of them could be judged without another push, which is the loop `city.slash()` ended for the
   // melee mark. Metres and radians, about `weapon_root`, and every one applies live.
   ['h', 'Blaster grip'],
+  ['tog', 'Aim barrel at tip', () => !!WEAP.aimTip, v => { WEAP.aimTip = v ? 1 : 0; weapFit(); }],
   ['num', 'Grip right', () => WEAP.grip.x, v => { WEAP.grip.x = v; weapFit(); }, -.4, .4, .005],
   ['num', 'Grip up', () => WEAP.grip.y, v => { WEAP.grip.y = v; weapFit(); }, -.4, .4, .005],
   ['num', 'Grip forward', () => WEAP.grip.z, v => { WEAP.grip.z = v; weapFit(); }, -.4, .4, .005],
@@ -10776,7 +10839,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

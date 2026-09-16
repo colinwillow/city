@@ -107,3 +107,40 @@ for (const nm of ['idle_neutral', 'walk_fwd_neutral', 'run_fwd', 'rifle_idle_01'
   console.log('    the gun\'s centre is ' + c.distanceTo(vh).toFixed(3) + ' from his hand ('
     + (c.distanceTo(vh) / h * 100).toFixed(0) + '% of his height)');
 }
+
+// ---------------------------------------------------------------------------------------
+// WHICH WAY DOES THE BARREL POINT, AND WHICH WAY DO HIS JOINTS SAY IT SHOULD? (c165)
+// *"You're rigging the blaster based on the rotation of the blaster root, but if you were to
+// attach the blaster to the root and then point it at the tip, you'd get the perfect rotation."*
+// That is a claim about two directions, so it has an angle.
+// ---------------------------------------------------------------------------------------
+{
+  const pick = (scene, nm) => { let n = null; scene.traverse(o => { if (o.name === nm) n = n || o; }); return n; };
+  const axisOf = (scene, label) => {
+    scene.updateMatrixWorld(true);
+    const r = pick(scene, 'weapon_root'), t = pick(scene, 'weapon_tip');
+    if (!r || !t) { console.log('  ' + label + ': no weapon_root/weapon_tip'); return null; }
+    // in the ROOT's own local space -- which is the space the gun is mounted in
+    const v = r.worldToLocal(t.getWorldPosition(new THREE.Vector3()));
+    const len = v.length(); v.normalize();
+    console.log('  ' + label.padEnd(14) + 'root -> tip  ' + v.x.toFixed(3) + ', ' + v.y.toFixed(3)
+      + ', ' + v.z.toFixed(3) + '   length ' + len.toFixed(3));
+    return v;
+  };
+  console.log('\nTHE TWO BARREL AXES, each in its own weapon_root\'s local space\n');
+  const A = axisOf(blaster.scene, 'blaster.glb');
+  const B = axisOf(colin.scene, 'colin.glb');
+  if (A && B) {
+    const deg = Math.acos(Math.max(-1, Math.min(1, A.dot(B)))) * 180 / Math.PI;
+    console.log('\n  BETWEEN THEM: ' + deg.toFixed(1) + ' degrees');
+    console.log('  parenting with identity keeps the BLASTER\'s convention, so that is how far off'
+      + '\n  the barrel points from where his own two joints say it should.');
+    // and the fix: the minimal rotation that puts one on the other
+    const q = new THREE.Quaternion().setFromUnitVectors(A, B);
+    const after = A.clone().applyQuaternion(q);
+    const err = Math.acos(Math.max(-1, Math.min(1, after.dot(B)))) * 180 / Math.PI;
+    console.log('\n  after `setFromUnitVectors`, which is what `weapFit` applies: ' + err.toFixed(3) + ' degrees off');
+    if (err > .5) { console.log('*** the correction does not land the barrel on his axis'); process.exit(1); }
+    console.log('  -> the barrel lands exactly on weapon_root -> weapon_tip.');
+  }
+}
