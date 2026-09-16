@@ -108,15 +108,26 @@
      under them, and a soft glow under the button sits in a different world from that. */
   #startB:active{animation:none;transform:translateY(4px);box-shadow:0 2px 0 #a33f00,0 6px 16px rgba(8,18,38,.5)}
   @keyframes startPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
-  /* the character row: who he is, chosen on the card where it can be SEEN */
-  #chars{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;pointer-events:none}
-  #chars button{touch-action:manipulation;cursor:pointer;font-family:var(--ui);font-weight:700;font-size:13px;letter-spacing:.1em;
-    text-transform:uppercase;color:var(--ink);background:rgba(10,22,40,.45);border:1.5px solid var(--rim);border-radius:999px;padding:9px 16px;
-    opacity:.75;transition:opacity .2s,border-color .2s,box-shadow .2s}
-  #chars button.on{opacity:1;border-color:rgba(157,247,255,.95);box-shadow:0 0 18px rgba(120,238,255,.45),inset 0 0 14px rgba(120,238,255,.15);color:#fff}
-  #chars button.busy{opacity:.5;animation:startPulse 1s ease-in-out infinite}
-  #title.on #chars button{pointer-events:auto}
-  #title.go #chars button{pointer-events:none}
+  /* WHO HE IS, AS A NAME RATHER THAN AS A ROW OF BUTTONS (c143).
+     *"I don't want the buttons. I just wanna be able to click on the character, or swipe left,
+     swipe right, and whoever's name is selected."* The characters ARE the menu -- they are
+     standing right there -- so a row of pills under them was a second, worse copy of a control
+     the picture already had. It also drew the eye away from the thing being chosen.
+     The plate is an IMAGE first and type second, for the wordmark's own reason: no font sets
+     what he draws, and a pill in a UI face next to spray-paint key art reads as a web form.
+     Until his art lands, the display face at a size nothing else on the card uses. */
+  #charName{position:relative;height:clamp(40px,9vh,74px);display:flex;align-items:center;justify-content:center;pointer-events:none}
+  #charArt{max-width:min(78vw,520px);max-height:100%;object-fit:contain;display:none;
+    filter:drop-shadow(0 4px 0 rgba(4,10,24,.55)) drop-shadow(0 0 26px rgba(120,238,255,.28))}
+  #charArt.lit{display:block}
+  #charTxt{font-family:var(--disp);font-size:clamp(20px,5.6vw,34px);letter-spacing:.02em;text-transform:uppercase;
+    color:#fff;text-shadow:0 4px 0 rgba(4,10,24,.6),0 0 30px rgba(120,238,255,.4)}
+  #charArt.lit + #charTxt{display:none}
+  /* A NAME THAT CUTS IS A NAME THAT LOOKS LIKE A BUG. It fades through the change, which is
+     also what covers the beat where a skin is still coming down the wire. */
+  #charName.busy{animation:startPulse 1s ease-in-out infinite}
+  #charName.swap #charArt,#charName.swap #charTxt{opacity:0}
+  #charArt,#charTxt{transition:opacity .16s}
   /* THE HUD DOES NOT EXIST UNTIL HE HAS PRESSED IT -- except the build badge, which is how he
      tells one build from the one before it and is wanted MOST on the first screen. */
   body.title #sticks,body.title .key,body.title #map,body.title #speed,body.title #help{opacity:0;pointer-events:none}
@@ -256,7 +267,7 @@
 </head>
 <body class="title">
 <div id="boot"><img id="bootArt" alt=""><h1 id="bootH1">Shredworld</h1><div class="foot"><div class="bar"><i id="bootBar"></i></div><div class="msg" id="bootMsg">loading shredworld</div><div class="err" id="bootErr"></div></div></div>
-<div id="title"><img id="titleArt" class="word" alt="Shredworld"><div id="chars"></div><div class="sub">swipe to change &middot; two thumbs</div><button id="startB">Start</button></div>
+<div id="title"><img id="titleArt" class="word" alt="Shredworld"><div id="charName"><img id="charArt" alt=""><b id="charTxt"></b></div><div class="sub">tap a character &middot; or swipe</div><button id="startB">Start</button></div>
 <div id="sticks">
   <div class="stick" id="stkL"><div class="knob"></div><div class="lbl">MOVE</div></div>
   <div class="stick" id="stkR"><div class="chg" id="stkRChg"></div><div class="knob"></div><div class="lbl">LOOK</div></div>
@@ -281,7 +292,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c142</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c143</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +305,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c142';
+const BUILD = 'c143';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -5755,7 +5766,41 @@ function readySkin(skin) {
   console.log('[skin] ' + skin.key + ' soles measured at ' + d.toFixed(3) + ', lifted to 0');
   return skin;
 }
-const chipHL = key => document.querySelectorAll('#chars button').forEach(b => b.classList.toggle('on', b.dataset.key === key));
+// THE NAME PLATE (c143). It replaces the row of chips outright: the characters are standing
+// right there, so the picture already WAS the menu and a row of pills under it was a second,
+// worse copy of a control -- one that also pulled the eye off the thing being chosen.
+// **IT IS AN IMAGE FIRST AND TYPE SECOND**, the wordmark's own rule: *"I'm gonna make each of
+// their names with the same graphical thing as the title, cause I don't like just text font
+// bubble, it just looks low rent."* So `CHARS.art` is the hook -- drop `images/name_<key>.png`
+// in, `npm run bump` hashes it, and it appears with no code change. Until one lands the display
+// face stands in, at a size nothing else on the card uses.
+// **A MISSING PNG IS NOT A BROKEN NAME.** The <img> only becomes `lit` on a successful load, so
+// a character with no art drawn yet reads exactly as he did before rather than as a gap.
+const _nameArt = {};
+let _nameFor = '';
+function nameShow(key) {
+  const im = document.getElementById('charArt'), tx = document.getElementById('charTxt');
+  const wrap = document.getElementById('charName');
+  if (!im || !tx || !wrap) return;
+  const ch = CHARS.list.find(c => c.key === key); if (!ch) return;
+  // FADE, NEVER CUT. A name that snaps reads as a glitch, and the fade is also what covers the
+  // beat where the skin behind it is still coming down the wire.
+  _nameFor = key;
+  wrap.classList.add('swap');
+  setTimeout(() => {
+    if (_nameFor !== key) return;       // he changed his mind inside the fade
+    tx.textContent = ch.name;
+    const url = ch.art || ('images/name_' + ch.key + '.png');
+    if (_nameArt[key] === 0) { im.classList.remove('lit'); im.removeAttribute('src'); }
+    else {
+      im.onload = () => { _nameArt[key] = 1; if (_nameFor === key) im.classList.add('lit'); };
+      im.onerror = () => { _nameArt[key] = 0; im.classList.remove('lit'); };
+      im.classList.remove('lit'); im.src = A(url);
+    }
+    wrap.classList.remove('swap');
+  }, 160);
+}
+const chipHL = key => nameShow(key);
 function wear(key) {
   const skin = CHARS.skins[key]; if (!skin) return false;
   readySkin(skin);
@@ -5780,7 +5825,7 @@ function wear(key) {
 const charIdx = k => CHARS.list.findIndex(c => c.key === k);
 function pickChar(key, dir, snap) {
   if (!key || key === CHARS.want) return;
-  // no direction given (a chip, not a swipe): take it from where the chip sits in the row, so
+  // no direction given (a tap, not a swipe): take it from where he stands in the line-up, so
   // picking one to the right always slides the row left
   if (!dir) dir = charIdx(key) > charIdx(CHARS.want) ? 1 : -1;
   CHARS.want = key; chipHL(key);
@@ -5788,10 +5833,10 @@ function pickChar(key, dir, snap) {
   if (CHARS.skins[key]) { enterChar(key, dir, snap); return; }
   if (CHARS.loading[key]) return;
   CHARS.loading[key] = true;
-  document.querySelectorAll('#chars button').forEach(b => b.classList.toggle('busy', b.dataset.key === key));
+  document.getElementById('charName').classList.add('busy');
   loadGLB(ch.url, 'loading ' + ch.name).then(g => { buildSkin(g, key); if (CHARS.want === key) enterChar(key, dir, snap); })
     .catch(e => { console.warn('[skin] ' + key + ' failed', e); CHARS.miss = (CHARS.miss || 0) + 1; })
-    .finally(() => { CHARS.loading[key] = false; document.querySelectorAll('#chars button').forEach(b => b.classList.remove('busy')); });
+    .finally(() => { CHARS.loading[key] = false; document.getElementById('charName').classList.remove('busy'); });
 }
 // A walk-on only means anything while the card is up and somebody is there to walk off. Boot
 // and the game itself just put him on.
@@ -8704,6 +8749,32 @@ function startGame() {
   document.body.classList.remove('title');
 }
 document.getElementById('startB').addEventListener('click', startGame);
+// WHICH CHARACTER IS UNDER THAT THUMB.
+// **PROJECTED, NOT RAYCAST**, which is `camFree`'s own argument in a different room: a ray
+// against five skinned meshes has to skin them first, and what is actually being asked is "which
+// of these five did he mean", not "which triangle". Every one of them has a known world position
+// (`lineStep` writes it every frame), so projecting five points and taking the nearest is the
+// whole answer -- and it is FORGIVING in a way a ray is not, which matters on a phone where the
+// thing being aimed at is forty pixels wide and a thumb is sixty.
+// It measures to a point at CHEST height rather than at his feet, because that is where the
+// body is and the feet are the one part of him a tap is least likely to land on.
+// The radius is in screen terms and scales with the frame, so a tap in the gap between two of
+// them picks the nearer rather than nothing -- but a tap out at the edge of the card still picks
+// nobody, which is what leaves the rest of the screen free for the swipe.
+const _cs = new THREE.Vector3();
+function charAtScreen(px, py) {
+  if (!LINE.on) return '';
+  let best = '', bd = Math.min(innerWidth, innerHeight) * .30;
+  for (const c of CHARS.list) {
+    const skin = CHARS.skins[c.key]; if (!skin || !skin.root || !skin.root.visible) continue;
+    _cs.set(skin.root.position.x, skin.root.position.y + COLIN_HEIGHT * .55, skin.root.position.z).project(camera);
+    if (_cs.z > 1) continue;                                        // behind the lens
+    const x = (_cs.x * .5 + .5) * innerWidth, y = (-_cs.y * .5 + .5) * innerHeight;
+    const d = Math.hypot(x - px, y - py);
+    if (d < bd) { bd = d; best = c.key; }
+  }
+  return best;
+}
 // SWIPE THE CARD TO CHANGE HIM. On `window` with capture, because `#title` is pointer-events
 // none by design -- it must never eat a thumb -- and the sticks underneath are off while the
 // card is up, so there is nothing else here to argue with. A swipe LEFT pulls the next one in
@@ -8711,13 +8782,18 @@ document.getElementById('startB').addEventListener('click', startGame);
 {
   let sx = 0, sy = 0, sid = null;
   addEventListener('pointerdown', e => {
-    if (!TITLE.on || (e.target && e.target.closest && e.target.closest('button'))) return;
+    if (!TITLE.on || (e.target && e.target.closest && e.target.closest('button, #opt, #kitRow, .stick'))) return;
     sid = e.pointerId; sx = e.clientX; sy = e.clientY;
   }, true);
   addEventListener('pointerup', e => {
     if (sid !== e.pointerId) return; sid = null;
     if (!TITLE.on) return;
     const dx = e.clientX - sx, dy = e.clientY - sy;
+    // A TAP PICKS THE MAN YOU TAPPED (c143). *"I just wanna be able to click on the character."*
+    // The swipe test already ran first, so this is the thumb that did NOT travel -- and the two
+    // cannot both fire, which is the whole reason it hangs off the same pointer stream rather
+    // than off a listener of its own.
+    if (Math.abs(dx) < 14 && Math.abs(dy) < 14) { const k = charAtScreen(e.clientX, e.clientY); if (k) pickChar(k); return; }
     if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.4) return;   // a drag down the screen is not a swipe across it
     cycleChar(dx < 0 ? 1 : -1);
   }, true);
@@ -8727,15 +8803,7 @@ document.getElementById('startB').addEventListener('click', startGame);
     else if (e.key === 'ArrowLeft') cycleChar(-1);
   });
 }
-{
-  const row = document.getElementById('chars');
-  for (const ch of CHARS.list) {
-    const b = document.createElement('button'); b.textContent = ch.name; b.dataset.key = ch.key;
-    if (ch.key === CHARS.cur) b.classList.add('on');
-    b.addEventListener('click', e => { e.preventDefault(); pickChar(ch.key); });
-    row.appendChild(b);
-  }
-}
+nameShow(CHARS.cur);
 
 // HOW MUCH BOOM HE ACTUALLY HAS. Walked out from the look point rather than raycast, because
 // the city is thirty thousand boxes in a grid and a dozen grid lookups is cheaper than any ray

@@ -2476,6 +2476,38 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
     anything meant to be SEEN is placed in the frame's terms and never in metres.
     `startParade` stays for the case it was written for — no line-up, one man, walking in from
     off frame — and `LINE.on = 0` gets you back to it.
+- **THE CHARACTERS ARE THE MENU, SO THE ROW OF CHIPS HAD TO GO (c143, `charAtScreen`,
+  `nameShow`).** *"I don't want the buttons. I just wanna be able to click on the character, or
+  swipe left, swipe right, and whoever's name is selected."* He is right and the reason is worth
+  writing down: the whole point of doing the card IN THE LIVE SCENE is that the thing being
+  chosen is on screen at full size. A row of pills under it is a SECOND, worse copy of a control
+  the picture already had -- and it pulls the eye off the subject to do it.
+  **TAP-TO-PICK IS PROJECTED, NOT RAYCAST**, which is `camFree`'s argument in another room: a ray
+  against five skinned meshes has to skin them first, and the question is "which of these five
+  did he mean", not "which triangle". `lineStep` already writes every root's world position every
+  frame, so projecting five points and taking the nearest IS the answer -- and it is forgiving in
+  a way a ray is not, which is what matters when the target is forty pixels wide and a thumb is
+  sixty. Measured to CHEST height, because the feet are the part of him a tap is least likely to
+  land on.
+  **IT HANGS OFF THE SWIPE'S OWN POINTER STREAM**, after the swipe test, so a tap and a swipe can
+  never both fire. A second listener would have had to re-derive that exclusion and get it right.
+  **AND A TAP ON A BUTTON, THE SETTINGS PANEL, A KIT KEY OR A STICK IS NOT A TAP ON A CHARACTER.**
+  The handler is on `window` WITH CAPTURE -- which is what makes it work at all, since `#title`
+  is `pointer-events: none` by design -- and capture runs BEFORE the panel's own
+  `stopPropagation`, so the exclusions have to be listed here rather than relied on downstream.
+- **A NAME IS ART, NOT TYPE (c143, `CHARS.art`).** *"I'm gonna make each of their names with the
+  same graphical thing as the title, cause I don't like just text font bubble, it just looks low
+  rent."* Same verdict as `TITLE_ART`, one element along: no font sets what he draws, and a pill
+  in a UI face next to spray-paint key art reads as a web form.
+  So the plate is an `<img>` first and type second. **Drop `images/name_<key>.png` in, run
+  `npm run bump`, and it appears with no code change** -- `weapFit`'s rule applied to the HUD:
+  write it to take the asset the moment one exists. `CHARS.art` overrides the path per character.
+  **A MISSING PNG IS NOT A BROKEN NAME.** The image only becomes `lit` on a successful load, so a
+  character whose art is not drawn yet reads exactly as he did before rather than as a gap --
+  which is `BOOT.png`'s reason for existing two hundred lines up.
+  **IT FADES RATHER THAN CUTS**, and the fade is also what covers the beat where the skin behind
+  it is still coming down the wire. `_nameFor` is what the plate is showing, checked again on the
+  far side of that fade: without it, two quick swipes land the second name and then the first.
 - **THE TITLE CAMERA POPPED BECAUSE ITS BOOM WAS NEVER EASED (c137).** *"It pops to a zoomed-in
   position, then pops in a bit more, then pops out. I think it's because cars are driving by."*
   **IT IS NOT THE CARS** -- `camFree` probes `gridQuery`, which is the STATIC grid built once at
