@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c150</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c151</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c150';
+const BUILD = 'c151';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -690,7 +690,24 @@ const BAR = {
   // **AND THE HANDS ARE A REAL FALLBACK, NOT A COURTESY.** Every borrowed skin in this game is a
   // Mixamo rig with those two bones, and only Colin's export carries the weapon joints -- so
   // without this line Moussa and the alien would hang wherever the clip left them.
-  mark: [['weapon_root', 'weapon_tip'], ['mixamorig_LeftHand', 'mixamorig_RightHand']],
+  // **THE WEAPON JOINTS ARE THE GUN'S AND ONLY THE GUN'S (c151).** *"I didn't realise that
+  // keyframing their position -- because their position wasn't keyframed in the T-pose -- moved
+  // it in ALL positions, which made the gun messed up in every pose. Then I corrected the gun,
+  // which messed up the hang ones."* He is right, and `npm run joints` measures both halves of
+  // that loop on the two exports he has:
+  //     models/colin.glb (live)   tip offset (0.029, 0.007, 0.326)  len 0.327  along +Z
+  //     models/chars/colin.glb    tip offset (-0.592, 0.004, 0.171) len 0.616  along -X
+  //     models/blaster.glb        tip offset (-0.562, 0.000, 0.099) len 0.571  along -X
+  // The live one is **0.633 from the blaster** -- that is the BAR grip, 0.327 wide and
+  // horizontal, sitting where the muzzle should be. His corrected one is 0.078 away, which is
+  // the gun restored. **One pair cannot hold both jobs**, and the file proves it rather than
+  // anybody having to argue it.
+  // So the bar stops asking for them. The HANDS are already on the bar in those clips and they
+  // measured just as still -- midpoint drift 0.011 / 0.004 / 0.028 across the whole 4.73 s hang,
+  // against the joints' own 0.012 / 0.005 / 0.034. Nothing is lost.
+  // `bar_root`/`bar_tip` goes first as the hook for the day he wants a dedicated pair: name them
+  // and they are taken with no code change, which is `weapFit`'s rule.
+  mark: [['bar_root', 'bar_tip'], ['mixamorig_LeftHand', 'mixamorig_RightHand']],
   len: 1.09,        // the pendulum arm: his centre of mass below the bar. MEASURED, see above.
   g: 17,            // gravity for the swing -- under the world's 20, which reads as heavier
   pump: 5.2,        // rad/s^2 added while the stick agrees with the swing
@@ -1258,7 +1275,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"9e847761","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"015eb520","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/colin.glb":"015eb520","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -8418,13 +8435,11 @@ function barLetGo() {
   snd.jump();
 }
 const _bq = new THREE.Quaternion(), _bax = new THREE.Vector3(), _bwr = new THREE.Vector3(),
-      _bwt = new THREE.Vector3(), _YUP = new THREE.Vector3(0, 1, 0);
+      _bwt = new THREE.Vector3(), _bm = new THREE.Vector3(), _YUP = new THREE.Vector3(0, 1, 0);
 function poseBar() {
   const p = player, B = p.bar;
   _bax.set(B.ax, 0, B.az).normalize();
-  // his facing at a dead hang, then the whole of him turned about the bar by the swing angle
-  _bq.setFromAxisAngle(_bax, p.barA);
-  colin.root.quaternion.setFromAxisAngle(_YUP, p.faceH).premultiply(_bq);
+  colin.root.quaternion.setFromAxisAngle(_YUP, p.faceH);
   colin.root.rotation.z = 0;
   // AND NOW THE MEASUREMENT. Pose is set, so read where the joints actually ended up and slide
   // the root until their midpoint is ON the bar. One extra matrix walk per frame, and not one
@@ -8441,6 +8456,28 @@ function poseBar() {
   }
   if (!skin || !skin.barM) return;
   const jr = skin.barM[0], jt = skin.barM[1];
+  // THE PAIR'S AXIS IS TURNED ONTO THE BAR'S, NOT ASSUMED TO MATCH IT (c151). The old weapon
+  // joints were authored dead horizontal -- (0.999, 0.001, -0.033) -- so putting the midpoint on
+  // the bar was enough. His HANDS read (-0.881, -0.469, 0.065), tilted twenty-eight degrees,
+  // because a grip is authored to look right and not to be a ruler. Aligning the measured axis
+  // means the marker can be ANY two nodes in ANY orientation and he still lies along the bar:
+  // the export stops being something this code has an opinion about.
+  colin.root.updateMatrixWorld(true);
+  jr.getWorldPosition(_bwr); jt.getWorldPosition(_bwt);
+  _bm.subVectors(_bwt, _bwr);
+  if (_bm.lengthSq() > 1e-8) {
+    _bm.normalize();
+    // and NOT end-for-end: the bar has no near end, so take whichever sense turns him less
+    if (_bm.dot(_bax) < 0) _bm.negate();
+    _bq.setFromUnitVectors(_bm, _bax);
+    colin.root.quaternion.premultiply(_bq);
+  }
+  // then the swing itself, about the bar
+  _bq.setFromAxisAngle(_bax, p.barA);
+  colin.root.quaternion.premultiply(_bq);
+  // AND ONLY NOW THE SLIDE. Every rotation is done, so where the midpoint ended up is where it
+  // is going to stay -- measured after the fact, which is why no number about his proportions
+  // appears anywhere in this file.
   colin.root.updateMatrixWorld(true);
   jr.getWorldPosition(_bwr); jt.getWorldPosition(_bwt);
   colin.root.position.x += B.x - (_bwr.x + _bwt.x) * .5;

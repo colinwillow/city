@@ -77,6 +77,23 @@ function sample(clip, n) {
   return out;
 }
 const span = v => { let mn = 1e9, mx = -1e9; for (const x of v) { mn = Math.min(mn, x); mx = Math.max(mx, x); } return mx - mn; };
+// AND THE HANDS, WHICH ARE THE OTHER CANDIDATE PAIR. If the weapon joints have to go back to
+// being the gun's, this is what marks the bar instead -- so the question is whether his GRIP
+// holds still enough to rotate about. See `BAR.mark`.
+const lh = byName['mixamorig_LeftHand'], rh = byName['mixamorig_RightHand'];
+function handSample(clip, n) {
+  const a = mixer.clipAction(clip); mixer.stopAllAction(); a.reset(); a.play();
+  const out = [];
+  const L = new THREE.Vector3(), R = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    mixer.setTime(clip.duration * i / (n - 1));
+    scene.updateMatrixWorld(true);
+    lh.getWorldPosition(L); rh.getWorldPosition(R);
+    out.push({ l: L.clone(), r: R.clone(), m: L.clone().add(R).multiplyScalar(.5) });
+  }
+  a.stop();
+  return out;
+}
 for (const c of bar) {
   const s = sample(c, 25);
   const mid = s.map(f => f.r.clone().add(f.t).multiplyScalar(.5));
@@ -94,6 +111,45 @@ for (const c of bar) {
   const d0 = s[0].h.distanceTo(mid[0]), dh = s[0].hd.distanceTo(mid[0]);
   console.log('  hips are ' + d0.toFixed(3) + ' from the bar, head ' + dh.toFixed(3)
     + '   (file units -- x1.273 for metres on Colin)');
+  if (lh && rh) {
+    const h = handSample(c, 25);
+    const hax = h[0].r.clone().sub(h[0].l);
+    console.log('  HANDS: axis ' + hax.clone().normalize().toArray().map(v => v.toFixed(3)).join(', ')
+      + '  span ' + hax.length().toFixed(3)
+      + '   midpoint drift ' + span(h.map(v => v.m.x)).toFixed(3) + ' / '
+      + span(h.map(v => v.m.y)).toFixed(3) + ' / ' + span(h.map(v => v.m.z)).toFixed(3));
+  }
+}
+// AND THE GUN, WHICH IS THE OTHER JOB THESE TWO JOINTS HOLD DOWN (c151).
+// *"I didn't realise that keyframing their position -- because their position wasn't keyframed
+// in the T-pose -- moved it in ALL positions, which made the gun messed up in every pose."*
+// A node's local transform IS its rest pose, and a clip that does not key a channel leaves that
+// channel at rest. So keying `position` in the bar clips only, with the rig sitting in the bar
+// pose, writes the BAR position as the node's default -- and every other clip, keying nothing,
+// inherits it. One pair of joints, two jobs, and they fight.
+// This is what tells the two files apart: in a NEUTRAL clip the joint should be ON his hand.
+const hand = byName['mixamorig_RightHand'];
+const neutral = clips.find(c => c.name === 'idle_neutral') || clips.find(c => /idle/i.test(c.name));
+if (hand && neutral) {
+  const s = sample(neutral, 9);
+  const hw = new THREE.Vector3();
+  mixer.stopAllAction();
+  const a = mixer.clipAction(neutral); a.reset(); a.play(); mixer.setTime(0); scene.updateMatrixWorld(true);
+  hand.getWorldPosition(hw); root.getWorldPosition(wr); tip.getWorldPosition(wt);
+  const off = wr.distanceTo(hw);
+  console.log('\n--- THE GUN, in ' + neutral.name + ' ---');
+  console.log('  right hand    ' + hw.toArray().map(v => v.toFixed(3)).join(', '));
+  console.log('  weapon_root   ' + wr.toArray().map(v => v.toFixed(3)).join(', '));
+  console.log('  offset from the hand: ' + off.toFixed(3) + ' file units ('
+    + (off * 1.273 * 100).toFixed(0) + ' cm on Colin)');
+  const barrel = wt.clone().sub(wr);
+  console.log('  barrel        ' + barrel.clone().normalize().toArray().map(v => v.toFixed(3)).join(', ')
+    + '   length ' + barrel.length().toFixed(3));
+  console.log(off < .12
+    ? '  -> THE GUN IS FINE: the joint is on his hand where the blaster mounts.'
+    : '  -> *** THE GUN IS BROKEN HERE: the joint has been dragged ' + (off * 1.273 * 100).toFixed(0)
+      + ' cm off his hand,\n     which is where the blaster would hang.');
+  a.stop();
 }
 // AND THE BLASTER. `weapon_root` has been the gun's mount since c96, so a joint that has moved
 // in the REST pose is a gun that has moved with it.

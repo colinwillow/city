@@ -1198,6 +1198,33 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **ONE MARKER PAIR CANNOT HOLD TWO JOBS, AND `npm run joints` PROVED IT (c151).** *"I didn't
+  realise that keyframing their position -- because their position wasn't keyframed in the T-pose
+  -- moved it in ALL positions, which made the gun messed up in every pose. Then I corrected the
+  gun, which in turn messed up the hang ones."* Exactly right, and it is a loop with no exit
+  while both jobs share `weapon_root`/`weapon_tip`. Measured across his two exports:
+      models/colin.glb (was live)  tip (0.029, 0.007, 0.326)  len 0.327  +Z   0.633 from blaster
+      models/chars/colin.glb       tip (-0.592, 0.004, 0.171) len 0.616  -X   0.078 from blaster
+      models/blaster.glb           tip (-0.562, 0.000, 0.099) len 0.571  -X
+  **The shipped build had the BAR GRIP where the muzzle should be** -- 0.327 wide and horizontal,
+  which is a bar, not a barrel. His corrected export is 0.078 away, the gun restored.
+  **WHY IT SPREAD: A NODE'S LOCAL TRANSFORM IS ITS REST POSE.** A clip that does not key a
+  channel leaves that channel at rest -- so keying `position` in the bar clips ALONE, with the
+  rig sitting in the bar pose, writes the bar position as the node's default and every other clip
+  inherits it. **If a marker must not move, never key its position; if it must, key it in every
+  clip including the neutral.**
+  **SO THE BAR STOPPED ASKING FOR THEM.** The hands are already on the bar in those clips and
+  measured just as still: midpoint drift **0.011 / 0.004 / 0.028** across the 4.73 s hang against
+  the joints' own 0.012 / 0.005 / 0.034. Nothing is lost, and the weapon joints go back to being
+  the gun's and only the gun's. `bar_root`/`bar_tip` is first in `BAR.mark` as the hook for a
+  dedicated pair -- name them and they are taken with no code change, `weapFit`'s rule.
+- **AND THE MARKER'S AXIS IS TURNED ONTO THE BAR, NOT ASSUMED TO MATCH IT (c151).** The weapon
+  joints were authored dead horizontal -- (0.999, 0.001, -0.033) -- so putting the midpoint on the
+  bar was enough. **His hands read (-0.881, -0.469, 0.065), tilted twenty-eight degrees**, because
+  a grip is authored to look right and not to be a ruler. `poseBar` aligns the measured axis to
+  the bar's before the swing, so the pair can be any two nodes in any orientation: **the export
+  stops being something this code has an opinion about.** The sense is picked by dot product --
+  a bar has no near end, so it takes whichever way round turns him less.
 - **THE CATCH RAN AFTER THE COLLIDER, WHICH IS THE ONE THING IT MUST NOT DO (c150).** *"How do
   I initiate a swing? I'm trying to swing around a light pole."* He could not, and it was not
   aim: `barCatch` sat BELOW `stepSkate`/`stepFoot` in `stepPlayer`, so `resolveBoxes` had already
