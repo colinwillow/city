@@ -314,7 +314,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c175</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c176</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -328,7 +328,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c175';
+const BUILD = 'c176';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -913,6 +913,10 @@ const MELEE = {
   // which is the "about double as far" the tackle was asked for, bought mostly by the profile
   // rather than by a launch spike: 8.05 -> 12.95 m/s, not 8.05 -> 21.
   carry: .45,
+  // WHAT HITTING SOMETHING COSTS (c176). *"It should more or less stop you -- it should feel like
+  // you hit something heavy."* Not a bounce: a stop with just enough back on it to read as an
+  // impact rather than as the animation running out. `Math.exp(-k*dt)`, never a bare `*= k`.
+  thud: 1.6, thudDrag: 7,
   // HOW WIDE THE SWING IS. Plutopia's own `MELEE.arc`, and it has to be generous: a thumb on a
   // phone does not place a heading to five degrees, and a punch that misses because you were
   // eleven degrees off is a punch that reads as not working at all.
@@ -7678,6 +7682,9 @@ const COP = {
   flyV: 7,          // and the speed at which a STRIKE launches him instead of staggering him
   pass: .35,        // how long the ghost lingers after it ends, so the push-out cannot snap
   ploughR: .6,      // how close past his own body counts as riding INTO him
+  footPlough: 13,   // and ON FOOT, the speed past which you go through him rather than into him.
+                    // A plain run is 9 and a charged sprint tops out near 17.6, so this is the
+                    // "or you're running really fast" half and nothing below it.
   clips: { idle: 'idle_01', walk: 'walk_01', run: 'run_01', draw: 'draw_weapon', shoot: 'shoot_pistol',
            hits: ['hit_body', 'hit_head', 'hit_ribs', 'hit_stomach'],
            // A FIGHT IS A SEQUENCE, NOT A SHUFFLE (c175). *"Are we even utilising the cop's
@@ -7981,10 +7988,24 @@ function copsLearnFlight() {
 // (c153), which is a different question and a different function.
 // THE PLAYER'S HALF OF IT, ON ITS OWN, so the linger can be set from `stepPlayer` without
 // naming an officer -- and so the two can never be written to disagree.
+// SPEED IS THE WHOLE TEST, AND A STRIKE ON ITS OWN IS NOT SPEED (c176). c174 ghosted any strike
+// thrown above `flyV` 7 -- and a slide tackle is by definition above `MELEE.runAt` 4.6 and usually
+// well past 7, so ON FOOT nearly every tackle went straight through him. *"He doesn't feel like he
+// has any weight. Your character sort of goes through him and the cop goes flying. I want it to
+// feel like you hit something heavy, like you hit a wall, every time you melee him."*
+// So the melee clause is gone entirely and only real travel opens him up:
+//     on the board past `ploughV`     you plough -- that is the one he asked to keep
+//     on foot past `footPlough`       a genuine sprint, not a run and not a lunge
+//     anything else                   he is a WALL, whatever you are throwing at him
+// `footPlough` is deliberately near the top of the charged sprint: a plain 9 m/s run into an
+// officer is a collision, which is the whole complaint. And it reads `melEntry` rather than
+// `p.speed` mid-strike, because `stepMelee` rewrites the velocity from `melV` every frame and a
+// lock solving for a distant man can put that at 13 -- c174's own lesson, and the reason a jab
+// thrown across the room must not read as arriving at speed.
 function copGhostWant() {
   const p = player;
-  return !!((p.mel && p.mel !== MELEE.roll && p.melEntry > COP.flyV)
-    || (p.board && p.speed > COP.ploughV));
+  if (p.board) return p.speed > COP.ploughV;
+  return (p.mel ? p.melEntry : p.speed) > COP.footPlough;
 }
 function copGhost(c) {
   const p = player;
@@ -8009,9 +8030,14 @@ function copGhost(c) {
 // It is called from `stepPlayer` AFTER the board step, so his position is the one that arrived.
 // The launch takes the way he is TRAVELLING, not the geometry of a contact where the two things
 // are on top of each other -- `copFly`'s own rule about a direction that is already stored.
+// AND IT READS `copGhostWant`, NOT ITS OWN COPY OF THE TEST (c176). If you are going THROUGH him
+// you knock him through -- those are one fact, and two independent speed tests would be two things
+// to keep in step. It is why an on-foot SPRINT now knocks him over as well: c174's version was
+// `p.board` only, so a 15 m/s tackle passed clean through a standing officer and did nothing at
+// all, which the probe read as *cop standing, hp 3* while the player sailed past.
 function copPlough() {
   const p = player;
-  if (!p.board || p.speed <= COP.ploughV || p.hit) return;
+  if (p.hit || !copGhostWant()) return;
   const h = Math.atan2(p.vel.x, p.vel.z);
   for (const c of cops) {
     if (c.st === 'fly') continue;
@@ -8943,6 +8969,8 @@ const OPT_ROWS = [
   ['num', 'Grip size', () => WEAP.grip.s, v => { WEAP.grip.s = v; weapFit(); }, .3, 2.5, .02],
   ['tog', 'Cops solid', () => !!COP.solid, v => { COP.solid = v ? 1 : 0; }],
   ['num', 'Plough speed', () => COP.ploughV, v => { COP.ploughV = v; }, 2, 20, .5],
+  ['num', 'Plough speed on foot', () => COP.footPlough, v => { COP.footPlough = v; }, 4, 20, .5],
+  ['num', 'Melee thud', () => MELEE.thud, v => { MELEE.thud = v; }, 0, 6, .1],
   ['num', 'Melee fly speed', () => COP.flyV, v => { COP.flyV = v; }, 2, 20, .5],
   ['tog', 'Air kick', () => MELEE.air, v => { MELEE.air = v; }],
   ['num', 'Air kick speed', () => MELEE.airV, v => { MELEE.airV = v; }, 4, 20, .5],
@@ -9102,7 +9130,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushSync: 0, pushNm: '', pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, copPass: 0, melEntry: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushSync: 0, pushNm: '', pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, melHit: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, copPass: 0, melEntry: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -9771,7 +9799,7 @@ function meleeGo(kind, h) {
     p.melStep++; p.melI = 0;
   }
   if (!colin.actions[nm]) return;
-  p.mel = nm; p.melLock = null;
+  p.mel = nm; p.melLock = null; p.melHit = 0;
   p.melT = p.melDur = kind === 'roll' ? MELEE.rollDur : nm === MELEE.slide ? MELEE.slideDur : MELEE.strike;
   colinScale(nm, clipLen(nm, p.melDur) / p.melDur);
   p.melWin = 0;
@@ -9862,12 +9890,29 @@ function stepMelee(dt, ride) {
     // `copFly` is ended by the ground rather than by a timer.
     const sp = p.melAir ? p.melV
       : p.melV * (u < MELEE.carry ? 1 : Math.max(0, 1 - u) / (1 - MELEE.carry));
-    p.vel.x = Math.sin(p.melH) * sp; p.vel.z = Math.cos(p.melH) * sp;
+    // ONCE HE HAS HIT SOMETHING THE LUNGE STOPS DRIVING and what is left is the recoil, bled off
+    // the honest way. Writing `sin(melH) * 0` here instead would erase the bounce on the very next
+    // frame and the thud would last exactly one -- which is indistinguishable from no thud.
+    if (p.melHit) { const k = Math.exp(-MELEE.thudDrag * dt); p.vel.x *= k; p.vel.z *= k; }
+    else { p.vel.x = Math.sin(p.melH) * sp; p.vel.z = Math.cos(p.melH) * sp; }
     p.vel.y -= MOVE.g * dt;
     const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
     p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
     const g = groundUnder(p.pos, MOVE.step, p.vel, py); p.wall = g.wall;
     settle(p, g, MOVE.step, px, pz);
+    // AND A STRIKE THAT MEETS SOMETHING SOLID STOPS THERE (c176). This is what "no weight" was:
+    // the lunge REWRITES the velocity from `melV` every frame, so the resolver would push him out
+    // of a man and the very next line put the speed straight back -- he ground along the officer
+    // with the impact deleted before it could be felt. The collider could never stop him, whatever
+    // it was made of.
+    // ONE FLAG, AND IT READS THE RESOLVER'S OWN ANSWER rather than a second test of its own, so a
+    // building stops a lunge exactly as a man does -- which is right, and is why this is general
+    // rather than an officer special case.
+    if (g.wall && !p.melAir && !p.melHit) {
+      p.melHit = 1; p.melV = 0;
+      p.vel.x = -Math.sin(p.melH) * MELEE.thud;
+      p.vel.z = -Math.cos(p.melH) * MELEE.thud;
+    }
     p.speed = Math.hypot(p.vel.x, p.vel.z);
   }
   // THE MARK, ON THE CONTACT FRAME. See MELEE.at: the swing and its consequence have to be
@@ -9918,7 +9963,7 @@ function stepMelee(dt, ride) {
     // HIS LEGS ARE UNDER HIM COMING OUT OF A STRIKE, which is `stepRoll`'s own cancel value and
     // not the standing start `goT = 0` gives. Zero here is a man rebuilding his gather from
     // nothing while still carrying the tackle's speed, which is the other half of the skating.
-    p.mel = ''; p.melAir = 0; p.melT = 0; p.melI = 0; p.melLock = null; p.goT = MOVE.pushT * .5;
+    p.mel = ''; p.melAir = 0; p.melT = 0; p.melI = 0; p.melLock = null; p.melHit = 0; p.goT = MOVE.pushT * .5;
   }
 }
 function stepRoll(dt) {
@@ -10462,7 +10507,7 @@ function stepPlayer(dt) {
   if (player.board) stepSkate(dt); else stepFoot(dt);
   // AND RIDING INTO ONE SENDS HIM FLYING. After the board step, so it is the position he
   // actually arrived at -- `stepMelee`'s own reason for sitting here.
-  if (player.board) copPlough();
+  copPlough();
   // A STRIKE THROWN WHILE RIDING, after the skate step so his position is the one the mark and
   // the punch cone are measured from. `stepFoot` already hands over to `stepMelee` itself; the
   // board cannot, because the board still has to be driving.

@@ -1198,6 +1198,50 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **A MAN HAS WEIGHT, AND THE LUNGE WAS DELETING EVERY IMPACT BEFORE IT COULD BE FELT (c176,
+  `p.melHit`, `MELEE.thud`, `COP.footPlough`).** *"He doesn't feel like he has any weight. Your
+  character sort of goes through him and the cop goes flying -- that's not what I'm going for. I
+  want it to feel like you hit something heavy, like you hit a wall, every time you melee him. If
+  you have appropriate speed -- skateboarding, or running really fast -- maybe it slows you down a
+  little but doesn't completely stop you. Below that it should feel solid."*
+  **TWO FAULTS, AND THE SECOND ONE IS WHY EVEN A SOLID OFFICER FELT LIKE NOTHING.**
+  **1. A STRIKE ON ITS OWN WAS COUNTING AS SPEED.** c174 ghosted any strike thrown above `flyV` 7
+  -- and a slide tackle is by definition above `MELEE.runAt` 4.6 and usually well past 7, so on
+  foot nearly every tackle went straight through him. The melee clause is gone: only real travel
+  opens him up, and the test is one predicate both the collider and the plough read.
+      on the board past `ploughV` 8       you plough -- the one he asked to keep
+      on foot past `footPlough` 13        a genuine sprint, not a run and not a lunge
+      anything else                       he is a WALL, whatever you are throwing at him
+  A plain run is 9 and a charged sprint tops near 17.6, so 13 is "running really fast" and nothing
+  under it. **And it reads `melEntry` mid-strike, never `p.speed`** -- c174's own lesson, because
+  `stepMelee` rewrites the velocity from `melV` every frame.
+  **2. THE LUNGE REWRITES THE VELOCITY EVERY FRAME, SO THE COLLIDER COULD NEVER STOP HIM.**
+  `resolveBoxes` pushed him out of the man and the very next line put the speed straight back --
+  he ground along the officer with the impact deleted before it could be felt. **No collider of
+  any kind could have read as heavy through that**, which is why making him solid at c174/c175 was
+  necessary and not sufficient. `p.melHit` latches off `g.wall` -- **the resolver's OWN answer,
+  not a second test** -- so the lunge stops driving and what is left is `MELEE.thud` bled off with
+  `Math.exp(-k*dt)`. Writing `sin(melH) * 0` instead would erase the bounce on the next frame and
+  the thud would last exactly one, which is indistinguishable from no thud.
+  **AND IT IS GENERAL RATHER THAN AN OFFICER SPECIAL CASE**: a lunge into a BUILDING stops the
+  same way, which is right and costs nothing.
+  **`copPlough` READS `copGhostWant` NOW.** If you are going THROUGH him you knock him through --
+  one fact, not two speed tests to keep in step. That is also what fixed the last hole: c174's
+  plough was `p.board` only, so a 15 m/s foot tackle sailed clean through a standing officer and
+  did nothing at all -- *cop standing, hp 3* while the player went past.
+  Eight cases through the shipped `stepPlayer` over the real collider:
+      on foot 2 and 6 m/s, no melee     stopped 0.73 m short   standing     <- contact
+      standing punch                    stopped 0.73 m short   hp 3 -> 2
+      riding in at 14                   WENT THROUGH him       FLYING       14 -> 10.0
+      riding in at 14 + melee           WENT THROUGH him       FLYING
+      **on foot at 12 + melee (tackle)  stopped 0.73 m short   FLYING**     <- hit something heavy
+      on foot SPRINTING at 15 + melee   WENT THROUGH him       FLYING
+  **AND THE PROBE THREW THE WRONG MOVE FOR TWO RUNS.** It always set the standing JAB at
+  `MELEE.lunge` 4.0 whatever the entry speed was, so 12 and 15 m/s both covered the identical
+  0.73 m, never reached the officer at 2.2 m, and read as "the sprint does not plough" when the
+  sprint had simply never arrived. Above `runAt` it is the TACKLE and a tackle keeps `slideV` of
+  the speed he came in with -- which is the whole reason it travels. **A harness that picks a
+  different move than `meleeGo` picks is measuring a game that does not exist.**
 - **A SAVED SETTING OUTRANKS EVERY FUTURE DEFAULT, FOR EVER -- AND THAT IS HOW c174 DID NOTHING
   (c175, `OPT.ver`, `OPT_FRESH`).** *"When I'm walking around a cop I still can't collide with
   him."* c174 turned `COP.solid` back on, measured it six ways and shipped -- and **his phone had

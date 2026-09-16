@@ -47,9 +47,18 @@ function run(label, { board, v, melee, push, ahead = 4, secs = 2.5 }) {
   // which is the same stated gap `probe-jump` has about the flip. So the strike state is set the
   // way `meleeGo` sets it. What is under test is `copGhost` and `copsPunched`, not `meleeGo`.
   if (melee) {
+    // AND IT HAS TO PICK THE MOVE THE WAY `meleeGo` PICKS IT. The first version always threw the
+    // standing JAB at `MELEE.lunge` 4.0 whatever the entry speed was, so 12 m/s and 15 m/s covered
+    // the identical 0.73 m, never reached the officer at 2.2 m, and read as "the sprint does not
+    // plough" when the sprint had simply never arrived. Above `runAt` it is the TACKLE, and a
+    // tackle keeps `slideV` of the speed he came in with -- which is the whole reason it travels.
+    const M = G.MELEE;
     P.melEntry = P.speed;
-    P.mel = G.MELEE.chain[0]; P.melT = P.melDur = G.MELEE.strike;
-    P.melH = 0; P.melV = board ? 0 : G.MELEE.lunge; P.melI = 0; P.melFx = 0; P.melLock = null;   // melFx is HAS-FIRED, not wants-to
+    const slide = P.speed > M.runAt;
+    P.mel = slide ? M.slide : M.chain[0];
+    P.melT = P.melDur = slide ? M.slideDur : M.strike;
+    P.melV = board ? 0 : slide ? Math.max(P.speed * M.slideV, M.runAt) : M.lunge;
+    P.melH = 0; P.melI = 0; P.melFx = 0; P.melLock = null; P.melHit = 0;   // melFx is HAS-FIRED
   }
   let through = false, near = 99;
   for (let i = 0; i < Math.round(secs / dt); i++) {
@@ -73,6 +82,7 @@ console.log('\nARRIVING WITH SOMETHING -- he FLIES and must not bounce you back\
 const d = run('riding in at 14, no melee', { board: true, v: 14 });
 const e = run('riding in at 14 AND melee', { board: true, v: 14, melee: true });
 const f = run('on foot at 12 AND melee', { board: false, v: 12, melee: true, ahead: 2.2 });
+const g2 = run('on foot SPRINTING at 15 + melee', { board: false, v: 15, melee: true, ahead: 2.2 });
 
 // ---- THE STANDING FIGHT IS A SEQUENCE (c175) ----
 // *"Blow to the head, blow to the body, third one sends him a little bit."* `copHit` picked from
@@ -96,7 +106,8 @@ console.log('\nTHREE PUNCHES ON THE SPOT -- head, body, then he goes\n');
 const chainOK = C.st === 'fly' || C.st === 'down';
 
 const ok = !a.through && !b.through && !c.through && c.hp < COP.hp
-  && d.through && d.flew && e.flew && f.flew && chainOK;
+  // ON FOOT A TACKLE HITS HIM (c176) -- only the board and a real sprint go through.
+  && d.through && d.flew && e.flew && !f.through && f.flew && g2.through && chainOK;
 console.log('\n' + (ok
   ? 'PASS: a wall when you walk into him, a target when you arrive with something.'
   : 'FAIL: ' + JSON.stringify({ a, b, c, d, e, f })));
