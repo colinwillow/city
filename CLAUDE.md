@@ -1198,6 +1198,25 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **NOTHING IS PARENTED TO THE BAR, AND NOTHING NEEDS TO BE (c149).** *"I don't know how you
+  rotate all of the joints around that point considering they're not a child of that joint --
+  maybe I should've used the root."* **He should not, and his first instinct was the right one.**
+  The joints are never rotated. THE ROOT is rotated, which turns the whole skeleton rigidly
+  because the root is already everything's parent -- and then the root is TRANSLATED by
+  `barCentre - jointMidpoint`, measured after the fact. Rotate, then slide: the standard way to
+  turn a thing about a point it does not contain, and because the slide is measured rather than
+  derived it does not matter where the mark sits relative to the root.
+  **AND THAT IS EXACTLY WHY THE MARK MUST NOT BE THE ROOT.** Putting it there would force the
+  root up to the bar -- and then every OTHER clip's root is in the air, which is the thing he
+  deliberately avoided so the gait clips blend. The mark's whole job is to say where the bar is
+  RELATIVE to him; it has no other duty, so it belongs anywhere convenient and nowhere load-
+  bearing.
+  **`BAR.mark` IS AN ORDERED LIST, AND THE HANDS ARE A REAL FALLBACK.** *"You could also just use
+  the hand joints, doesn't really matter."* Correct -- so both work. The weapon joints go first
+  because they measured STILL (1.2 cm of drift across the 4.7 s hang) where his actual hands
+  shuffle through the kip. **And only Colin's export has them**: every borrowed skin is a Mixamo
+  rig with `mixamorig_LeftHand`/`RightHand` and nothing else, so without the fallback Moussa and
+  the alien would hang wherever the clip left them.
 - **EVERY BAR IS FOUND, NEVER AUTHORED -- AND ALL 67 RUN ALONG X, WHICH IS THE SPLITTER (c148).**
   A lamp arm and a sign gantry are already boxes high in the air, long one way and thin the other:
   67 of them, heights 2.9 to 5.9 m (median 3.1), lengths 1.4 to 7.7 m, nearest 50 m from the

@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c148</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c149</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c148';
+const BUILD = 'c149';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -681,6 +681,16 @@ const BAR = {
                     // something you swing on, and the segments are left as they were.
   grab: .95,        // how close his hands have to pass
   cool: .45,        // and how long after letting go before he can catch again
+  // WHICH TWO NODES MARK THE BAR, IN ORDER OF PREFERENCE (c149). *"You could also just use the
+  // hand joints, doesn't really matter."* It genuinely does not -- the pair is only ever read to
+  // ask WHERE THE BAR IS relative to him, so anything that sits on it will do. The weapon joints
+  // go first because they are a dedicated pair whose whole job is to mark a point and an axis,
+  // and because they measured STILL: 1.2 cm of drift across the 4.7 s hang, where his actual
+  // hands shuffle on the bar through the kip.
+  // **AND THE HANDS ARE A REAL FALLBACK, NOT A COURTESY.** Every borrowed skin in this game is a
+  // Mixamo rig with those two bones, and only Colin's export carries the weapon joints -- so
+  // without this line Moussa and the alien would hang wherever the clip left them.
+  mark: [['weapon_root', 'weapon_tip'], ['mixamorig_LeftHand', 'mixamorig_RightHand']],
   len: 1.09,        // the pendulum arm: his centre of mass below the bar. MEASURED, see above.
   g: 17,            // gravity for the swing -- under the world's 20, which reads as heavier
   pump: 5.2,        // rad/s^2 added while the stick agrees with the swing
@@ -8400,16 +8410,18 @@ function poseBar() {
   // AND NOW THE MEASUREMENT. Pose is set, so read where the joints actually ended up and slide
   // the root until their midpoint is ON the bar. One extra matrix walk per frame, and not one
   // number about his proportions anywhere in this file.
-  // THE SAME TWO NODES `aimBarrel` ALREADY FINDS, cached on the worn skin the same way -- one
-  // lookup per character, and a rig with no joints simply hangs where the clip puts him rather
-  // than throwing. (A borrowed skin without them is the `NO WEAPON JOINT` case, one state over.)
+  // THE FIRST PAIR THIS RIG ACTUALLY HAS, cached per skin -- one traverse per character. See
+  // `BAR.mark`: the weapon joints if the export carries them, his hands otherwise.
   const skin = CHARS.skins[CHARS.cur];
-  if (skin && skin.wr === undefined) {
-    skin.wr = null; skin.wt = null;
-    colin.model.traverse(o => { if (o.name === 'weapon_root') skin.wr = o; if (o.name === 'weapon_tip') skin.wt = o; });
+  if (skin && skin.barM === undefined) {
+    skin.barM = null;
+    const by = {}; colin.model.traverse(o => { if (o.name) by[o.name] = o; });
+    for (const [a, b] of BAR.mark) if (by[a] && by[b]) { skin.barM = [by[a], by[b]]; break; }
+    console.log('[bar] ' + CHARS.cur + ' marks the bar with '
+      + (skin.barM ? skin.barM[0].name + ' / ' + skin.barM[1].name : 'NOTHING -- he will hang where the clip puts him'));
   }
-  const jr = skin && skin.wr, jt = skin && skin.wt;
-  if (!jr || !jt) return;
+  if (!skin || !skin.barM) return;
+  const jr = skin.barM[0], jt = skin.barM[1];
   colin.root.updateMatrixWorld(true);
   jr.getWorldPosition(_bwr); jt.getWorldPosition(_bwt);
   colin.root.position.x += B.x - (_bwr.x + _bwt.x) * .5;
