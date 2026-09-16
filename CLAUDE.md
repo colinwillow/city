@@ -2026,6 +2026,68 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   same separation that already lets melee and the blaster share this pad on foot.
   **`p.aim` ALONE IS THE GATE, NEVER `KIT.out.blaster`.** That is the THIRD time a guard here
   has been written against CARRYING the gun when the thing to guard against is FIRING it.
+- **`fitOne` WAS NOT IDEMPOTENT, AND THAT IS WHY THE JETPACK VANISHED ON MOUSSA (c126).**
+  *"The jetpack doesn't show up on Moussa."* It is not the bone lookup — his spine is spelt
+  `mixamorig_Spine2` exactly like Colin's, checked. It is the MEASUREMENT.
+  `m.updateMatrixWorld(true)` walks UP the chain. On the FIRST call nothing is parented yet, so
+  the box comes back in the model's own file units and the arithmetic is right. On a RE-fit —
+  which is every `wear`, through `gearRehome` — `slot.g` is still hanging off the PREVIOUS
+  character's bone, so the same box comes back in WORLD METRES: `len` is ~0.5 instead of ~30,
+  `k` is out by the whole armature scale, and the pack is fitted at something like **thirty
+  metres**, centred on his spine. The camera is inside it and there is nothing to see, which is
+  indistinguishable from it never having loaded.
+  **THE BLASTER NEVER HAD IT, for the reason the police pistol never had c98's**: its branch
+  resets the model and applies `fix` instead of ever measuring. Two mounts for one idea and only
+  one of them right — the same sentence as c98, one build along.
+  **A SLOT'S SIZE IS A PROPERTY OF THE ART**, and it must not depend on who was wearing it a
+  moment ago, so `fitOne` DETACHES before measuring. (three does not clear `matrixWorld` on
+  unparent — which is what made `npm run gun` first answer 73 metres — hence the explicit update
+  after the detach.)
+  **AND THE CHIP SAYS `jet52cm` / `jet3000cm` / `NO JET GLB`**, the gun's own rule: "it doesn't
+  show up" is three bugs wearing one face and the number is the only thing that tells them apart
+  from a phone.
+- **THE GUN FOLLOWS THE RETICLE WHILE HE RIDES, BY PIVOTING THE SPINE (c126, `aimTwist`).**
+  `stepSkate` owns the heading — the wheels are what steer — so since c113 the aim has been
+  forbidden from touching `p.heading` while riding. That is correct and it looks wrong: the shot
+  goes where the mark is (c119) while his BODY goes on facing down the deck, so the barrel and
+  the reticle visibly disagree. The gap is exactly `wrapAngle(p.aimH - p.faceH)`, and the spine
+  is what takes it up.
+  **ONE ROTATION ABOUT WORLD Y, CONJUGATED INTO EACH BONE'S PARENT FRAME** — `local' = P⁻¹ Q P
+  local`. Doing it in the bone's OWN space needs to know which local axis is up, which is a
+  different answer on every rig and is precisely the class of assumption `HIPFIX` exists because
+  of. This way it is rig-agnostic and it STACKS on whatever the clip was doing rather than
+  replacing it.
+  **SPINE1 AND SPINE2, NEVER THE HIPS.** The legs belong to the board and must not come round
+  with the gun — the same split `__legs` already draws.
+  **THE PARENT CHAIN IS RE-READ PER BONE**, because each twist moves the next one's frame;
+  applying both against one stale `P` is a shear rather than a turn.
+  **APPLIED AFTER `colin.mixer.update`**, so it is an edit on top of the pose — and the mixer
+  rewrites the bones from the clips every frame, which is what stops it accumulating.
+- **A PLASMA MUZZLE FLASH IS NOT A SMOKE CARD (c126, `muzzleFlash`, `tipAt`).** *"When you shoot
+  the blaster it shows the jetpack particle cards and it kind of just lays over the blast and
+  you can't really see the blast itself."* `fxPop('flash')` is the JETPACK'S ignition bank — a
+  1.63 m hand-drawn crack and a cloud — fired at point blank on a plasma rifle.
+  **This is the c101 lesson pointing the other way for once**: there my addition was wrong and
+  the ported part was right; here the CARD was the borrowed thing and the bolt's own sprites
+  were right all along. Same question either way — which vocabulary does this belong to.
+  So it is `BOLT.hue0`/`hue1`, the same cyan and violet the shot is made of: a white throat, a
+  body, a cool edge, and a cone of pips thrown ALONG THE BARREL so it reads as pressure leaving
+  rather than as a ball appearing. `burst` has carried a velocity since c120, which is what lets
+  the sparks actually go somewhere.
+  **AND IT COMES OFF `weapon_tip`, NOT off `muzzleAt`.** That function deliberately pushes the
+  bolt out to `WEAP.out` so a shot is not born inside whatever he is standing next to — right
+  for the BOLT and wrong for the FLASH, which belongs exactly on the hole it comes out of.
+  The COP's pistol keeps its card: a real gun firing a real round is what that drawing is for.
+- **THE JET FLAME IS BLUE, AND THERE ARE TWO OF THEM (c126).** The c120 flame was orange — a
+  campfire palette on a thruster. A hot gas flame is the other end of the scale: near-white at
+  the throat, cyan through the middle, deep blue at the coolest edge, and NARROWER, because fire
+  spreads and a jet is a column.
+  **AND ONE FLAME DOWN THE MIDDLE OF HIS BACK IS A ROCKET, NOT A JETPACK.** `models/alien_jetpack.glb`
+  STILL has no nulls in it — re-read at c126: one node, one Tripo mesh, 0 skins — so the pair is
+  placed off the measured centre along HIS OWN right vector (`faceH`), which keeps them across
+  his back whichever way he turns, at `JET.nozAt` of the pack's MEASURED size rather than a typed
+  offset. The moment an export carries the joints, `JET.tip` takes them and this fallback stops
+  being reached.
 - **EVERY PIECE OF KIT IS PARENTED TO A BONE, AND THAT IS RIGHT HERE FOR THE REASON THE TITLE
   CARD'S BOARD IS NOT.** The board is hung off the hand's WORLD MATRIX because there is no
   holding clip and it has to be placed, scaled and turned by hand every frame anyway. A piece
