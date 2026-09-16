@@ -258,6 +258,16 @@
      unreadable in the one screenshot that reported a jam. It moves to the RIGHT of centre and
      down a line; the top-left gutter belongs to the build chip. */
   #speed{top:calc(58px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);font-size:13px;min-width:70px;text-align:center}
+  /* THE BANK, UNDER THE SPEEDO AND ON ITS OWN LINE. The top-left gutter belongs to the build
+     chip (see above) and the top right is three keys, so the one place left that both thumbs
+     can see without anything overlapping is straight down the middle. */
+  #cash{top:calc(92px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);opacity:.9;padding:6px 14px}
+  #cash b{font-family:var(--disp);font-size:15px;letter-spacing:.02em;color:#ffd76a;
+    text-shadow:0 2px 0 rgba(8,20,44,.9),0 0 16px rgba(255,190,70,.6)}
+  /* it kicks on a pickup, because a number that changes with no motion is a number nobody sees */
+  #cash.pop{animation:cashPop .42s cubic-bezier(.16,1,.3,1)}
+  @keyframes cashPop{0%{transform:translateX(-50%) scale(1)}34%{transform:translateX(-50%) scale(1.28)}100%{transform:translateX(-50%) scale(1)}}
+  body.title #cash{opacity:0}
   #build{max-width:calc(100vw - 190px - env(safe-area-inset-left) - env(safe-area-inset-right))}
   #build i{white-space:normal}
   #speed b{font-family:var(--disp);font-size:17px;letter-spacing:0;margin-right:5px;color:#fff}
@@ -292,9 +302,10 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c143</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c144</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
+<div class="chip" id="cash"><b id="cashN">$0</b></div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
 
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
@@ -305,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c143';
+const BUILD = 'c144';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -525,6 +536,48 @@ const TRICK = {
 // `npm run spots` exists.
 // ITS SIZE IS MEASURED TOO, the skateboard's rule: it arrives about a unit across, so the scale
 // comes from its own long horizontal axis and a re-export at any size lands right with no edit.
+// MONEY YOU PICK UP (c144, `CASH`, `buildCash`, `stepCash`).
+// *"Money that you collect -- a stack of hundred dollar bills with a little [band] to signal
+// that it's like $10,000. Put it around town, just a little bit here and there."*
+// **THE BANK STRAP IS THE WHOLE READ**, and it is why this is worth generating rather than
+// modelling: a green brick is a green brick from ten metres, and the one thing that says MONEY
+// at that distance is the paper band across the middle. So the silhouette is four plates with a
+// hair of gap (which is what says "bills" rather than "block") under one bright band that wraps
+// proud of the stack on two axes. Sixty triangles.
+// **PLACED BY `npm run spots 2 spread 26`, NEVER BY EYE** -- this repo's oldest rule, and
+// `spread` is the sort that exists for exactly this: `spots` ranks nearest-first, which is right
+// for a half pipe he has to find and would have put twenty-six straps in a rank in his face.
+// Farthest-point sampling instead: one within a walk of the spawn and the rest from 148 m to
+// 770 m out, so finding them is a reason to cross town.
+// **NOT YET: the arrest.** *"I'm thinking the cops will try to arrest you and when you get
+// arrested you lose all your money. You don't need to implement that stuff yet."* `CASH.lose()`
+// is the hook and nothing calls it; `HEAT` is already the wanted level it will read.
+const CASH = {
+  on: 1,
+  // `npm run spots 2 spread 26`, pasted. Every one reads flat 0.00 and good 100 per cent --
+  // open ground rather than a road -- and they run from 6 m to 770 m from the spawn.
+  spots: [
+    [-95,-1], [591,337], [399,-137], [-391,337],
+    [165,337], [-391,-87], [-113,283], [189,53],
+    [591,61], [391,199], [-307,125], [105,-137],
+    [591,-133], [5,147], [361,31], [-233,-77],
+    [321,337], [253,-87], [239,195], [-261,267],
+    [-145,141], [561,199], [487,-31], [455,319],
+    [5,337], [113,219]
+  ],
+  bank: 0, got: 0, shown: 0, // what he is carrying, how many straps, and the ticking display
+  value: 10000,              // one strap of hundreds
+  size: .46,                 // the long side of a strap, in metres -- OVERSIZED, deliberately:
+                             // a real 156 mm note is invisible at the distance this is read from
+  hover: .62,                // how high it floats off whatever it is standing on
+  bob: .13, bobT: 2.4,       // and the float itself
+  spin: 1.1,                 // rad/s -- turning is what says "collect me" without a label
+  r: 1.9,                    // how close he has to get. Generous: he arrives at 24 m/s
+  // BILL GREEN AND A WARM BAND. The one object in this game whose COLOUR carries information,
+  // which is also why its material opts out of the paint and the palette grade -- see `buildCash`.
+  billA: 0x9fc48c, billB: 0x7ea06d, band: 0xf0b13a, ink: 0x2c3a2a,
+  lose() { const had = this.bank; this.bank = 0; return had; },   // the hook the arrest will call
+};
 const SHIP = {
   url: 'models/alien_ship_orange.glb',
   at: [298.2, 17.1, -13.1], yaw: -.85,
@@ -1119,7 +1172,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1142,6 +1195,11 @@ const SND_FILES = {
   // decode and `edge` as every other sound so there is no second loading path -- but it is
   // never `play()`ed: `WHEELS` holds one looping source and rides it, below.
   roll: ['skateboarding_sound_effects/skateboarding_riding_01.mp4', 'skateboarding_sound_effects/skateboarding_riding.mp4'],
+  // THE PICKUP (c144). Plutopia's and robits' own gem-collect sound -- it is in BOTH of those
+  // repos under this name and does the same job in each, which is the strongest argument there
+  // is for borrowing it rather than inventing one. He may drop his own over the top: same path,
+  // same filename, and `npm run bump` re-hashes it so the phone actually asks again.
+  cash: ['jewel_noise_01'],
 };
 const rnd = (a, b) => a + Math.random() * (b - a);
 const SFX = {
@@ -1439,6 +1497,16 @@ const snd = {
     ? (SFX.play('deck', .44 + .46 * k, rnd(.92, 1.06)) || SFX.play('wood', .30 + .50 * k, rnd(.80, 1.05)) || SFX.noise(.09, .16, 900))
     : (SFX.noise(.10, .08 + .16 * k, 520), SFX.blip(96, .07, 'sine', .05 + .10 * k, 54)),
   bail: () => SFX.play('crack', .55, rnd(.80, 1.00)) || SFX.noise(.22, .22, 700),
+  // A LITTLE HIGHER EACH TIME, RESET BY A PAUSE -- the oldest trick in a pickup, and it is what
+  // turns twenty-six identical chimes into a run you want to keep going. It is a per-key state
+  // rather than a counter on the caller, so the RUN belongs to the sound and not to the money.
+  cash: () => {
+    const now = performance.now();
+    snd._cashN = (now - (snd._cashT || 0) < 1400) ? Math.min((snd._cashN || 0) + 1, 7) : 0;
+    snd._cashT = now;
+    const r = 1.0 * Math.pow(1.0595, snd._cashN * 2);   // two semitones a step
+    return SFX.play('cash', .55, r) || SFX.blip(720 * r, .09, 'triangle', .07, 1500);
+  },
   // the three car tiers, told apart by weight and pitch rather than by three different files
   // QUIETER (c135). *"Can we turn down the metal clang, it's pretty loud."* The three tiers keep
   // their RATIO to each other -- that spread is what tells a shoulder from a head-on apart, and
@@ -7328,6 +7396,7 @@ const OPT_ROWS = [
   ['h', 'World'],
   ['tog', 'Map', () => MAP.on, v => { MAP.on = v; }],
   ['tog', 'Police', () => COP.on, v => { COP.on = v; }],
+  ['tog', 'Money', () => CASH.on, v => { CASH.on = v; if (cashMesh) cashMesh.visible = !!v; }],
   ['h', 'Palette'],
   ['tog', 'Palette grade', () => PAL.on, v => { PAL.on = v; }],
   ['num', 'Tint strength', () => PAL.pull, v => { PAL.pull = v; }, 0, 2, .05],
@@ -7535,6 +7604,107 @@ function groundUnder(p, step, vel, fromY, bounce) {
 // costs one draw call and is toon shaded like everything else without being told.
 // IT IS NOT IN THE COLLIDER. A ladder is a thing you latch to, not a wall you stop against,
 // and rails thin enough to look right are thin enough to catch a foot on.
+// ONE INSTANCED MESH, ONE DRAW CALL, TWENTY-SIX STRAPS. They each bob and spin on their own
+// clock, so they cannot be merged into one static geometry the way the ladders are -- and
+// twenty-six separate Meshes is twenty-six draw calls on a phone already sitting at 24 fps.
+// An `InstancedMesh` is the shape that answers both: one upload, one call, a matrix a frame.
+// **AND IT OPTS OUT OF THE PAINT AND THE PALETTE (`noPaint`), WHICH ALMOST NOTHING ELSE DOES.**
+// The grade pushes green toward mint and the paint splotches it, and this is the one object in
+// the game whose COLOUR IS INFORMATION -- money that is not green is not money. It still takes
+// the toon ramp and the see-through hole, so it sits in the picture rather than on top of it.
+// (There is a mechanical reason under the taste one: `paintPatch` builds its world position from
+// `modelMatrix * transformed`, and under instancing `transformed` has not had the instance matrix
+// applied yet, so every strap would sample the same spot on the tile.)
+let cashMesh = null;
+const _cashM = new THREE.Matrix4(), _cashQ = new THREE.Quaternion(), _cashP = new THREE.Vector3(),
+      _cashS = new THREE.Vector3(1, 1, 1), _cashUp = new THREE.Vector3(0, 1, 0);
+function cashGeo() {
+  const S = CASH.size, W = S * .43, plates = 4, gap = S * .012, ph = S * .052;
+  const parts = [];
+  const put = (g, y, hex) => {
+    g.translate(0, y, 0);
+    const n = g.attributes.position.count, c = new THREE.Color(hex), a = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+    parts.push(g);
+  };
+  // THE STACK: four plates with a hair between them. One box is a brick, and the gaps are the
+  // only thing at this size that reads as separate sheets of paper.
+  for (let i = 0; i < plates; i++) put(new THREE.BoxGeometry(S, ph, W), i * (ph + gap), i % 2 ? CASH.billB : CASH.billA);
+  const H = plates * ph + (plates - 1) * gap, mid = H / 2 - ph / 2;
+  // THE BAND, PROUD ON TWO AXES so it reads as wrapped ROUND rather than painted on -- which is
+  // the whole difference between a bank strap and a stripe, and the only thing that says MONEY
+  // from ten metres away.
+  put(new THREE.BoxGeometry(S * .17, H * 1.14, W * 1.10), mid, CASH.band);
+  // and a dark line down the middle of it, where the denomination is printed on a real one
+  put(new THREE.BoxGeometry(S * .045, H * 1.16, W * 1.12), mid, CASH.ink);
+  const g = mergeGeometries(parts, false);
+  for (const q of parts) q.dispose();
+  g.translate(0, -mid, 0);            // centred on itself, so the spin is about its middle
+  return g;
+}
+function buildCash() {
+  if (!CASH.on || !CASH.spots.length) return;
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .78, metalness: 0, flatShading: true });
+  mat.userData.noPaint = 1;
+  cashMesh = new THREE.InstancedMesh(cashGeo(), mat, CASH.spots.length);
+  cashMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  // the instances are spread across the whole map, so the mesh's own bounds mean nothing
+  cashMesh.frustumCulled = false;
+  cashMesh.castShadow = true;
+  CASH.items = [];
+  for (let i = 0; i < CASH.spots.length; i++) {
+    const x = CASH.spots[i][0], z = CASH.spots[i][1];
+    const g = groundAt(x, z, 40, 0);
+    CASH.items.push({ x, y: (g.hit ? g.floor : hmAt(x, z)) + CASH.hover, z, got: 0, ph: Math.random() * 6.283 });
+  }
+  scene.add(cashMesh);
+  console.log('cash: ' + CASH.items.length + ' straps at $' + CASH.value + ' each');
+}
+// COLLECTED BY PROXIMITY, NOT BY A COLLIDER. A pickup is a thing you drive THROUGH, and
+// twenty-six distance tests a frame is nothing beside four hundred cars each asking their
+// neighbours twice.
+function stepCash(dt) {
+  if (!cashMesh || !CASH.on || !CASH.items) return;
+  const t = performance.now() / 1000, p = player;
+  const live = !TITLE.on && ready && !p.hit;
+  for (let i = 0; i < CASH.items.length; i++) {
+    const m = CASH.items[i];
+    // A TAKEN ONE IS SCALED TO NOTHING rather than removed: an InstancedMesh has a fixed count,
+    // and re-packing the array on every pickup would renumber everything still standing.
+    if (m.got) { _cashM.makeScale(0, 0, 0); cashMesh.setMatrixAt(i, _cashM); continue; }
+    const y = m.y + Math.sin(t * (6.283 / CASH.bobT) + m.ph) * CASH.bob;
+    _cashQ.setFromAxisAngle(_cashUp, t * CASH.spin + m.ph);
+    _cashP.set(m.x, y, m.z);
+    _cashM.compose(_cashP, _cashQ, _cashS);
+    cashMesh.setMatrixAt(i, _cashM);
+    if (!live) continue;
+    const dx = p.pos.x - m.x, dz = p.pos.z - m.z, dy = p.pos.y + COLIN_HEIGHT * .5 - y;
+    if (dx * dx + dz * dz + dy * dy < CASH.r * CASH.r) cashTake(i);
+  }
+  cashMesh.instanceMatrix.needsUpdate = true;
+  // THE COUNTER RUNS UP RATHER THAN JUMPING. A number that snaps reads as a variable changing;
+  // one that runs reads as money arriving, which is most of what picking it up is for.
+  if (CASH.shown !== CASH.bank) {
+    CASH.shown = Math.abs(CASH.bank - CASH.shown) < 60 ? CASH.bank : damp(CASH.shown, CASH.bank, .16, dt);
+    cashPaint();
+  }
+}
+function cashTake(i) {
+  const m = CASH.items[i]; if (m.got) return;
+  m.got = 1; CASH.got++; CASH.bank += CASH.value;
+  snd.cash();
+  // THROWN UPWARD -- money leaving the ground toward him. Not the drawn `boom`, which is a
+  // cartoon explosion and would cover the thing it happened to: the c126/c136 question asked
+  // again, which is WHICH VOCABULARY this belongs to.
+  fxPop(m.x, m.y, m.z, 'hit', FX.size * FX.impact * .7, 0, 2.4, 0);
+  const el = document.getElementById('cash');
+  if (el) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+}
+function cashPaint() {
+  const el = document.getElementById('cashN');
+  if (el) el.textContent = '$' + Math.max(0, Math.round(CASH.shown)).toLocaleString('en-US');
+}
 function buildLadders() {
   for (const sp of LAD.spots) {
     const h = sp.top - sp.y;
@@ -8975,6 +9145,7 @@ function frame() {
     if (el) { el.style.opacity = player.aim ? '1' : (out ? '.34' : '0'); el.style.setProperty('--c', (k || 1).toFixed(3)); }
   }
   stickWatch(dt);
+  stepCash(dt);
   stepShip(dt);
   jamScan(dt);
   drawMap(dt);
@@ -9024,6 +9195,7 @@ frame();
     // the first skin and for every change after it, which is the one place that knows.
     buildCity(city, ramps);
     buildLadders();
+    buildCash();      // after the collider: every strap's height is read off the ground
     if (copGlb) buildCops(copGlb, gunGlb);
     {
       const got = [];
@@ -9068,7 +9240,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

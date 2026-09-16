@@ -2808,6 +2808,50 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   lever and it belongs in the composite, but shipping it alongside the paint would move two
   variables at once and neither could then be judged — which is this file's own rule about the
   badge toggles.
+- **MONEY YOU PICK UP (c144, `CASH`, `buildCash`, `stepCash`).** *"Money that you collect -- a
+  stack of hundred dollar bills with a little [band] to signal that it's like $10,000. Put it
+  around town, just a little bit here and there."*
+  **THE BANK STRAP IS THE ENTIRE READ, WHICH IS WHY THIS IS GENERATED RATHER THAN MODELLED.** A
+  green brick is a green brick from ten metres; the one thing that says MONEY at that distance is
+  the paper band wrapped across the middle. So the silhouette is four plates with a hair of gap
+  between them (which is what reads as SHEETS rather than as a block) under one bright band that
+  stands proud on two axes -- proud is the whole difference between a strap and a stripe. Sixty
+  triangles, and every number is a fraction of `CASH.size` so a re-scale stays in proportion.
+  **AND IT IS OVERSIZED ON PURPOSE.** A real note is 156 mm. At the distance this camera reads
+  the ground from, an accurate one is invisible -- the skateboard's own lesson, pointing the
+  other way.
+  **ONE `InstancedMesh`, ONE DRAW CALL.** They each bob and spin on their own clock, so they
+  cannot be merged into one static geometry the way the ladders are -- and twenty-six separate
+  Meshes is twenty-six draw calls on a phone already at 24 fps. A taken one is SCALED TO ZERO
+  rather than removed: the count is fixed, and re-packing would renumber everything still
+  standing.
+  **IT IS THE ONE THING IN THE WORLD THAT OPTS OUT OF THE PAINT AND THE PALETTE.** The grade
+  pushes green toward mint and the paint splotches it, and this is the one object whose COLOUR IS
+  INFORMATION -- money that is not green is not money. It keeps the toon ramp and the see-through
+  hole, so it sits in the picture rather than on top of it. There is a mechanical reason under
+  the taste one: `paintPatch` builds its world position from `modelMatrix * transformed`, and
+  under instancing `transformed` has not had the instance matrix applied yet, so every strap
+  would sample the same spot on the tile.
+  **PLACED BY `npm run spots 2 spread 26`, NEVER BY EYE**, and `spread` is the sort that exists
+  for exactly this: `spots` ranks nearest-first, which is right for a half pipe he has to find
+  and would have put twenty-six straps in a rank in his face. Farthest-point sampling gives one
+  within a walk of the spawn and the rest from 148 m to 770 m out, so finding them is a reason to
+  cross town. All twenty-six read flat 0.00 and good 100 per cent -- open ground, not a road.
+  **COLLECTED BY PROXIMITY, NOT BY A COLLIDER.** A pickup is a thing you drive THROUGH, and
+  twenty-six distance tests a frame is nothing beside four hundred cars each asking their
+  neighbours twice.
+  **THE SOUND IS PLUTOPIA'S AND ROBITS' `jewel_noise_01`** -- it is in BOTH repos under that name
+  doing the same job, which is the strongest argument for borrowing rather than inventing. **It
+  climbs two semitones a pickup and resets after a pause**, the oldest trick in a collectible and
+  what turns twenty-six identical chimes into a run you want to keep going. The run is state on
+  the SOUND, not a counter on the caller, so it belongs to the chime rather than to the money.
+  **THE COUNTER RUNS UP RATHER THAN JUMPING.** A number that snaps reads as a variable changing;
+  one that runs reads as money arriving, which is most of what picking it up is for.
+  **NOT YET: THE ARREST.** *"The cops will try to arrest you and when you get arrested you lose
+  all your money. You don't need to implement that stuff yet."* `CASH.lose()` is the hook, and
+  nothing calls it -- `HEAT` is already the wanted level it will read, and the officer needs a
+  tackle animation before any of it means anything.
+  Verified through `npm run jam`: 26 straps built against the real collider, city still 96 chunks.
 - **PLUTOPIA'S SHIP IS PARKED ON HOTEL_A'S ROOF (`SHIP`, c127), AND THAT IS NOT AN ARBITRARY
   ROOF.** `npm run ladders` had already put a LADDER up that building, and it topped out on a
   bare 14 x 14 m deck with nothing on it. A climb that leads somewhere is worth more than a ship
