@@ -1198,6 +1198,65 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE BAR IS A HOLD AND A SWIPE NOW, AND THE CAMERA IS FREE AGAIN (c164, `npm run bar`'s
+  placement check, `JAM_PROBE=tools/probe-bar6.mjs`).** *"I actually think the camera should still
+  be able to orbit. The way we solve his ability to swing is: if you're holding down on the right
+  stick, that's how he starts pumping, rather than needing to push a direction -- because if we
+  can orbit the camera, the problem is that the direction would be relative. Then to fly off it
+  you swipe the right stick, which will launch him. Also it's way slower than I wanted."*
+  **HIS DIAGNOSIS IS THE WHOLE FIX AND IT IS EXACTLY RIGHT.** The old pump dotted a
+  CAMERA-RELATIVE thumb against the swing plane, so what counted as "forward" changed every time
+  the lens moved -- which is precisely why c154 had to LATCH the bearing, and why the camera and
+  the control were stuck in each other's way. **A hold has no frame to be relative to**, so the
+  two stop fighting and the orbit costs nothing: the same thumb pumps and orbits at once.
+      pump     the right pad HELD. From rest he swings the way he FACES (a direction he always
+               has); after that always WITH the swing, so every half builds.
+      launch   a SWIPE, through `boardFlick`, where every other verb on that pad lives. It has
+               to be: the pad is held to pump now and a tap is a short hold, so a tap that also
+               let go would fire every time a thumb bounced.
+      camera   `barAim`'s searched bearing swings the shot in over `BAR.camSettle` -- which is
+               what stops it starting inside a wall -- and after that this branch stops writing
+               `cam.az` at all, so the ordinary drag is the only writer.
+  **AND "ALWAYS ADDS" IS MOST OF THE SPEED.** "Only while the thumb agrees with the swing" was
+  the physically honest rule and it threw half of every cycle away unless you alternated in time
+  with him -- a thing to learn rather than a thing to do. Driven through the shipped `stepBar`:
+      holding      level with the bar at 1.55 s, OVER THE TOP at 2.20 s, peak w 7.00 (the cap)
+      not holding  never, and peak w 0.00 -- nothing happens on its own
+      a TAP        still on the bar        a SWIPE   released, on w -1.85
+  **AND THE KIP PLAYS WHILE HE PUMPS, NOT WHEN HE IS ALREADY FAST.** *"I don't ever see him doing
+  the pump animation."* It was gated on `barW` past `wGo` alone, so it needed a real swing before
+  it ever appeared -- on a swing that was slow to get there for the reason above. **The clip is
+  the ACTION, not the speed**: a thumb on the pad shows it at once and `colinSet` eases it in.
+- **AND THE BODY WAS SWINGING AGAINST THE PHYSICS DRIVING IT (c164, `barPlace`).** *"It's like
+  he's rotating around his middle point."* `stepBar` puts his centre of mass at
+  `+forward * len * sin(a)` with `forward = (-B.az, B.ax)`; a right-handed rotation of
+  `(0, -len, 0)` about `(B.ax, 0, B.az)` by `+a` sends it **the other way**. So the pendulum
+  pushed him one way round and the model turned the other, which is a mirror image at every
+  angle except the bottom -- and at the top of a giant it is a body inverted about the wrong
+  point. `-barA`, and **measured rather than argued**, because this file gets handedness
+  backwards half the time when it reasons about it.
+  **SO THE ANSWER TO "SHOULD I REDO THE ANIMATIONS ORBITING HIS ROOT" IS NO.** *"I wonder if I
+  should just redo the animations orbiting around his root, which would allow the entire rotation
+  to work better -- the problem would then just be blending the animations."* He is right that it
+  would be a blending problem, and he does not have to pay it: the placement is already measured
+  off `BAR.mark` and it is EXACT. `npm run bar` runs the shipped `barPlace` (lifted between the
+  `BARPOSE:` markers) against the real rig in the real hang clip:
+      the hang clip   hands 1.253, head 0.926, toes -0.101  -> hands over head over feet, a hang
+      a 0 / 45 / 90 / 135 / 180 / -45 / -90 deg   grip off the bar 0.0000 m at EVERY angle
+      the swing side agrees with `stepBar` in 7/7  (it was 2/7 before the sign)
+  **He pivots about his HANDS to four decimal places**, so a clip authored around the root would
+  hand the code a rotation it is already doing and the two would compound. The mark's whole job
+  is to say where the bar is RELATIVE to him (c149); that is the property that makes the export
+  something this code has no opinion about, and it is worth keeping.
+  **WHAT THAT MEASUREMENT DOES NOT EXPLAIN is the pose in his screenshot** -- head below the bar
+  with the feet above it, which no rigid rotation about the hands produces from this clip. The
+  sign was real and is fixed; if it still reads folded after c164 the next suspect is a clip left
+  welded at weight 1 by the `isRunning()` landmine, and the chip census is where that shows.
+- **`poseBar`'s GEOMETRY IS A FUNCTION NOW (`barPlace`, `BARPOSE:` markers).** It was inline and
+  reached for `player`, `colin` and `CHARS`, so no harness could drive it and the sign above went
+  four builds unmeasured. It takes a root, two marker nodes, the bar and two angles, and
+  `npm run bar` runs that text. **A harness that measures a copy of the code is this repo's
+  oldest mistake** -- this is the seventh time it has been worth the refactor to avoid it.
 - **PULLING BACK BRAKED AND FULL-LOCK STEERED AT THE SAME TIME (c163, `p.braked`,
   `JAM_PROBE=tools/probe-brake.mjs`).** *"When you're on your skateboard and you pull down on the
   left stick, it should slow you down -- maybe I'll even put in a little skid animation so we can

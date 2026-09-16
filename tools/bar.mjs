@@ -156,3 +156,64 @@ if (hand && neutral) {
 scene.traverse(o => { if (o.isBone || o.isObject3D) { /* reset */ } });
 mixer.stopAllAction(); mixer.setTime(0);
 for (const o of scene.children) o.updateMatrixWorld(true);
+
+// ---------------------------------------------------------------------------------------
+// WHERE DOES HE ACTUALLY END UP ON THE BAR? (c164)
+// *"He's upside down... it's like he's rotating around his middle point."* Two claims, and both
+// are positions in space rather than opinions. This runs the SHIPPED `barPlace` -- lifted
+// between the `BARPOSE:` markers, never restated -- against the real rig in the real hang clip
+// and reads where his HANDS, his HEAD and his FEET land relative to the bar.
+// ---------------------------------------------------------------------------------------
+const barSrc = fs.readFileSync('index.html', 'utf8');
+const mk = barSrc.match(/\/\* BARPOSE:START \*\/([\s\S]*?)\/\* BARPOSE:END \*\//);
+if (!mk) { console.error('BARPOSE markers not found'); process.exit(1); }
+const barPlace = new Function('THREE', mk[1] + '\nreturn barPlace;')(THREE);
+
+const nodeBy = {};
+gltf.scene.traverse(o => { if (o.name) nodeBy[o.name] = o; });
+const hang = clips.find(c => c.name === 'bar_hang_idle');
+const need = ['mixamorig_LeftHand', 'mixamorig_RightHand', 'mixamorig_Head', 'mixamorig_LeftToeBase', 'mixamorig_Hips'];
+const miss = need.filter(n => !nodeBy[n]);
+if (!hang || miss.length) { console.log('\n(skipping the placement check: ' + (hang ? 'no ' + miss.join(', ') : 'no bar_hang_idle') + ')'); }
+else {
+  // A SYNTHETIC BAR ALONG +X at 4 m, which makes the swing plane +/-Z and every number readable.
+  const B = { x: 0, y: 4, z: 0, ax: 1, az: 0 };
+  const root = new THREE.Group(); root.add(gltf.scene); root.updateMatrixWorld(true);
+  const jr = nodeBy['mixamorig_LeftHand'], jt = nodeBy['mixamorig_RightHand'];
+  const P = n => { const v = new THREE.Vector3(); nodeBy[n].getWorldPosition(v); return v; };
+  mixer.stopAllAction();
+  const act = mixer.clipAction(hang); act.reset(); act.play(); mixer.setTime(0);
+
+  console.log('\nTHE HANG CLIP ITSELF  (is it a hang at all -- are his hands above his head?)');
+  root.quaternion.identity(); root.position.set(0, 0, 0); root.updateMatrixWorld(true);
+  const h0 = P('mixamorig_LeftHand').y, hd0 = P('mixamorig_Head').y, ft0 = P('mixamorig_LeftToeBase').y;
+  console.log('   hands ' + h0.toFixed(3) + '   head ' + hd0.toFixed(3) + '   toes ' + ft0.toFixed(3)
+    + '   -> ' + (h0 > hd0 && hd0 > ft0 ? 'HANGING: hands over head over feet' : '*** NOT a hang pose'));
+
+  console.log('\nTHROUGH THE SHIPPED `barPlace`, bar along +X at y=4, swing plane +/-Z');
+  console.log('   `stepBar` puts his centre of mass at +Z*len*sin(a), so at a>0 his BODY must be at +Z too\n');
+  let worstGrip = 0, agree = 0, n = 0;
+  for (const deg of [0, 45, 90, 135, 180, -45, -90]) {
+    const a = deg * Math.PI / 180;
+    barPlace(root, jr, jt, B, a, 0);
+    const L = P('mixamorig_LeftHand'), R = P('mixamorig_RightHand');
+    const mid = L.clone().add(R).multiplyScalar(.5);
+    const head = P('mixamorig_Head'), toe = P('mixamorig_LeftToeBase'), hips = P('mixamorig_Hips');
+    const grip = mid.distanceTo(new THREE.Vector3(B.x, B.y, B.z));
+    worstGrip = Math.max(worstGrip, grip);
+    const wantZ = Math.sin(a);                      // the sign `stepBar` is driving him with
+    const gotZ = hips.z - B.z;
+    const ok = Math.abs(wantZ) < .05 || Math.sign(gotZ) === Math.sign(wantZ);
+    if (ok) agree++; n++;
+    console.log('   a ' + String(deg).padStart(4) + ' deg   grip off bar ' + grip.toFixed(4)
+      + '   hips ' + (hips.y - B.y >= 0 ? '+' : '') + (hips.y - B.y).toFixed(2) + 'y '
+      + (gotZ >= 0 ? '+' : '') + gotZ.toFixed(2) + 'z'
+      + '   head ' + (head.y - B.y).toFixed(2) + '   toes ' + (toe.y - B.y).toFixed(2)
+      + '   ' + (ok ? '' : '*** swings the WRONG WAY'));
+  }
+  console.log('\n   worst grip-to-bar ' + worstGrip.toFixed(4) + ' m   (the pivot IS his hands if this is ~0)');
+  console.log('   swing side agrees with the physics in ' + agree + '/' + n + ' cases');
+  if (worstGrip > .02) { console.log('*** he does not pivot about his hands'); process.exit(1); }
+  if (agree < n) { console.log('*** the body swings against the pendulum driving it'); process.exit(1); }
+  console.log('   he hangs by his hands and swings the way `stepBar` is pushing him.');
+}

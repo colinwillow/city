@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c163</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c164</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c163';
+const BUILD = 'c164';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -718,7 +718,19 @@ const BAR = {
   mark: [['bar_root', 'bar_tip'], ['mixamorig_LeftHand', 'mixamorig_RightHand']],
   len: 1.09,        // the pendulum arm: his centre of mass below the bar. MEASURED, see above.
   g: 17,            // gravity for the swing -- under the world's 20, which reads as heavier
-  pump: 5.2,        // rad/s^2 added while the stick agrees with the swing
+  // PUMPING IS A HOLD ON THE RIGHT PAD AND IT HAS NO DIRECTION IN IT (c164). *"If you're
+  // holding down on the right stick that's how he starts pumping, rather than needing to push a
+  // direction -- because if we can orbit the camera the problem is that the direction would be
+  // relative."* Exactly the fault: the old rule dotted a CAMERA-RELATIVE thumb against the swing
+  // plane, so what counted as "forward" changed every time the lens moved, and it is why the
+  // bearing had to be latched at all. A hold has no frame to be relative to, so the camera goes
+  // free and the two stop fighting.
+  // **AND IT ALWAYS ADDS, rather than only when the thumb agrees.** "Agrees with the swing" was
+  // the physically honest rule and it made him slow: half of every cycle was thrown away unless
+  // you alternated in time with him, which is a thing to learn rather than a thing to do.
+  // Holding builds on every half now -- from rest in the direction he FACES, after that always
+  // with the swing -- which is *"I want him to start gaining speed quite a bit quicker."*
+  pump: 7.5,        // rad/s^2 added for as long as the right pad is held
   drag: .22,        // and what bleeds off, so a bad rhythm does not accumulate for ever
   wMax: 7.0,        // ceiling on angular speed
   kick: .6,         // AT REST THE STICK PICKS THE DIRECTION. Without this the swing can never
@@ -728,7 +740,12 @@ const BAR = {
                     // w = 0.00 after fourteen seconds of holding forward, which is what that
                     // rule looks like from outside and exactly why it was driven rather than
                     // argued. Below this he is at rest and the thumb starts him.
-  wGo: 1.4,         // below this he is just hanging, above it the pump clip plays
+  wGo: 1.4,         // below this he is just hanging, above it the pump clip plays -- but see
+                    // `p.pumping`: HOLDING THE PAD shows the kip at once, whatever the speed,
+                    // because the clip is the ACTION and not the speed. *"I don't ever see him
+                    // doing the pump animation"* was this threshold, on a swing that was slow to
+                    // reach it because the old direction rule was throwing half of it away.
+  camSettle: .55,   // how long the catch owns the bearing before the orbit is his again
   launch: 1.15,     // what the release keeps of his tangential speed
   up: 2.2,          // plus a kick straight up, so a release at the bottom is not a faceplant
   relDur: .40,      // `bar_release` is 0.40 s at 1x
@@ -7101,7 +7118,10 @@ function colinAnim(dt) {
   if (p.bar) {
     if (p.barRel > 0) t['bar_release'] = 1;
     else {
-      const k = clamp((Math.abs(p.barW) - BAR.wGo) / 2.2, 0, 1);
+      // THE CLIP IS THE ACTION, NOT THE SPEED (c164). Gated on `barW` alone it needed a real
+      // swing before it ever appeared -- *"I don't ever see him doing the pump animation"* --
+      // so a thumb on the pad shows the kip at once and `colinSet`'s damping eases it in.
+      const k = p.pumping ? 1 : clamp((Math.abs(p.barW) - BAR.wGo) / 2.2, 0, 1);
       t['bar_hang_idle'] = 1 - k; t['bar_pump'] = k;
       // the kip runs at the swing's own rate, so the pump and the arc are one motion
       if (k > .02) colinScale('bar_pump', clamp(Math.abs(p.barW) / 3.2, .5, 2.2));
@@ -8234,6 +8254,9 @@ bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
 bindStick(document.getElementById('stkR'), stick.R, null, boardFlick, true, far => { if (far < .42) player.jump = 1; });
 function boardFlick(dx, dy) {
   const p = player;
+  // ON A BAR THE SWIPE IS THE LAUNCH (c164), and it outranks everything else on this pad --
+  // he is not on a board, not on his feet and not aiming, so nothing below can apply.
+  if (p.bar) { if (!p.barRel) barLetGo(); return; }
   // ON FOOT THE RIGHT PAD'S FLICK IS A STRIKE. That thumb already taps to jump and holds to
   // wind up; a flick is the one move left in it, and it costs no new control.
   if (!p.board) {
@@ -8428,6 +8451,9 @@ const OPT_ROWS = [
   ['tog', 'Map', () => MAP.on, v => { MAP.on = v; }],
   ['tog', 'Police', () => COP.on, v => { COP.on = v; }],
   ['tog', 'Show bars', () => BAR.show, v => { BAR.show = v; barDraw(); }],
+  ['num', 'Bar pump', () => BAR.pump, v => { BAR.pump = v; }, 1, 20, .5],
+  ['num', 'Bar drag', () => BAR.drag, v => { BAR.drag = v; }, 0, 1, .02],
+  ['num', 'Bar top speed', () => BAR.wMax, v => { BAR.wMax = v; }, 3, 14, .5],
   ['tog', 'Money', () => CASH.on, v => { CASH.on = v; if (cashMesh) cashMesh.visible = !!v; }],
   ['tog', 'Cars break up', () => WRECK.on, v => { WRECK.on = v; }],
   ['num', 'Shots to destroy', () => WRECK.hp, v => { WRECK.hp = v; }, 1, 8, 1],
@@ -9048,24 +9074,27 @@ function stepBar(dt) {
     // w' = -(g/L) sin a. Past the top this keeps `a` climbing and he giants round; under it he
     // falls back. The 360 is not a state, it is what enough energy looks like.
     p.barW += -(BAR.g / BAR.len) * Math.sin(p.barA) * dt;
-    // PUMPING ADDS ENERGY ONLY WHILE THE STICK AGREES WITH THE SWING, which is what pumping is.
-    // Hold forward and every forward half builds; alternate with him and both halves do.
-    const s = stickWorld();
-    if (s.mag > .35) {
-      const want = (s.x * fx + s.z * fz) * p.barSide;   // + is "with his face", in the swing plane
-      // FROM REST the thumb chooses which way he goes; once he is moving it has to AGREE with
-      // the swing, which is what makes holding forward work and alternating work better.
-      if (Math.abs(p.barW) < BAR.kick) p.barW += want * BAR.pump * dt;
-      else if (want * p.barW > 0) p.barW += Math.sign(p.barW) * BAR.pump * Math.abs(want) * dt;
+    // PUMPING IS THE RIGHT PAD HELD, AND NOTHING ABOUT WHERE IT IS POINTING (c164). See
+    // `BAR.pump`: a direction read in the camera's frame cannot survive a camera you are free
+    // to orbit, and the whole reason the bearing used to be latched was to stop those two
+    // fighting. A hold has no frame. So the same thumb pumps and orbits at once, which is what
+    // he asked for and is also why it needed no new control.
+    if (stick.R.down) {
+      // FROM REST he swings the way he is FACING -- a direction he always has, so there is no
+      // case left where nothing answers it. After that it is always WITH the swing, so every
+      // half builds and holding is enough.
+      p.barW += (Math.abs(p.barW) < BAR.kick ? p.barSide : Math.sign(p.barW)) * BAR.pump * dt;
       p.pumping = 1;
     } else p.pumping = 0;
     p.barW -= p.barW * BAR.drag * dt;
     p.barW = clamp(p.barW, -BAR.wMax, BAR.wMax);
     p.barA = wrapAngle(p.barA + p.barW * dt);
-    // RELEASE. The right pad is the verb everywhere else in this game and it is the verb here:
-    // a tap lets go, and he leaves on the TANGENT he was already travelling, which is the whole
-    // reason to have built speed at all.
-    if (p.jump) { p.jump = 0; barLetGo(); }
+    // AND THE RELEASE IS A SWIPE, NOT A TAP (c164). *"To fly off of it you'll swipe the right
+    // stick, which will launch him."* It has to be: the pad is HELD to pump now, and a tap is a
+    // very short hold -- so a tap that also let go would fire every time a thumb bounced. The
+    // swipe comes in through `boardFlick`, which is where every other verb on this pad lives.
+    // The tap is swallowed here so it cannot queue a jump for the frame after he lands.
+    p.jump = 0;
   }
   // HIS POSITION IS THE PENDULUM'S, and `poseColin` puts the JOINTS on the bar from there.
   const c = Math.cos(p.barA), sn = Math.sin(p.barA);
@@ -9091,18 +9120,60 @@ function barLetGo() {
   if (Math.abs(p.barW) > BAR.minW) { p.airWant = 'back'; }
   snd.jump();
 }
+/* BARPOSE:START */
+// THE PLACEMENT, AS A FUNCTION OF THE RIG AND NOTHING ELSE -- so `npm run bar` can run the
+// SHIPPED arithmetic against a real skeleton instead of a restatement of it. Every other
+// harness in this repo that measured a copy of the code eventually measured the wrong thing.
+//   root      the character's wrapper, the thing that is actually moved
+//   jr, jt    the two marker nodes (`BAR.mark`) -- read, never written
+//   B         the bar: x, y, z and its horizontal axis ax, az
+//   barA      the pendulum angle, 0 = hanging straight down
+//   faceH     which way along the swing plane he is looking
 const _bq = new THREE.Quaternion(), _bax = new THREE.Vector3(), _bwr = new THREE.Vector3(),
       _bwt = new THREE.Vector3(), _bm = new THREE.Vector3(), _YUP = new THREE.Vector3(0, 1, 0);
+function barPlace(root, jr, jt, B, barA, faceH) {
+  _bax.set(B.ax, 0, B.az).normalize();
+  root.quaternion.setFromAxisAngle(_YUP, faceH);
+  // THE PAIR'S AXIS IS TURNED ONTO THE BAR'S, NOT ASSUMED TO MATCH IT (c151). The old weapon
+  // joints were authored dead horizontal -- (0.999, 0.001, -0.033) -- so putting the midpoint on
+  // the bar was enough. His HANDS read (-0.881, -0.469, 0.065), tilted twenty-eight degrees,
+  // because a grip is authored to look right and not to be a ruler. Aligning the measured axis
+  // means the marker can be ANY two nodes in ANY orientation and he still lies along the bar:
+  // the export stops being something this code has an opinion about.
+  root.updateMatrixWorld(true);
+  jr.getWorldPosition(_bwr); jt.getWorldPosition(_bwt);
+  _bm.subVectors(_bwt, _bwr);
+  if (_bm.lengthSq() > 1e-8) {
+    _bm.normalize();
+    // and NOT end-for-end: the bar has no near end, so take whichever sense turns him less
+    if (_bm.dot(_bax) < 0) _bm.negate();
+    _bq.setFromUnitVectors(_bm, _bax);
+    root.quaternion.premultiply(_bq);
+  }
+  // THEN THE SWING ITSELF, ABOUT THE BAR -- AND THE SIGN IS MEASURED, NOT DERIVED (c164).
+  // `stepBar` puts his centre of mass at `+forward * len * sin(a)` where forward is
+  // `(-B.az, B.ax)`; a right-handed rotation of `(0, -len, 0)` about `(B.ax, 0, B.az)` by `+a`
+  // sends it the OTHER WAY. So the body swung against the physics that was driving it, which is
+  // `npm run bar`'s job to say rather than mine to argue -- this file gets handedness backwards
+  // half the time, and it has the tool precisely so it does not have to.
+  _bq.setFromAxisAngle(_bax, -barA);
+  root.quaternion.premultiply(_bq);
+  // AND ONLY NOW THE SLIDE. Every rotation is done, so where the midpoint ended up is where it
+  // is going to stay -- measured after the fact, which is why no number about his proportions
+  // appears anywhere in this file. It is exact in one step: the rotation is final, so adding
+  // (bar - midpoint) puts the midpoint on the bar whatever the root's position started at.
+  root.updateMatrixWorld(true);
+  jr.getWorldPosition(_bwr); jt.getWorldPosition(_bwt);
+  root.position.x += B.x - (_bwr.x + _bwt.x) * .5;
+  root.position.y += B.y - (_bwr.y + _bwt.y) * .5;
+  root.position.z += B.z - (_bwr.z + _bwt.z) * .5;
+  root.updateMatrixWorld(true);
+}
+/* BARPOSE:END */
 function poseBar() {
   const p = player, B = p.bar;
-  _bax.set(B.ax, 0, B.az).normalize();
-  colin.root.quaternion.setFromAxisAngle(_YUP, p.faceH);
-  colin.root.rotation.z = 0;
-  // AND NOW THE MEASUREMENT. Pose is set, so read where the joints actually ended up and slide
-  // the root until their midpoint is ON the bar. One extra matrix walk per frame, and not one
-  // number about his proportions anywhere in this file.
   // THE FIRST PAIR THIS RIG ACTUALLY HAS, cached per skin -- one traverse per character. See
-  // `BAR.mark`: the weapon joints if the export carries them, his hands otherwise.
+  // `BAR.mark`: a dedicated pair if the export carries them, his hands otherwise.
   const skin = CHARS.skins[CHARS.cur];
   if (skin && skin.barM === undefined) {
     skin.barM = null;
@@ -9111,36 +9182,11 @@ function poseBar() {
     console.log('[bar] ' + CHARS.cur + ' marks the bar with '
       + (skin.barM ? skin.barM[0].name + ' / ' + skin.barM[1].name : 'NOTHING -- he will hang where the clip puts him'));
   }
-  if (!skin || !skin.barM) return;
-  const jr = skin.barM[0], jt = skin.barM[1];
-  // THE PAIR'S AXIS IS TURNED ONTO THE BAR'S, NOT ASSUMED TO MATCH IT (c151). The old weapon
-  // joints were authored dead horizontal -- (0.999, 0.001, -0.033) -- so putting the midpoint on
-  // the bar was enough. His HANDS read (-0.881, -0.469, 0.065), tilted twenty-eight degrees,
-  // because a grip is authored to look right and not to be a ruler. Aligning the measured axis
-  // means the marker can be ANY two nodes in ANY orientation and he still lies along the bar:
-  // the export stops being something this code has an opinion about.
-  colin.root.updateMatrixWorld(true);
-  jr.getWorldPosition(_bwr); jt.getWorldPosition(_bwt);
-  _bm.subVectors(_bwt, _bwr);
-  if (_bm.lengthSq() > 1e-8) {
-    _bm.normalize();
-    // and NOT end-for-end: the bar has no near end, so take whichever sense turns him less
-    if (_bm.dot(_bax) < 0) _bm.negate();
-    _bq.setFromUnitVectors(_bm, _bax);
-    colin.root.quaternion.premultiply(_bq);
+  if (!skin || !skin.barM) {
+    colin.root.quaternion.setFromAxisAngle(_YUP, p.faceH);   // nothing to hang him by; face the swing
+    return;
   }
-  // then the swing itself, about the bar
-  _bq.setFromAxisAngle(_bax, p.barA);
-  colin.root.quaternion.premultiply(_bq);
-  // AND ONLY NOW THE SLIDE. Every rotation is done, so where the midpoint ended up is where it
-  // is going to stay -- measured after the fact, which is why no number about his proportions
-  // appears anywhere in this file.
-  colin.root.updateMatrixWorld(true);
-  jr.getWorldPosition(_bwr); jt.getWorldPosition(_bwt);
-  colin.root.position.x += B.x - (_bwr.x + _bwt.x) * .5;
-  colin.root.position.y += B.y - (_bwr.y + _bwt.y) * .5;
-  colin.root.position.z += B.z - (_bwr.z + _bwt.z) * .5;
-  colin.root.updateMatrixWorld(true);
+  barPlace(colin.root, skin.barM[0], skin.barM[1], B, p.barA, p.faceH);
 }
 function stepHang(dt) {
   const p = player;
@@ -10492,8 +10538,14 @@ function stepCam(dt) {
   // put instead of being dragged back the instant the thumb comes off.
   const camB = player.bar;
   if (camB) {
-    if (yaw) player.barAz = wrapAngle(player.barAz + yaw);
-    cam.az += wrapAngle(player.barAz - cam.az) * Math.min(1, BAR.camEase * dt);
+    // THE CATCH OWNS THE BEARING, THEN THE ORBIT DOES (c164). *"I actually think the camera
+    // should still be able to orbit."* It could not before, because the pump read a
+    // CAMERA-RELATIVE thumb and a free lens would have changed what "forward" meant every
+    // frame. The pump is a hold now, so there is nothing left to protect: `barAim`'s searched
+    // bearing swings the shot in on the catch -- which is what stops it starting inside a wall
+    // -- and after `camSettle` this branch stops writing `cam.az` at all, so the drag at the
+    // top of this function is the only writer and the orbit is ordinary again.
+    if (player.barT < BAR.camSettle) cam.az += wrapAngle(player.barAz - cam.az) * Math.min(1, BAR.camEase * dt);
     cam.el = BAR.camEl;
     cam.tgt.set(camB.x, camB.y + BAR.camLook, camB.z);
   } else {
@@ -10724,7 +10776,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
