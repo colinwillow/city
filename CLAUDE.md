@@ -1198,6 +1198,42 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE DOUBLE JUMP COMES BACK WITH THE PACK OUT, AND A TAP IS NOT A HOLD (c156, `p.jetFlew`).**
+  *"I want a tap to always -- first tap jump, second tap if it's a tap it's a flip, a double jump,
+  but if the second one is a press and hold then it does the jetpack. That way you can do first
+  jump, second jump and THEN jetpack, that'll be a fun effect."*
+  **c116 GAVE THE WHOLE AIR MOVE TO THE PACK ON AN ARGUMENT THAT WAS ONLY HALF TRUE.** It said one
+  thumb cannot mean both -- and it can, because a TAP and a HOLD are two different gestures and
+  this pad has told them apart since the trigger was built (`fireAt` held for `armT` is the same
+  separation, and so is the flick). What c116 was actually missing is the OTHER half of that rule.
+  **THE RIGHT PAD SETS `player.jump` FROM `onRel` WITH NO HOLD LIMIT, AND THAT IS DELIBERATE** --
+  it is the charge jump, which is a wind-up and a release by design. So the release of a FLIGHT
+  reads as a jump too, and letting go at the top of one would spend the double on the way out.
+  `p.jetFlew` is "a fired flick eats the tap" one gesture along: the flag is set where the motor
+  actually lights, so it cannot disagree with whether he flew.
+  **AND IT IS CONSUMED PER RELEASE, NOT PER FRAME -- WHICH THE FIRST VERSION GOT WRONG AND THE
+  PROBE CAUGHT.** I cleared it beside `p.jump = 0`, which reads as one-shot and is not: that line
+  runs EVERY frame, so the flag set during the hold was wiped a sixtieth of a second later and
+  was long gone by the time the thumb came off. It reads `jetK 0.87` and `jumps 2` -- the pack
+  lit AND the release still spent the double, which is the exact bug this flag exists to stop.
+  It is tied to a `p.jump` now (`if (p.jump) p.jetFlew = 0;`), so the release it ate is the one
+  that clears it: it can eat exactly one, and a stale flag can never reach a later jump from the
+  keyboard or anywhere else. A fresh press clears it too, and so does landing.
+  **A FLAG CLEARED ON AN UNCONDITIONAL LINE IS NOT ONE-SHOT, IT IS PER-FRAME**, and the two are
+  indistinguishable when you are reading rather than running -- the same shape as a protection
+  asserted only in a comment.
+  **AND OUT OF FUEL IT FALLS BACK TO BEING A JUMP FOR FREE**: `want` stays 0, nothing is marked,
+  the release jumps. That is the right behaviour and it needed no case of its own.
+  The sequence he asked for, driven through the shipped `stepJet`/`stepPlayer`
+  (`JAM_PROBE=tools/probe-jump.mjs`), pack out and pack away, and identical in both:
+      tap                  -> jump
+      tap, tap             -> double jump AND the flip
+      tap, HOLD            -> the pack lights and the double is still unspent
+      tap, tap, HOLD       -> jump, jump, THEN fly   (jumps 2, then jetK 0.87)
+  **THE FLIP ITSELF IS A STATED GAP IN THAT HARNESS**: `airStart` returns early when
+  `colin.actions[nm]` is absent and headless it is, so `p.air` reads empty in every row. What the
+  probe measures is `p.jumps` and `p.vel.y` -- the mechanic -- and the flip is covered on device
+  by its being the same call the no-pack case has always made.
 - **HE RE-EXPORTS `models/chars/colin.glb` AND THE GAME LOADS `models/colin.glb` (c155).**
   His "fixed colin" commit -- the arm on the bar clips he said he would redo -- landed on
   `models/chars/colin.glb` alone, and `init()` loads `models/colin.glb`. The two were made
