@@ -2160,6 +2160,24 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   Moussa with no `rifle_aim__up` in his pool at all and reported a 103-degree bias that was
   really "there is no aim pose in here". **Sixth time** this exact mistake has been made in this
   repo. They are behind `DERIVE:` markers now and both tools lift them.
+- **WHICH LOOK IT IS, IS HIS CALL (c139, `WEAP.flash`, `JET.look`).** He asked four times to
+  experiment with the blaster's flash and the jetpack's exhaust, and four times I shipped MY pick
+  of one and wrote up why it was right. **A taste decision does not belong in a commit** -- it
+  belongs on a switch, which is exactly the argument `SHADE.mode` and the whole settings panel
+  were built on, and I did not apply it to the thing being asked about. Four named looks each,
+  live on the phone, no rebuild:
+      WEAP.flash  plasma | tight | card | both
+      JET.look    flame  | cards | glow | both
+  `flame` is the thruster with no cloud at all, which is also the cheapest of the four.
+- **THE CHARGE BALL WAS GUESSING WHERE THE BARREL IS (c139).** *"It doesn't follow the gun,
+  especially when I'm on the skateboard and I turn to the side -- that weapon_tip joint is where
+  the tip of the gun should be, that's what I thought you would use."* Exactly right. It called
+  `muzzleAt`, which OVERRIDES x and z with `player.pos + faceH * reach` -- a deliberate
+  body-clearance hack, correct for the BOLT (a shot must not be born inside whatever he is
+  standing next to) and nonsense for a ball sitting on the barrel. Riding, `faceH` is the BOARD's
+  direction and the gun is somewhere else entirely, which is precisely why turning sideways is
+  when it comes off. `tipAt` has read the joint since c126; the charge ball was the last thing in
+  the file still guessing.
 - **A PLASMA MUZZLE FLASH IS NOT A SMOKE CARD (c126, `muzzleFlash`, `tipAt`).** *"When you shoot
   the blaster it shows the jetpack particle cards and it kind of just lays over the blast and
   you can't really see the blast itself."* `fxPop('flash')` is the JETPACK'S ignition bank — a
@@ -2467,6 +2485,25 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   measured these four at the start and reported a clean rail off each, which is true and which
   says nothing about whether you can ride one. A measurement that answers a different question
   than the one being asked is worth less than no measurement at all.
+- **AND THE PAINT PATTERN IS A TEXTURE TOO (c139).** *"We're down to about 20 per second and it
+  seems like it was introduced when we started texture painting."* He is right, and the honest
+  answer is that this pass was **fourteen `sin()` a fragment across the whole screen to evaluate
+  a function of POSITION** -- which is a texture, the same argument the palette LUT won one build
+  earlier and which I did not then apply to the pass next to it. It bakes once in JS and costs
+  two fetches.
+  **TWO FETCHES, AND THE SECOND IS NOT WASTE.** One tile repeating every `PAINT.tile` metres
+  across a flat road is a visible grid -- the graph-paper failure the domain warp exists to
+  prevent, reintroduced by the fix for it. The second sample is the same tile at an irrational
+  scale and an odd angle, so the two never line up again and the repeat has no period you can
+  see.
+  **`PAINT.grain` IS GONE RATHER THAN OFF.** A fine tooth is exactly the frequency a baked tile
+  cannot hold without moire, so there is nowhere cheap to put it any more.
+  **THE CARD IS HEAVIER THAN THE GAME, AND THAT IS NOT WARMING UP.** *"The start screen seems to
+  struggle more than the actual gameplay, which is the reverse of what you'd expect."* It is
+  real: the card has EVERY character loaded and skinned and visible, plus the ship clone, plus
+  `lineFill` pulling the next skin down in the background -- and `startGame` disposes all of that
+  (c135). Fewer things on screen in play than on the menu is the correct explanation and it is
+  also the measurement that says a skin is expensive.
 - **A LOOK-UP TEXTURE IS WHAT A FUNCTION OF ONE VARIABLE COSTS (c136).** *"Whatever we've done
   made it a little bit slower."* `palPatch` was walking SIX gaussian families per fragment -- an
   `exp` and a wrap each -- over the whole screen, to evaluate a function of hue alone. That is a

@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c138</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c139</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c138';
+const BUILD = 'c139';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -708,6 +708,7 @@ const WEAP = {
   // ninety-degree shot line up. Past the clamp the barrel is meant to lag the reticle, because
   // a man cannot turn that far; the SHOT still leaves on `p.aimH` either way (c119), so what is
   // lost there is the look of it and never the accuracy.
+  flash: 'plasma',  // 'plasma' | 'tight' | 'card' | 'both' -- see `muzzleFlash`
   twist: { on: 1, max: 1.15, ease: .10, fix: 6.0, fixMax: .45, bones: [/spine2$/i, /spine1$/i] },
   // HIS OWN BLASTER, AND IT CARRIES THE JOINTS. Measured through gltf-transform: geometry
   // -65.6..7.4 on X (so the barrel runs along -X, 0.73 m long at its armature's 0.01), with
@@ -855,6 +856,7 @@ const JET = {
   // THE TEST IS THAT A LOCATOR HAS NO MESH. An empty is a marker and a mesh is art, which is
   // the structural test `stripPoses` uses one file over: a mesh called `jetpack` must never be
   // mistaken for a nozzle, and the next exporter will spell the name differently anyway.
+  look: 'cards',    // 'flame' | 'cards' | 'glow' | 'both' -- see `muzzleFlash`
   tip: /^(jet|nozzle|thrust|exhaust|flame)/i,
   // A FLAME IS NOT A CARD. A card is a drawing that plays once and dies; a flame is a thing
   // that is ON for as long as the motor burns. So it is the CHARGE BALL's machinery -- a stack
@@ -866,13 +868,19 @@ const JET = {
   // palette on a thruster -- and a hot gas flame is the other end of the scale: near-white at
   // the throat, cyan through the middle, deep blue at the edge where it is coolest. Narrower
   // than the orange one too: fire spreads, a jet is a column.
-  flame: { len: .56, wide: .145, flick: .30, hue: ['#eaf8ff', '#4fd2ff', '#2a62ff'] },
+  // TIGHTER, AND STARTING AT THE NOZZLE (c139). *"The jet flames are not coming out of the parts
+  // of the jetpack -- they're well below it and too wide."* Two reasons and both are the
+  // fallback's, because the file still has no nulls in it: the measured nozzle is the bottom of
+  // the pack's WORLD AABB, which on a rotated pack sits lower than the pack really does, and the
+  // sprite was then CENTRED half a flame-length below that. `up` lifts the anchor back into the
+  // body and the flame now hangs from it rather than around it.
+  flame: { len: .42, wide: .085, flick: .30, up: .16, hue: ['#eaf8ff', '#4fd2ff', '#2a62ff'] },
   // TWO OF THEM, EVEN WITH NO JOINTS IN THE FILE. The measured fallback is ONE point -- the
   // bottom-centre of the pack -- and one flame down the middle of his back is a rocket, not a
   // jetpack. Until an export carries the nulls, the pair is placed off that centre along HIS
   // OWN right vector (`faceH`), so it stays across his back whichever way he turns, at a
   // fraction of the pack's MEASURED size rather than a typed offset.
-  nozAt: .23,
+  nozAt: .13,
   // `at` is in the SPINE BONE's own frame: across, along, and out from his back. Clear of him
   // rather than in him -- "it fits decent but could move backwards a little bit".
   // `city.JET.at[2] = -.19; city.weapFit()` nudges it live.
@@ -1691,20 +1699,73 @@ const PAINT = {
   cell: .13,        // the flagstone mottle inside a patch
   cellS: .85,
   warm: .035,       // a patch drifts in HUE as well as value: warm one side, cool the other
-  // OFF BY DEFAULT (c136). It is one more value-noise sample -- four of this pass's fourteen
-  // sin() a fragment, about 30% of it -- for the least visible of the four things it does.
-  // Turn it on when there are frames to spend: `city.PAINT.grain = .05`.
+  // GONE (c139). It was a fourth noise sample for the least visible of the four things this did,
+  // and once the rest is a texture there is nowhere cheap to put it -- a fine tooth is exactly
+  // the frequency a baked tile cannot hold without moire.
   grain: 0,
+  tile: 34,         // how many world metres the baked tile covers
 };
-const PAINT_UNI = { uPaintK: { value: 1 }, uPaintS: { value: .055 }, uPaintP: { value: .30 },
-  uPaintI: { value: .20 }, uPaintC: { value: .13 }, uPaintCS: { value: .85 },
-  uPaintW: { value: .035 }, uPaintG: { value: .05 } };
+const PAINT_UNI = { uPaintK: { value: 1 }, uPaintTile: { value: 34 }, uPaintP: { value: .30 },
+  uPaintI: { value: .20 }, uPaintC: { value: .13 }, uPaintW: { value: .035 }, uPaintT: { value: null } };
+let _paintWas = '';
 function paintSync() {
+  const sig = PAINT.scale + '|' + PAINT.cellS + '|' + PAINT.tile;
+  if (sig !== _paintWas) { _paintWas = sig; paintBake(); }
   PAINT_UNI.uPaintK.value = PAINT.on ? PAINT.k : 0;
-  PAINT_UNI.uPaintS.value = PAINT.scale; PAINT_UNI.uPaintP.value = PAINT.patch;
-  PAINT_UNI.uPaintI.value = PAINT.ink;   PAINT_UNI.uPaintC.value = PAINT.cell;
-  PAINT_UNI.uPaintCS.value = PAINT.cellS; PAINT_UNI.uPaintW.value = PAINT.warm;
-  PAINT_UNI.uPaintG.value = PAINT.grain;
+  PAINT_UNI.uPaintTile.value = Math.max(1, PAINT.tile);
+  PAINT_UNI.uPaintP.value = PAINT.patch; PAINT_UNI.uPaintI.value = PAINT.ink;
+  PAINT_UNI.uPaintC.value = PAINT.cell; PAINT_UNI.uPaintW.value = PAINT.warm;
+}
+// ...AND THE PATTERN IS BAKED INTO A TILE (c139). *"We're down to about 20 per second and it
+// seems like it was introduced when we started texture painting."* He is right, and the honest
+// answer is that this pass was fourteen `sin()` a fragment across the WHOLE SCREEN to evaluate a
+// function of POSITION -- and a function of position is a texture, the same argument the palette
+// LUT already won one build ago. It bakes once in JS and costs two fetches.
+// TWO FETCHES RATHER THAN ONE, and that second one is not waste: a single tile repeating every
+// `tile` metres over a flat road is a visible grid, which is exactly the graph-paper failure the
+// domain warp was written to prevent. The second sample is the same tile at an irrational scale
+// and an odd angle, so the two never line up again and the repeat has no period you can see.
+// WHAT IS IN IT: R the thresholded band (the patches), G the mosaic mottle, B the ink seam.
+// The threshold, the domain warp and the two-lattice mosaic are all baked -- the shader keeps
+// only the parts that depend on the SURFACE rather than on the position.
+const PAINT_T = { tex: null, n: 256 };
+function paintBake() {
+  const N = PAINT_T.n, D = new Uint8Array(N * N * 4);
+  const ph = (x, y) => { const v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453; return v - Math.floor(v); };
+  const pn = (x, y) => {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    let fx = x - ix, fy = y - iy; fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+    const a = ph(ix, iy), b = ph(ix + 1, iy), c = ph(ix, iy + 1), d = ph(ix + 1, iy + 1);
+    return (a + (b - a) * fx) + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fy;
+  };
+  // the tile covers `PAINT.tile` world metres at `PAINT.scale`, so the pattern keeps the size
+  // it always had and only the way it is evaluated changed
+  const span = PAINT.tile * PAINT.scale;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    let px = (i / N) * span, py = (j / N) * span;
+    const w = pn(px * 2.1 + 17, py * 2.1 + 53);
+    px += (w - .5) * .52; py += (w - .5) * .36;
+    const gp = pn(px * .866 - py * .5, px * .5 + py * .866);
+    const qx = (i / N) * span * (PAINT.cellS / PAINT.scale), qy = (j / N) * span * (PAINT.cellS / PAINT.scale);
+    const qax = qx * .906 - qy * .423, qay = qx * .423 + qy * .906;
+    const qbx = (qx * .766 + qy * .643) * 1.31, qby = (-qx * .643 + qy * .766) * 1.31;
+    const cell = .5 * (ph(Math.floor(qax), Math.floor(qay)) + ph(Math.floor(qbx), Math.floor(qby)));
+    const t = Math.max(0, Math.min(1, (gp - .44) / .12));
+    const band = t * t * (3 - 2 * t) - .5;
+    const e = Math.max(0, Math.min(1, Math.abs(gp - .5) / .055));
+    const ink = 1 - (e * e * (3 - 2 * e));
+    const o = (j * N + i) * 4;
+    D[o] = Math.round((band + .5) * 255); D[o + 1] = Math.round(cell * 255);
+    D[o + 2] = Math.round(ink * 255); D[o + 3] = 255;
+  }
+  if (!PAINT_T.tex) {
+    PAINT_T.tex = new THREE.DataTexture(D, N, N, THREE.RGBAFormat);
+    PAINT_T.tex.wrapS = PAINT_T.tex.wrapT = THREE.RepeatWrapping;
+    PAINT_T.tex.magFilter = PAINT_T.tex.minFilter = THREE.LinearFilter;
+    PAINT_T.tex.generateMipmaps = false;
+  } else PAINT_T.tex.image.data.set(D);
+  PAINT_T.tex.needsUpdate = true;
+  PAINT_UNI.uPaintT.value = PAINT_T.tex;
 }
 function paintPatch(sh) {
   for (const k in PAINT_UNI) sh.uniforms[k] = PAINT_UNI[k];
@@ -1712,42 +1773,34 @@ function paintPatch(sh) {
     .replace('#include <project_vertex>', `#include <project_vertex>
       vPW = (modelMatrix * vec4(transformed, 1.0)).xyz;
       vPN = mat3(modelMatrix) * objectNormal;`);
-  sh.fragmentShader = `uniform float uPaintK, uPaintS, uPaintP, uPaintI, uPaintC, uPaintCS, uPaintW, uPaintG;
+  sh.fragmentShader = `uniform float uPaintK, uPaintTile, uPaintP, uPaintI, uPaintC, uPaintW;
+    uniform sampler2D uPaintT;
     varying vec3 vPW; varying vec3 vPN;
-    float ph(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-    float pn(vec2 p){
-      vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-      return mix(mix(ph(i), ph(i + vec2(1,0)), f.x), mix(ph(i + vec2(0,1)), ph(i + vec2(1,1)), f.x), f.y);
-    }
   ` + sh.fragmentShader
     .replace('#include <color_fragment>', `#include <color_fragment>
       if (uPaintK > 0.002) {
-        // DOMINANT-AXIS PLANAR PROJECTION, not triplanar. This city is a box city: its
-        // surfaces are within a few degrees of an axis nearly everywhere, so blending three
-        // samples would triple the cost to hide a seam that only exists at 45 degrees. Where
-        // the axis DOES flip it is a 90-degree corner -- a wall meeting a roof -- and those
-        // two wanting different patterns is correct rather than a fault.
+        // DOMINANT-AXIS PLANAR PROJECTION, not triplanar. This city is a box city: its surfaces
+        // are within a few degrees of an axis nearly everywhere, so blending three samples would
+        // triple the cost to hide a seam that only exists at 45 degrees. Where the axis DOES
+        // flip it is a 90-degree corner -- a wall meeting a roof -- and those two wanting
+        // different patterns is correct rather than a fault.
         vec3 an = abs(normalize(vPN));
         vec2 P = (an.y > an.x && an.y > an.z) ? vPW.xz : (an.x > an.z ? vPW.zy : vPW.xy);
-        P *= uPaintS;
-        float w = pn(P * 2.1 + vec2(17.0, 53.0));
-        P += (w - 0.5) * vec2(0.52, 0.36);                       // the warp: no straight edges
-        float gp = pn(vec2(P.x * 0.866 - P.y * 0.5, P.x * 0.5 + P.y * 0.866));
-        vec2 q = ((an.y > an.x && an.y > an.z) ? vPW.xz : (an.x > an.z ? vPW.zy : vPW.xy)) * uPaintCS;
-        vec2 qa = vec2(q.x * 0.906 - q.y * 0.423, q.x * 0.423 + q.y * 0.906);
-        vec2 qb = vec2(q.x * 0.766 + q.y * 0.643, -q.x * 0.643 + q.y * 0.766) * 1.31;
-        float cell = 0.5 * (ph(floor(qa)) + ph(floor(qb)));
-        float band = smoothstep(0.44, 0.56, gp) - 0.5;
+        P /= uPaintTile;
+        vec4 t0 = texture2D(uPaintT, P);
+        // the same tile at an irrational scale and an odd angle, so the repeat has no period
+        vec2 Q = vec2(P.x * 0.643 - P.y * 0.766, P.x * 0.766 + P.y * 0.643) * 0.373;
+        vec4 t1 = texture2D(uPaintT, Q);
+        float band = (t0.r - 0.5) * 0.68 + (t1.r - 0.5) * 0.32;
+        float cell = t0.g * 0.6 + t1.g * 0.4;
+        float ink  = max(t0.b, t1.b * 0.7);
         diffuseColor.rgb *= 1.0 + uPaintK * (band * uPaintP + (cell - 0.5) * uPaintC);
         // THE HUE DRIFTS TOO, not just the value. A patch that is only lighter reads as
         // lighting; one that is lighter AND a touch warmer reads as a different mix of paint.
         diffuseColor.rgb += uPaintK * uPaintW * band * vec3(1.0, 0.25, -0.7);
-        // THE INK: the seam between two patches, darkened. Without this the whole thing is
-        // mottling and mottling is not painting.
-        float ink = 1.0 - smoothstep(0.0, 0.055, abs(gp - 0.5));
+        // THE INK: the seam between two patches, darkened. Without it this is mottling, and
+        // mottling is not painting.
         diffuseColor.rgb *= 1.0 - uPaintK * ink * uPaintI;
-        // and a fine tooth over all of it, so a big flat wall has some surface
-        diffuseColor.rgb *= 1.0 + uPaintK * uPaintG * (pn(P * 26.0) - 0.5);
         diffuseColor.rgb = max(diffuseColor.rgb, vec3(0.0));
       }`);
 }
@@ -2976,7 +3029,17 @@ function stepChargeFx(c, dt) {
   const fx = _chg || buildChargeFx();
   if (c < .02) { if (fx.g.visible) fx.g.visible = false; return; }
   fx.g.visible = true;
-  muzzleAt(_mz); fx.g.position.copy(_mz);
+  // ON THE JOINT, NOT ON A GUESS (c139). *"The little charge on the tip of the gun doesn't follow
+  // the gun, especially when I'm on the skateboard and I turn to the side -- that weapon_tip
+  // joint is where the tip of the gun should be, that's what I thought you would use."*
+  // Exactly right, and it was using `muzzleAt`, which OVERRIDES x and z with
+  // `player.pos + faceH * reach` -- a deliberate body-clearance hack that is correct for the
+  // BOLT (a shot must not be born inside whatever he is standing next to) and completely wrong
+  // for a ball sitting on the barrel. Riding, `faceH` is the BOARD's direction and the gun is
+  // somewhere else entirely, which is why turning sideways is when it comes off.
+  // `tipAt` was written for the muzzle flash at c126 and reads the joint. The charge ball is the
+  // third thing in this file to want it and the last one still guessing.
+  tipAt(_mz); fx.g.position.copy(_mz);
   fx.g.rotation.set(0, shotH(), 0);
   const t = FX.t, siz = lerp(.22, .80, c), pulse = 1 + Math.sin(t * 22) * .12 * c;
   fx.core.scale.setScalar(siz * .7 * pulse);
@@ -3170,13 +3233,30 @@ function tipAt(out) {
 // So it is the BOLT'S palette (`BOLT.hue0/hue1`, the same cyan and violet the shot is made of),
 // small, and thrown ALONG THE BARREL -- an expulsion out of the tip rather than a cloud around
 // it. `burst` carries a velocity since c120, which is what lets the sparks actually leave.
+// AND WHICH LOOK IT IS, IS HIS CALL AND NOT MINE (c139). He has asked four times to experiment
+// with the blaster's flash and the jetpack's exhaust, and four times I have shipped MY pick of
+// one. A taste decision does not belong in a commit -- it belongs on a switch, which is the same
+// argument `SHADE.mode` and the settings panel were built on and I simply did not apply it here.
+//     WEAP.flash   'plasma'  three bursts and a cone of pips down the barrel (the c126 one)
+//                  'tight'   the bursts only -- smaller, harder, no spray
+//                  'card'    the drawn sheet, which is what it was before c126
+//                  'both'    plasma over a card
+//     JET.look     'flame'   the nozzle flame and NOTHING else -- no exhaust at all
+//                  'cards'   flame plus the hand-drawn puffs (the c120 one)
+//                  'glow'    flame plus additive plasma puffs
+//                  'both'    flame plus both
+// `city.WEAP.flash = 'tight'`, `city.JET.look = 'flame'`, or the Effects rows in settings.
 function muzzleFlash(x, y, z, fx, fz, k) {
+  const L = WEAP.flash;
+  if (L === 'card' || L === 'both') fxPop(x, y, z, 'flash', (.55 + k * .7) * FX.impact, fx * 3, 1.2, fz * 3);
+  if (L === 'card') return;
   burst(x, y, z, '#ffffff', .34 + k * .30, .07 + k * .03);      // the throat, hot and tiny
   burst(x, y, z, BOLT.hue0, .62 + k * .55, .11 + k * .05);      // the body of it
   burst(x, y, z, BOLT.hue1, .95 + k * .85, .16 + k * .07);      // and the cool edge
   // THE SHOCK OFF THE END. A ring of pips thrown down the barrel with spread -- a cone, so it
   // reads as pressure leaving rather than as a ball appearing. Counts, not lengths, so they
   // come over from the bolt's own crackle unchanged.
+  if (L === 'tight') return;
   const n = 5 + ((k * 4) | 0);
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + Math.random(), sp = 5 + Math.random() * (7 + k * 9);
@@ -3244,9 +3324,10 @@ function jetFlameStep(k, dt) {
       const s = set[j], ln = F.len * k * fl * (1 + j * .38);
       s.visible = true;
       s.scale.set(F.wide * k * (1 + j * .55), ln, 1);
-      // Hung BELOW the nozzle rather than centred on it -- a sprite is centred on its own
-      // origin, so a flame drawn at the joint would come half out of the top of the pack.
-      s.position.set(at.x, at.y - ln * .5, at.z);
+      // ITS TOP AT THE NOZZLE. A sprite is centred on its own origin, so the anchor is half a
+      // length down -- plus `up`, which lifts the whole thing back into the pack because the
+      // measured fallback nozzle is the bottom of a WORLD AABB and that is lower than the pack.
+      s.position.set(at.x, at.y + F.up - ln * .5, at.z);
       s.material.opacity = (.95 - j * .24) * k;
     }
   }
@@ -3323,10 +3404,17 @@ function stepJet(dt) {
       // quarter of a metre lower and is also where the flame is.
       const nz = jetNozzles();
       let ox = p.pos.x, oy = p.pos.y + COLIN_HEIGHT * .32, oz = p.pos.z;
-      if (nz.length) { const n0 = nz[(Math.random() * nz.length) | 0]; ox = n0.x; oy = n0.y - JET.flame.len * .5; oz = n0.z; }
-      fxPop(ox + Math.cos(a) * r, oy, oz + Math.sin(a) * r,
-        first ? 'jet' : 'puff', first ? JET.blast : JET.puff * rnd(.82, 1.18),
-        -p.vel.x * .18 + Math.cos(a) * .7, -JET.drift, -p.vel.z * .18 + Math.sin(a) * .7);
+      if (nz.length) { const n0 = nz[(Math.random() * nz.length) | 0]; ox = n0.x; oy = n0.y + JET.flame.up - JET.flame.len * .6; oz = n0.z; }
+      // THE EXHAUST IS OPTIONAL AND THE FLAME IS NOT -- see `JET.look`. `flame` is the jet with
+      // no cloud at all, which is what a clean thruster looks like and is also the cheapest.
+      if (JET.look !== 'flame') {
+        const wasStyle = FX.style;
+        if (JET.look === 'glow') FX.style = 'glow'; else if (JET.look === 'both') FX.style = 'both';
+        fxPop(ox + Math.cos(a) * r, oy, oz + Math.sin(a) * r,
+          first ? 'jet' : 'puff', first ? JET.blast : JET.puff * rnd(.82, 1.18),
+          -p.vel.x * .18 + Math.cos(a) * .7, -JET.drift, -p.vel.z * .18 + Math.sin(a) * .7);
+        FX.style = wasStyle;
+      }
     }
   } else { p.jetLit = 0; p.jetT = 0; }
   if (want && p.fuel > 0) {
@@ -7017,6 +7105,10 @@ const OPT_ROWS = [
   ['tog', 'Card effects', () => FX.on, v => { FX.on = v; }],
   // THE LOOK IS A LOOK-AT-IT DECISION, which is the half of the tuning this panel exists for.
   ['seg', 'Effect style', () => FX.style, v => { FX.style = v; }, [['cards', 'Cards'], ['glow', 'Glow'], ['both', 'Both']]],
+  ['seg', 'Muzzle flash', () => WEAP.flash, v => { WEAP.flash = v; }, [['plasma', 'Plasma'], ['tight', 'Tight'], ['card', 'Card'], ['both', 'Both']]],
+  ['seg', 'Jet exhaust', () => JET.look, v => { JET.look = v; }, [['flame', 'Flame'], ['cards', 'Cards'], ['glow', 'Glow'], ['both', 'Both']]],
+  ['num', 'Impact size', () => FX.impact, v => { FX.impact = v; }, .2, 1.5, .05],
+  ['num', 'Jet flame width', () => JET.flame.wide, v => { JET.flame.wide = v; }, .02, .4, .005],
   ['num', 'Card fps', () => FX.fps, v => { FX.fps = v; }, 4, 24, 1],
   ['num', 'Card size', () => FX.size, v => { FX.size = v; }, .4, 4, .1],
   ['num', 'Jet puff size', () => JET.puff, v => { JET.puff = v; }, .25, 2.5, .05],
