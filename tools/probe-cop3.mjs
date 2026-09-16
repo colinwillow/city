@@ -1,0 +1,80 @@
+// JAM_PROBE=tools/probe-cop3.mjs npm run jam
+//
+// *"It looks like we entirely removed the collider and I don't think that's how it should be. It
+// should be like a state machine... if I'm just fighting him with the swipes on the ground, or
+// just walking around, I still want to collide with him and I still want him to stop me. But if
+// you're riding and you hit him or melee him, it just sends him flying instead of ricocheting me."*
+// Four cases, one line each, through the shipped `stepPlayer`, `copGhost`, `copPlough` and
+// `copsPunched` over the real collider.
+//
+// THE OFFICER IS FABRICATED AND THAT IS A STATED GAP. `npm run jam` cannot build a character skin
+// -- every character GLB is draco and `DRACOLoader` wants a Worker a headless node has not got --
+// so `cops` comes back empty. What is under test here is not the model: it is whether his BOX
+// reaches the player's resolver, which reads `c.box`, `c.st` and `c.x/z` and nothing else. Those
+// are real. Anything about the clips belongs in `npm run cop`.
+const G = globalThis.__shred;
+const P = G.player, COP = G.COP, cops = G.cops, CH = G.COLIN_HEIGHT;
+const HOME = P.pos.clone();
+cops.length = 0;
+const C = { x: 0, y: HOME.y, z: 0, h: Math.PI, st: 'idle', t: 0, hp: COP.hp, speed: 0,
+  vx: 0, vz: 0, vy: 0, spin: 0, alert: 0, clip: '', nerve: 1, react: 0, cadence: 1,
+  actions: { [COP.clips.flyF]: 1, [COP.clips.flyB]: 1 },
+  box: { minx: 0, maxx: 0, miny: 0, maxy: 0, minz: 0, maxz: 0 } };
+cops.push(C);
+
+function place(ahead) {
+  C.x = HOME.x; C.z = HOME.z + ahead; C.y = HOME.y; C.h = Math.PI;
+  C.st = 'idle'; C.t = 0; C.hp = COP.hp; C.speed = 0; C.vx = C.vz = C.vy = 0; C.alert = 0;
+  C.box.minx = C.x - .35; C.box.maxx = C.x + .35;
+  C.box.minz = C.z - .35; C.box.maxz = C.z + .35;
+  C.box.miny = C.y; C.box.maxy = C.y + CH * .95;
+}
+function reset(board, v, push) {
+  P.board = board; P.rail = null; P.bar = null; P.hit = ''; P.mel = ''; P.melStep = 0; P.melT = 0;
+  P.hang = 0; P.lad = 0; P.grounded = true; P.braked = 0; P.turnT = 0; P.turnRem = 0; P.copPass = 0;
+  P.pushing = false; P.pushT = 0; P.jump = 0; P.jumps = 0; P.melLock = null;
+  P.heading = 0; P.faceH = 0; P.pos.copy(HOME); P.vel.set(0, 0, v); P.speed = v;
+  G.cam.az = 0; G.cam.el = .17;
+  // NO THUMB. Held forward he accelerates into a sprint, and a sprint is past `flyV` -- which
+  // would turn "walking into him" into "arriving with something" and measure the wrong case.
+  G.stick.L.x = 0; G.stick.L.y = push ? -1 : 0; G.stick.L.mag = push ? 1 : 0; G.stick.L.down = push ? 1 : 0;
+  G.stick.R.down = 0; G.stick.R.x = 0; G.stick.R.y = 0; G.stick.R.mag = 0; G.stick.R.far = 0;
+}
+function run(label, { board, v, melee, push, ahead = 4, secs = 2.5 }) {
+  place(ahead); reset(board, v, push);
+  const dt = 1 / 60;
+  // `meleeGo` BAILS HEADLESS -- its last gate is `colin.actions[nm]` and there is no skin here,
+  // which is the same stated gap `probe-jump` has about the flip. So the strike state is set the
+  // way `meleeGo` sets it. What is under test is `copGhost` and `copsPunched`, not `meleeGo`.
+  if (melee) {
+    P.melEntry = P.speed;
+    P.mel = G.MELEE.chain[0]; P.melT = P.melDur = G.MELEE.strike;
+    P.melH = 0; P.melV = board ? 0 : G.MELEE.lunge; P.melI = 0; P.melFx = 0; P.melLock = null;   // melFx is HAS-FIRED, not wants-to
+  }
+  let through = false, near = 99;
+  for (let i = 0; i < Math.round(secs / dt); i++) {
+    G.stepPlayer(dt);
+    if (C.st !== 'fly') near = Math.min(near, C.z - P.pos.z);
+    if (P.pos.z > C.z + .15) through = true;
+  }
+  const flew = C.st === 'fly' || C.st === 'down' || C.st === 'out' || C.st === 'up';
+  console.log('  ' + label.padEnd(38)
+    + (through ? 'WENT THROUGH him' : 'stopped ' + near.toFixed(2) + 'm short').padEnd(22)
+    + 'cop ' + (C.st === 'fly' ? 'FLYING' : flew ? 'DOWN' : 'standing, hp ' + C.hp).padEnd(18)
+    + 'speed ' + v.toFixed(0) + ' -> ' + Math.hypot(P.vel.x, P.vel.z).toFixed(1));
+  return { through, flew, st: C.st, hp: C.hp };
+}
+console.log('\nWALKING / RUNNING INTO A STANDING OFFICER -- he has to STOP you\n');
+const a = run('on foot, 2 m/s, no melee', { board: false, v: 2, ahead: 3.0, push: 1, secs: 4 });
+const b = run('on foot, 6 m/s, no melee', { board: false, v: 6, ahead: 3.0, push: 1, secs: 4 });
+console.log('\nFIGHTING HIM ON THE SPOT -- still solid, and still the hp chain\n');
+const c = run('standing punch', { board: false, v: 0, melee: true, ahead: 1.6 });
+console.log('\nARRIVING WITH SOMETHING -- he FLIES and must not bounce you back\n');
+const d = run('riding in at 14, no melee', { board: true, v: 14 });
+const e = run('riding in at 14 AND melee', { board: true, v: 14, melee: true });
+const f = run('on foot at 12 AND melee', { board: false, v: 12, melee: true, ahead: 2.2 });
+const ok = !a.through && !b.through && !c.through && c.hp < COP.hp
+  && d.through && d.flew && e.flew && f.flew;
+console.log('\n' + (ok
+  ? 'PASS: a wall when you walk into him, a target when you arrive with something.'
+  : 'FAIL: ' + JSON.stringify({ a, b, c, d, e, f })));

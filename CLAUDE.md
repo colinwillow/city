@@ -1198,6 +1198,52 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **A MAN IS A WALL UNTIL YOU ARRIVE WITH ENOUGH TO KNOCK HIM DOWN (c174, `copGhost`,
+  `copPlough`, `p.melEntry`).** *"It looks like we entirely removed the collider and I don't think
+  that's how it should be. It should be like a state machine... if I'm just fighting him with the
+  swipes on the ground, or just walking around, I still wanna be able to collide with him and I
+  still want him to stop me -- right now it's like he's not a physical object. But if you're
+  riding and you hit him or melee him, it just sends him flying instead of ricocheting me."*
+  **c169 TURNED THE COLLIDER OFF OUTRIGHT AND THAT WENT TOO FAR.** Its finding was real -- the
+  push-out was pinballing him off an officer on the board -- and the fix was a master switch when
+  what the case wanted was a CASE. He named the shape himself, and it is one predicate:
+      walking, running, standing, fighting on the spot   SOLID. He stops you, and the hp chain runs
+      a strike thrown above `flyV`, or riding past `ploughV`   you go THROUGH him and he FLIES
+      already down, getting up, or in the air           you step OVER him, never into him
+  *"If I have to give one up, I'd prefer to run into him"* -- so solid is the default now and the
+  ghost is the exception, which is the opposite way round from c169. `COP.solid = 0` is c169.
+  **ONLY A BLOW THAT LAUNCHES HIM GOES THROUGH HIM, and that is the line c169 got wrong.** It
+  ghosted EVERY strike on the argument that the push-out interrupts the lunge `MELEE.lock` aimed --
+  but a lunge stopped at the man's own surface has ARRIVED: `COP.reach + COP.r` is 2.82 m and the
+  punch lands from 0.73. A standing fight needs the wall; only the strike that sends him flying
+  needs him out of the way to do it.
+  **`p.melEntry` IS LATCHED IN `meleeGo` AND READ NOWHERE ELSE, BECAUSE `p.speed` LIES DURING A
+  STRIKE.** `stepMelee` rewrites the velocity from `melV` every frame, and a lock solving for a
+  distant man can put that at `MELEE.lock.maxV` **13** -- so reading it live would call a standing
+  jab thrown across the room "arriving at speed" and launch him. The entry speed is the honest
+  measure of *"if you're riding or running and you melee"*, and the frame of the flick is the one
+  moment it is still on the clock.
+  **A DODGE ROLL IS NOT A STRIKE** and stays solid at any speed: it is a move AWAY from somebody.
+  **AND THE GHOST LINGERS (`COP.pass`).** Without it the frame a strike ends is the frame the
+  resolver finds him standing inside a man and shoves him out, which reads as being spat out.
+  **THE PLOUGH TAKES ITS DIRECTION FROM HIS VELOCITY**, not from the geometry of a contact where
+  the two things are on top of each other -- `copFly`'s own rule -- and it costs `ploughCost` of
+  his speed WITHOUT touching its direction, which is the whole difference from the pinball.
+  Driven through the shipped `stepPlayer` over the real collider (`JAM_PROBE=tools/probe-cop3.mjs`):
+      on foot 2 m/s, no melee     stopped 0.73 m short   standing     <- .38 radius + .35 box: contact
+      on foot 6 m/s, no melee     stopped 0.73 m short   standing
+      standing punch              stopped 0.73 m short   hp 3 -> 2    <- solid AND the chain
+      riding in at 14             WENT THROUGH him       FLYING       14 -> 10.0
+      riding in at 14 + melee     WENT THROUGH him       FLYING       14 -> 11.7
+      on foot at 12 + melee       ---                    FLYING       the running clothesline
+  **THE OFFICER IN THAT PROBE IS FABRICATED AND IT IS A STATED GAP.** `npm run jam` cannot build a
+  character skin (draco wants a Worker), so `cops` comes back empty -- and what is under test is
+  not the model but whether his BOX reaches the player's resolver, which reads `c.box`, `c.st` and
+  `c.x/z` and nothing else. **`meleeGo` also bails headless** on `colin.actions[nm]`, so the strike
+  state is set the way it sets it; anything about the clips belongs in `npm run cop`.
+  **AND `p.melFx` IS HAS-FIRED, NOT WANTS-TO-FIRE.** The probe set it to 1 to mean "throw a punch"
+  and suppressed every contact, which read as the collider swallowing the blow. Two runs lost to a
+  flag read backwards.
 - **HIS JETPACK, RECORDED (c173, `JETSND`), AND IT IS `WHEELS` ONE MOTOR ALONG.** *"added jetpack
   sounds"* -- `audio/jetpack_sound/`: combust (0.97 s), ongoing (6.69 s) and release (0.99 s),
   which is exactly the right three, because a motor is an IGNITION, a burn that lasts as long as

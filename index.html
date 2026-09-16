@@ -314,7 +314,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c173</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c174</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -328,7 +328,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c173';
+const BUILD = 'c174';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1720,7 +1720,11 @@ const WHEELS = {
 // has to shut it up, and that is the early return.
 const JETSND = {
   src: null, g: null, lit: 0,
-  vol: .85, rate0: .94, rateSpan: .16,     // it rises a little as the thrust comes up
+  // ONE DIAL FOR ALL THREE (c174). *"They all probably need to be turned down, they're pretty
+  // loud."* `up` and `down` are FRACTIONS of it rather than their own numbers, so the slider in
+  // the settings panel moves the whole motor and the three cannot drift apart from each other.
+  vol: .42, up: .85, down: .70,
+  rate0: .94, rateSpan: .16,               // it rises a little as the thrust comes up
   loop() {
     if (this.src) return this.src;
     if (!SFX.ctx) return null;
@@ -1901,8 +1905,8 @@ const snd = {
   // exactly why that return value is the way round it is.
   // THE JETPACK'S IGNITION AND ITS SHUTDOWN. The burn between them is `JETSND`, a looping
   // source -- see there for why a motor cannot be a `play()`.
-  jetUp: () => SFX.play('jetUp', .70, rnd(.96, 1.04)),
-  jetDown: () => SFX.play('jetDown', .55, rnd(.96, 1.04)),
+  jetUp: () => SFX.play('jetUp', JETSND.vol * JETSND.up, rnd(.96, 1.04)),
+  jetDown: () => SFX.play('jetDown', JETSND.vol * JETSND.down, rnd(.96, 1.04)),
   ollie: () => SFX.play('ollie', .62, rnd(.94, 1.06)) || SFX.play('swoosh', .30, rnd(1.18, 1.38)) || SFX.noise(.10, .10, 2400),
   // THE KICK OFF THE ROAD, which had no sound of its own at all -- the push was silent and the
   // speedo just went up. It is a stroke over `SK8.shoveDur`, so this fires on the shove.
@@ -7607,8 +7611,23 @@ const COP = {
   // 0 = AS AUTHORED. He aligned the pistol to the officer's own `weapon_root` in its own file,
   // so the default is to touch nothing. Set a length and `city.gunFit()` to override.
   gunLen: 0,
-  solid: 0,         // is an officer a wall to the PLAYER? See `groundUnder`. Off: you run through
-                    // him, which is what lets a melee chain land instead of bouncing off him.
+  // AN OFFICER IS A WALL UNTIL YOU ARRIVE WITH ENOUGH TO KNOCK HIM DOWN (c174). c169 turned the
+  // collider OFF outright and that went too far: *"it looks like we entirely removed the collider
+  // and I don't think that's how it should be... if I'm just fighting him with the swipes on the
+  // ground, or just walking around, I still want to collide with him and I still want him to stop
+  // me. Right now it's like he's not a physical object."* Right, and he named the shape of the
+  // answer himself -- *"it should be like a state machine"*. It is one test (`copGhost`):
+  //     walking, running, standing, fighting on the spot   he is SOLID and he stops you
+  //     mid-strike, or riding past `ploughV`               you go THROUGH him and he FLIES
+  //     already down, getting up, or in the air            you step over him, never into him
+  // *"If I have to give one up, I'd prefer to run into him"* -- so solid is the default and the
+  // ghost is the exception, which is the opposite way round from c169.
+  solid: 1,         // the master switch. 0 is c169's behaviour: a target and never a wall.
+  ploughV: 8,       // the speed past which riding into him goes THROUGH him rather than into him
+  ploughCost: .15,  // and what that costs you -- a body is not free, but it is not a bollard
+  flyV: 7,          // and the speed at which a STRIKE launches him instead of staggering him
+  pass: .35,        // how long the ghost lingers after it ends, so the push-out cannot snap
+  ploughR: .6,      // how close past his own body counts as riding INTO him
   clips: { idle: 'idle_01', walk: 'walk_01', run: 'run_01', draw: 'draw_weapon', shoot: 'shoot_pistol',
            hits: ['hit_body', 'hit_head', 'hit_ribs', 'hit_stomach'],
            downF: 'knock_down_front', downB: 'knock_down_back', upF: 'get_up_front', upB: 'get_up_back',
@@ -7898,6 +7917,57 @@ function copsLearnFlight() {
 // **A PUNT IS THE SAME LAUNCH, SMALLER, AND IT DOES NOT RESET HIM TO STANDING.** He keeps his
 // knock-down clip, he skids, and the lie-down clock starts again -- so kicking him along the
 // road is a thing you can do for as long as you like, and he still eventually gets up.
+// IS THIS OFFICER A WALL THIS FRAME? One test, read by the player's resolver and by the plough,
+// so "can I walk into him" and "am I about to knock him through" can never disagree.
+// A MAN ON THE GROUND IS NOT A WALL EITHER -- you step over him. He is still a BODY to hit
+// (c153), which is a different question and a different function.
+// THE PLAYER'S HALF OF IT, ON ITS OWN, so the linger can be set from `stepPlayer` without
+// naming an officer -- and so the two can never be written to disagree.
+function copGhostWant() {
+  const p = player;
+  return !!((p.mel && p.mel !== MELEE.roll && p.melEntry > COP.flyV)
+    || (p.board && p.speed > COP.ploughV));
+}
+function copGhost(c) {
+  const p = player;
+  if (!COP.solid) return true;
+  if (c.st === 'down' || c.st === 'up' || c.st === 'out' || c.st === 'fly') return true;
+  // THE LINGER IS WHAT STOPS A POP. Without it the frame a strike ends is the frame the resolver
+  // finds him standing inside the man and shoves him out of it, which reads as being spat out.
+  if (p.copPass > 0) return true;
+  // ONLY A BLOW THAT LAUNCHES HIM GOES THROUGH HIM, and that is the line c169 got wrong. It
+  // ghosted every strike on the argument that the push-out interrupts the lunge `MELEE.lock` had
+  // aimed -- but a lunge stopped at the man's own surface has ARRIVED: `MELEE.reach` plus `COP.r`
+  // is 2.82 m and the punch lands from there. *"If I'm just fighting him with the swipes on the
+  // ground, or just walking around, I still want to collide with him and I still want him to stop
+  // me."* So a standing fight is solid and staggers him; only a strike thrown at speed, which is
+  // the one that sends him flying, needs him out of the way to do it.
+  // A DODGE ROLL IS NOT A STRIKE and stays solid at any speed -- it is a move AWAY from somebody.
+  return copGhostWant();
+}
+// RIDING INTO HIM AT SPEED SENDS HIM FLYING (c174). *"If you're riding and you hit him or melee
+// him, it just sends him flying instead of ricocheting me."* Both halves of that sentence: the
+// ricochet is gone because `copGhost` keeps him out of the resolver, and this is the flying.
+// It is called from `stepPlayer` AFTER the board step, so his position is the one that arrived.
+// The launch takes the way he is TRAVELLING, not the geometry of a contact where the two things
+// are on top of each other -- `copFly`'s own rule about a direction that is already stored.
+function copPlough() {
+  const p = player;
+  if (!p.board || p.speed <= COP.ploughV || p.hit) return;
+  const h = Math.atan2(p.vel.x, p.vel.z);
+  for (const c of cops) {
+    if (c.st === 'fly') continue;
+    if (Math.hypot(c.x - p.pos.x, c.z - p.pos.z) > COP.r + COP.ploughR) continue;
+    fxPop(c.x, c.y + COLIN_HEIGHT * .62, c.z, 'pow', 1.4);
+    snd.hit(1, c.x, c.z);
+    heatAdd(HEAT.punch);
+    copFly(c, h, clamp(p.speed / COP.ploughV, 1, 2.2));
+    // A BODY IS NOT FREE AND IT IS NOT A BOLLARD EITHER. He keeps his line -- nothing here
+    // touches the DIRECTION of his velocity, which is the whole difference from the pinball.
+    p.vel.x *= 1 - COP.ploughCost; p.vel.z *= 1 - COP.ploughCost;
+    p.speed = Math.hypot(p.vel.x, p.vel.z);
+  }
+}
 function copFly(c, blowH, k) {
   const prone = c.st === 'down' || c.st === 'up' || c.st === 'out';
   const F = COP.fly, p = Math.max(F.min, k === undefined ? 1 : k) * (prone ? F.punt : 1);
@@ -7962,6 +8032,19 @@ function copsPunched(x, z, h) {
     // Inside `COP.r` of him there is no meaningful direction left, so anything that close is
     // hit whichever way he happens to be pointing.
     if (d > COP.r && Math.abs(wrapAngle(Math.atan2(dx, dz) - h)) > MELEE.arc) continue;
+    // A STRIKE THROWN AT SPEED LAUNCHES HIM RATHER THAN STAGGERING HIM (c174). *"If you're riding
+    // or running and you melee, I want it to send the cop flying."* The hp chain is what a
+    // standing fight is -- three hits and over -- and it is exactly wrong for a man hit by
+    // somebody arriving at fifteen metres a second. The speed decides which, so there is no new
+    // control and no second move: the same flick means a jab on the spot and a clothesline at a
+    // run, which is what it looks like either way.
+    if (p.melEntry > COP.flyV) {
+      fxPop(c.x, c.y + COLIN_HEIGHT * .62, c.z, 'pow', 1.4);
+      snd.hit(1, c.x, c.z);
+      heatAdd(HEAT.punch);
+      copFly(c, h, clamp(p.speed / COP.flyV, 1, 2.2));
+      n++; continue;
+    }
     if (copHit(c, h)) n++;
   }
   return n;
@@ -8686,6 +8769,7 @@ const OPT_ROWS = [
   ['num', 'Music vol', () => MUSIC.vol, v => { MUSIC.vol = v; if (MUSIC.gain && MUSIC.on) MUSIC.gain.gain.value = v; }, 0, 1, .02],
   ['tog', 'Effects', () => SFX.on, v => sfxSet(v)],
   ['num', 'Effects vol', () => SFX.fxVol, v => { SFX.fxVol = v; if (SFX.bus && SFX.on) SFX.bus.gain.value = v; }, 0, 1.5, .05],
+  ['num', 'Jetpack vol', () => JETSND.vol, v => { JETSND.vol = v; }, 0, 1, .02],
   ['h', 'Shading'],
   ['seg', 'Shadows', () => SHADE.mode, v => { SHADE.mode = v; applyShade(); }, [['map', 'Map'], ['blob', 'Blobs'], ['off', 'None']]],
   ['num', 'Shadow dark', () => SHADE.k, v => { SHADE.k = v; applyShade(); }, 0, 1, .02],
@@ -8767,6 +8851,8 @@ const OPT_ROWS = [
   ['num', 'Grip roll', () => WEAP.grip.rz, v => { WEAP.grip.rz = v; weapFit(); }, -3.15, 3.15, .02],
   ['num', 'Grip size', () => WEAP.grip.s, v => { WEAP.grip.s = v; weapFit(); }, .3, 2.5, .02],
   ['tog', 'Cops solid', () => !!COP.solid, v => { COP.solid = v ? 1 : 0; }],
+  ['num', 'Plough speed', () => COP.ploughV, v => { COP.ploughV = v; }, 2, 20, .5],
+  ['num', 'Melee fly speed', () => COP.flyV, v => { COP.flyV = v; }, 2, 20, .5],
   ['tog', 'Air kick', () => MELEE.air, v => { MELEE.air = v; }],
   ['num', 'Air kick speed', () => MELEE.airV, v => { MELEE.airV = v; }, 4, 20, .5],
   ['num', 'Sprint x', () => MOVE.sprint, v => { MOVE.sprint = v; }, 1, 4, .05],
@@ -8915,7 +9001,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushSync: 0, pushNm: '', pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushSync: 0, pushNm: '', pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, copPass: 0, melEntry: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -8968,7 +9054,9 @@ function groundUnder(p, step, vel, fromY, bounce) {
   // **A MAN IS A TARGET, NOT A WALL.** `COP.r` still means his body everywhere it matters: the
   // punch cone, the bullet, the aim lock and the amber box in the collider view all read it.
   // `COP.solid = 1` (or the Cops solid row) puts the wall back.
-  if (COP.solid) for (const c of cops) if (c.box && Math.abs(c.x - p.x) < 4 && Math.abs(c.z - p.z) < 4) _boxes.push(c.box);
+  // *"It should be like a state machine."* `copGhost` is that test and it is per officer, so the
+  // man you are punching lets you through while the one beside him still stops you.
+  for (const c of cops) if (c.box && !copGhost(c) && Math.abs(c.x - p.x) < 4 && Math.abs(c.z - p.z) < 4) _boxes.push(c.box);
   if (SHIP.box && Math.abs(SHIP.box.minx - p.x) < 14 && Math.abs(SHIP.box.minz - p.z) < 14) _boxes.push(SHIP.box);
   const r = resolveBoxes(p, .38, 1.7, step, _boxes, vel, bounce);
   // The real triangle where there is one, and only then the heightmap. They are not
@@ -9566,6 +9654,13 @@ function meleeGo(kind, h) {
   // because a skater does not stop to punch -- so `stepMelee` is called with `ride` set and
   // never touches the velocity. See `stepPlayer`.
   if (p.hit || !p.grounded || p.mel || p.rollT > 0) return;
+  // WHAT HE ARRIVED WITH, LATCHED HERE AND NOWHERE ELSE (c174). `p.speed` during a foot strike is
+  // the LUNGE -- `stepMelee` rewrites the velocity from `melV` every frame, and a lock solving for
+  // a distant man can put that at `MELEE.lock.maxV` 13. So reading it live would call a standing
+  // jab thrown at somebody across the room "arriving at speed" and launch him. The entry speed is
+  // the honest measure of *"if you're riding or running and you melee"*, and this is the one frame
+  // it is still on the clock.
+  p.melEntry = p.speed;
   let nm;
   if (kind === 'roll') { nm = MELEE.roll; p.melI = 1; }
   else {
@@ -10258,7 +10353,15 @@ function stepPlayer(dt) {
   if (player.bar) { stepBar(dt); if (colin.ready) colinAnim(dt); poseColin(dt); return; }
   if (!player.grounded && barCatch()) { stepBar(dt); if (colin.ready) colinAnim(dt); poseColin(dt); return; }
   player.barPX = player.pos.x; player.barPY = player.pos.y; player.barPZ = player.pos.z;
+  // THE GHOST, AND IT LINGERS (c174). Set BEFORE the step so `groundUnder` reads a current value
+  // inside this same frame, and decayed rather than cleared so the frame a strike ends is not
+  // also the frame the resolver finds him standing inside a man and shoves him out of it.
+  player.copPass = Math.max(0, player.copPass - dt);
+  if (copGhostWant()) player.copPass = COP.pass;
   if (player.board) stepSkate(dt); else stepFoot(dt);
+  // AND RIDING INTO ONE SENDS HIM FLYING. After the board step, so it is the position he
+  // actually arrived at -- `stepMelee`'s own reason for sitting here.
+  if (player.board) copPlough();
   // A STRIKE THROWN WHILE RIDING, after the skate step so his position is the one the mark and
   // the punch cone are measured from. `stepFoot` already hands over to `stepMelee` itself; the
   // board cannot, because the board still has to be driving.
@@ -11120,7 +11223,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
