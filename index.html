@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c137</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c138</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c137';
+const BUILD = 'c138';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -6687,10 +6687,17 @@ addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 // stays down never does, however fast the sweep was.
 // A flick eats the tap and the release, so nothing else on that pad fires on the same lift.
 const FLICK = { at: .72, within: .28, let: .26, gap: .10 };
+// A STUCK STICK IS ALWAYS A MISSING `pointerup` (c138). *"Sometimes my joystick gets stuck."*
+// The thumb has gone and the pad never heard about it, so `out.down` stays 1, `out.x/y` keep
+// whatever they last were, and the game goes on steering, sprinting or charging for ever. There
+// is no single cause to find -- there are several ways an up can go missing on a phone, and the
+// only robust answer is to close all of them and then have a net underneath.
+// EVERY PAD IS REGISTERED so the global handlers below can reach in and let go.
+const STICKS = [];
 function bindStick(el, out, onTap, onFlick, rel, onRel) {
   const knob = el.querySelector('.knob');
   let id = null, t0 = 0, far = 0, lx = 0, ly = 0, ox = 0, oy = 0; const RAD = 52;
-  let hist = [], lastFlick = -1e9, pend = null;
+  let hist = [], lastFlick = -1e9, pend = null, touched = 0;
   const set = (cx, cy) => {
     let dx, dy;
     if (rel) { dx = cx - ox; dy = cy - oy; } else { const r = el.getBoundingClientRect(); dx = cx - (r.left + r.width / 2); dy = cy - (r.top + r.height / 2); }
@@ -6707,13 +6714,23 @@ function bindStick(el, out, onTap, onFlick, rel, onRel) {
     // clock, so the flick that counts is always the last one before the thumb came off.
     if (Math.hypot(ddx, ddy) > FLICK.at) { pend = { x: ddx, y: ddy, t: now }; hist = [{ x: lx, y: ly, t: now }]; }
   };
-  el.addEventListener('pointerdown', e => { id = e.pointerId; t0 = performance.now(); ox = e.clientX; oy = e.clientY; el.setPointerCapture(id); out.down = 1; out.far = 0;
+  el.addEventListener('pointerdown', e => {
+    // ONE THUMB PER PAD. A second finger landing on the same pad used to overwrite `id`, and
+    // then the FIRST finger's up no longer matched and was thrown away -- so whichever of the
+    // two the browser delivered in the wrong order could leave the pad held by a thumb that
+    // was not there. A stick has one thumb by definition; the second touch is simply not ours.
+    if (id !== null) { e.stopPropagation(); e.preventDefault(); return; }
+    id = e.pointerId; t0 = performance.now(); ox = e.clientX; oy = e.clientY;
+    // GUARDED, because it throws if the pointer is already gone -- and it threw AFTER `id` was
+    // set, which left the pad tracking an id whose up had already been and gone.
+    try { el.setPointerCapture(id); } catch (err) {}
+    out.down = 1; out.far = 0;
     // seeded at the CENTRE, not at the touch: on an absolute pad a thumb slammed straight
     // onto the top edge is a flick, and measuring the delta from where it landed says the
     // stick never moved.
     hist = [{ x: 0, y: 0, t: performance.now() }];
     el.classList.add('act'); set(e.clientX, e.clientY); far = Math.hypot(out.x, out.y); e.stopPropagation(); e.preventDefault(); });
-  el.addEventListener('pointermove', e => { if (e.pointerId !== id) return; set(e.clientX, e.clientY); far = Math.max(far, Math.hypot(out.x, out.y)); e.stopPropagation(); });
+  el.addEventListener('pointermove', e => { if (e.pointerId !== id) return; set(e.clientX, e.clientY); far = Math.max(far, Math.hypot(out.x, out.y)); touched = performance.now(); e.stopPropagation(); });
   const end = e => {
     if (e.pointerId !== id) return; const now = performance.now(), held = now - t0;
     let fired = 0;
@@ -6725,6 +6742,40 @@ function bindStick(el, out, onTap, onFlick, rel, onRel) {
     id = null; pend = null; out.down = 0; out.x = out.y = 0; out.far = 0; hist = []; knob.style.transform = 'translate(0,0)'; el.classList.remove('act'); e.stopPropagation();
   };
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
+  // THE NET. `release` is `end` with no gesture fired -- letting go because the thumb is gone is
+  // not a tap and not a flick, and firing one on the way out would be an ollie nobody asked for.
+  STICKS.push({ el, out, end, id: () => id, release: () => {
+    if (id === null && !out.down) return;
+    id = null; pend = null; out.down = 0; out.x = out.y = 0; out.far = 0; hist = [];
+    knob.style.transform = 'translate(0,0)'; el.classList.remove('act');
+  } });
+}
+// AND THE THREE WAYS AN UP GOES MISSING, each closed where it happens.
+// 1. IT WENT SOMEWHERE ELSE. Capture can be lost to another element without `lostpointercapture`
+//    reaching us in every browser, so the window hears every up and cancel in the CAPTURE phase
+//    -- which runs before any target handler and cannot be stopped by one -- and hands it to
+//    whichever pad owns that id.
+for (const t of ['pointerup', 'pointercancel']) addEventListener(t, e => {
+  for (const s of STICKS) if (s.id() === e.pointerId) s.end(e);
+}, { capture: true });
+// 2. THE APP WENT AWAY MID-TOUCH. Backgrounding a phone with a thumb down delivers NOTHING on
+//    the way out and nothing on the way back: the pad is simply still held, which is the one
+//    that produces a stick stuck at full deflection with no finger anywhere near it.
+for (const t of ['blur', 'pagehide', 'visibilitychange']) addEventListener(t, () => {
+  if (t === 'visibilitychange' && document.visibilityState === 'visible') return;
+  for (const s of STICKS) s.release();
+});
+// 3. AND A LAST RESORT, because the two above are still a list of causes and this is a class.
+//    A pointer that has not moved, lifted or been cancelled for this long is not a thumb.
+//    Deliberately long: holding a stick dead still IS a thing people do, and letting go of a
+//    real hold would be far worse than a stuck stick that clears itself.
+const STICK_IDLE = 6;
+function stickWatch(dt) {
+  for (const s of STICKS) {
+    if (!s.out.down) { s.idle = 0; continue; }
+    s.idle = (s.idle || 0) + dt;
+    if (s.idle > STICK_IDLE) { console.warn('[stick] released after ' + STICK_IDLE + 's with no event -- a lost pointerup'); s.release(); s.idle = 0; }
+  }
 }
 // LEFT PAD: steering, and the BODY. Up is a front flip, down is a back flip. Left and
 // right are not flicks at all -- you hold them, and in the air that is the manual spin.
@@ -8472,6 +8523,7 @@ function frame() {
     const k = player.aim ? (WEAP.min + (1 - WEAP.min) * player.chg) : 0;
     if (el) { el.style.opacity = player.aim ? '1' : (out ? '.34' : '0'); el.style.setProperty('--c', (k || 1).toFixed(3)); }
   }
+  stickWatch(dt);
   stepShip(dt);
   jamScan(dt);
   drawMap(dt);

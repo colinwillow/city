@@ -678,6 +678,33 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
     the same lift. The history is seeded at the CENTRE on pointerdown, because on an absolute
     pad a thumb slammed onto the top edge is a flick and a delta from where it landed says
     the stick never moved.
+- **A STUCK STICK IS ALWAYS A MISSING `pointerup` (c138, `STICKS`, `stickWatch`).** *"Sometimes
+  my joystick gets stuck, I don't know what causes this."* The thumb has gone and the pad never
+  heard: `out.down` stays 1, `out.x/y` keep whatever they last were, and the game goes on
+  steering, sprinting or charging for ever. **There is no single cause to find** -- there are
+  several ways an up goes missing on a phone, so all of them are closed and a net goes under.
+  1. **A SECOND FINGER ON THE SAME PAD USED TO OVERWRITE `id`**, after which the FIRST finger's
+     up no longer matched and was thrown away. Whichever order the browser delivered them in,
+     the pad could end up held by a thumb that was not there. A stick has one thumb by
+     definition; a second touch on it is simply not ours.
+  2. **`setPointerCapture` THROWS IF THE POINTER HAS ALREADY GONE** -- and it was called AFTER
+     `id` was set, so the throw left the pad tracking an id whose up had been and gone.
+  3. **THE UP WENT SOMEWHERE ELSE.** Capture can be lost without `lostpointercapture` reaching
+     us, so the WINDOW hears every up and cancel in the CAPTURE phase -- which runs before any
+     target handler and cannot be stopped by one -- and hands it to whichever pad owns that id.
+  4. **THE APP WENT AWAY MID-TOUCH.** Backgrounding a phone with a thumb down delivers nothing
+     on the way out and nothing on the way back. This is the one that produces a stick parked at
+     full deflection with no finger anywhere near it. `blur` / `pagehide` / `visibilitychange`
+     let every pad go.
+  5. **AND A WATCHDOG, because the four above are a list of causes and this is a CLASS.** A
+     pointer with no move, up or cancel for `STICK_IDLE` is not a thumb. Six seconds, and
+     deliberately long: holding a stick dead still IS something people do, and dropping a real
+     hold is far worse than a stuck stick that clears itself.
+  **RELEASING IS NOT A TAP AND NOT A FLICK.** `release` is `end` with no gesture fired -- letting
+  go because the thumb is gone must not ollie him.
+- **AN UNDECLARED ASSIGNMENT IN A MODULE IS A REFERENCE ERROR, AND `npm run check:boot` CAUGHT
+  IT.** `STICK_IDLE = 6;` with no `const` -- a blank page, invisible to the syntax gate, exactly
+  the class that gate exists for. Fourth time it has paid for itself.
 - **IN THE AIR THE STICK IS A RATE, NOT A TARGET.** `steer` is the angle between the thumb
   and his nose, which is exactly right on the ground: he comes round until he is pointing
   where you asked and then stops, because the wheels have arrived. Held over in the air the
