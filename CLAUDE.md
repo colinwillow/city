@@ -2808,6 +2808,58 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   lever and it belongs in the composite, but shipping it alongside the paint would move two
   variables at once and neither could then be judged — which is this file's own rule about the
   badge toggles.
+- **THE SHATTER IS ORDINARY JAVASCRIPT ON ORDINARY MESHES NOW, AND THE SHADER IS GONE (c147).**
+  Three builds of a vertex shader that verified perfectly here and **never once moved on his
+  phone**. `JAM_PROBE=tools/probe-boom.mjs` walked all eight links on a real car in the real city
+  -- inner mesh, wreck slot, material swap, geometry tagged, attribute declared, splice landed,
+  uniforms wired, and the shader's own arithmetic re-run in JS showing 75 cm of motion -- and the
+  device showed nothing. **The one link no tool in this container can check is the driver**, and
+  that is not a gap that closes with more reasoning.
+  **SO THE RULE IS: A MECHANISM THAT CANNOT BE VERIFIED WHERE IT FAILS IS THE WRONG MECHANISM**,
+  whatever it costs on paper. The pieces are real `Mesh` objects moved by ordinary code; if they
+  do not move now, that is a bug I can print. It deletes the material clone, the program-cache
+  question and the mid-game compile hitch with it.
+  **THE PRICE IS DRAW CALLS AND `WRECK.chunks` IS WHERE IT IS PAID.** Fifty islands would be
+  fifty calls per wreck, so they are grouped into NINE clusters by position -- farthest-point
+  seeds over the island centroids, then each island joins its nearest. **Grouped by POSITION, not
+  by size**: sorting by triangle count gives one chunk that is the whole body and eight that are
+  bolts. `WRECK.max` is 3, so a wreck costs 9 calls and the feature costs 27 at its worst against
+  the 166 the city already draws.
+  **WORLD SPACE, ALWAYS.** The car is stopped for good from the first hit, so there is nothing
+  left for the pieces to follow -- and world space means up is +Y and the floor is `groundAt`,
+  rather than the model's own -Z and a bounding box. That sign is exactly what the shader version
+  needed a uniform to carry, and it is the class of thing this file gets wrong.
+  **Each chunk's world transform is taken through the car's OWN matrix**, so it lands exactly
+  where that part of the bodywork already was. Nothing typed, nothing to get backwards.
+- **A SHOT CAR STAYS SHOT (c147).** *"Once you shoot them and they stop, they start moving again
+  -- and even after they make the explosion noise they still start moving again."* `BOLT.stun` is
+  **2.6 seconds**, so a damaged car resumed its commute before the next shot landed: four shots
+  had to arrive inside eight seconds on a moving target, and they never did, which is why he had
+  never once seen stage 4. A car with a hole in it does not go back to work.
+  **AND HALF OF WHAT HE HEARD WAS c145's MIS-SAMPLED CRUNCH** -- the per-hit sound WAS the
+  explosion file pitched up -- so "even after the explosion noise" was mostly the first hit.
+  Two bugs reinforcing each other into one confusing report.
+- **THE STICK WATCHDOG IS GONE, AND IT WAS NEVER SOUND (c147).** *"I'm holding up on the left
+  stick, I put my finger on the right stick to run faster, and it sort of just stops after a
+  while as if it thinks I've let go when I haven't. I wonder if ever since you tried to do
+  something about the stuck stick it put this behaviour in."* **He is exactly right, and it is
+  worse than he guessed**: `s.idle` was only ever reset when the stick was UP, so the timer
+  counted plain HELD TIME -- **any hold longer than six seconds released itself**, moving or not.
+  Running in a straight line is the most ordinary six seconds in the game.
+  **AND THE IDEA CANNOT BE RESCUED BY A LONGER TIMER OR BY WATCHING FOR MOVEMENT.** A pointer
+  that is not moving generates no events, so "no events" and "no thumb" are the same observation
+  and no amount of waiting separates them; the browser has no "is this pointer still down" to
+  ask. **A test that cannot tell its two answers apart is not a test.** c138's four real causes
+  each have a real mechanism and they stand; this was a hedge against the ones I had not thought
+  of, and its false positive is worse than the bug it hedged against. **c138's own note said
+  exactly that and then shipped it anyway** -- which is the second time in this file a protection
+  has been contradicted by the paragraph introducing it.
+- **AND c140's COLIN RETRY WAS AN UNBOUNDED LOOP (c147).** `for (;;)` on the argument that there
+  is no game without him. True, and still wrong: a failure that is NOT the network -- a decoder
+  the environment cannot build, a corrupt file -- makes it a hot loop with no exit, and every
+  headless harness sat in it for ever flooding the log. It gives up after `LOADT.rounds` now and
+  the chip says `NO COLIN GLB`, which is a game you can at least look at and a report that names
+  itself.
 - **THE CAR NEVER EXPLODED BECAUSE THE PIECES LEFT THE POSTCODE (c146, `WRECK.drag`).**
   *"It never physically exploded... it did eventually disappear."* c145 threw the debris at 7 m/s
   with nothing to slow it and six seconds to do it in: **one second after the blast the pieces
@@ -2874,6 +2926,8 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   are flat-shaded, so every face owns its vertices and raw index-sharing says every triangle is
   its own island -- a fact about the EXPORT, not about the shape. Positions weld to a tenth of a
   millimetre first.
+- **(SUPERSEDED AT c147 -- the shader never ran on the device. Kept because the ISLAND
+  finding, the away-from-centre launch and the drag are all still true and still shipped.)**
 - **A SHATTER IS A VERTEX SHADER, NOT FIFTY MESHES (c145, `shatterTag`, `wreckPatch`).** Fifty
   pieces is fifty draw calls per wreck against a phone already at 24 fps. So each vertex carries
   its PIECE'S centroid and one per-piece random vector, the car stays ONE mesh and ONE draw call,

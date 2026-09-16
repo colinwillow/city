@@ -15,9 +15,12 @@ const m = src.match(/\/\/ WRECK:START[^\n]*\n([\s\S]*?)\/\/ WRECK:END/);
 if (!m) { console.error('no WRECK: markers in index.html'); process.exit(1); }
 
 // the surface `shatterTag` touches, and nothing more
-const THREE = { BufferAttribute: class { constructor(a, n) { this.array = a; this.itemSize = n; this.count = a.length / n; } } };
-const WeakSetReal = WeakSet;
-const shatterTag = new Function('THREE', 'WeakSet', m[1] + '\nreturn shatterTag;')(THREE, WeakSetReal);
+const THREE = {
+  BufferAttribute: class { constructor(a, n) { this.array = a; this.itemSize = n; this.count = a.length / n;
+    this.getX = i => a[i * n]; this.getY = i => a[i * n + 1]; this.getZ = i => a[i * n + 2]; } },
+  BufferGeometry: class { constructor() { this.attributes = {}; } setAttribute(k, v) { this.attributes[k] = v; } computeBoundingSphere() {} },
+};
+const carChunks = new Function('THREE', 'WeakMap', m[1] + '\nreturn carChunks;')(THREE, WeakMap);
 
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
   'draco3d.decoder': await draco3d.createDecoderModule(),
@@ -40,21 +43,30 @@ const geoOf = pr => {
     userData: {}, setAttribute(k, v) { this.attributes[k] = v; },
   };
 };
-console.log('the SHIPPED shatterTag, run on the real car geometry\n');
+console.log('the SHIPPED carChunks, run on the real car geometry\n');
 let k = 0, worst = 0;
 for (const [me, name] of seen) {
   const pr = me.listPrimitives()[0];
   const g = geoOf(pr);
-  shatterTag(g);
+  const parts = carChunks(g, 9);
   const n = g.attributes.position.count;
-  const ok = g.attributes.aCen && g.attributes.aCen.count === n && g.attributes.aRnd && g.attributes.aRnd.count === n;
-  if (!ok) { console.error('FAIL ' + name + ': attributes missing or wrong length'); process.exit(1); }
-  // a piece count of 1 means the weld swallowed the whole car and it will scale rather than
-  // shatter; a count near the vertex count means it never welded at all and it is confetti
-  const p = g.userData.pieces;
-  if (p < 3 || p > n / 6) { console.error('FAIL ' + name + ': ' + p + ' pieces out of ' + n + ' verts'); process.exit(1); }
+  // a piece count of 1 means the weld swallowed the whole car and it cannot come apart at all;
+  // a count near the vertex count means it never welded and every triangle is its own confetti
+  const p = parts.pieces;
+  if (p < 3 || p > n / 6) { console.error('FAIL ' + name + ': ' + p + ' islands out of ' + n + ' verts'); process.exit(1); }
+  // and every chunk has to carry real triangles, or a wreck is drawn as empty meshes
+  let tot = 0;
+  for (const c of parts) { const t = c.geo.attributes.position.count; if (!t) { console.error('FAIL ' + name + ': empty chunk'); process.exit(1); } tot += t; }
+  // THE CHUNKS ARE DE-INDEXED and the source is indexed, so the number to match is the INDEX
+  // count -- triangles x 3 -- and not the unique-vertex count. The first version of this check
+  // compared those two and failed a function that was right, which is its own small lesson about
+  // asserting on the number you happen to have rather than the one that means something.
+  const want = g.index ? g.index.count : n;
+  if (tot !== want) { console.error('FAIL ' + name + ': chunks hold ' + tot + ' of ' + want + ' triangle vertices'); process.exit(1); }
   worst = Math.max(worst, p);
-  if (k++ < 8) console.log('  ' + name.padEnd(22) + ' verts ' + String(n).padStart(5) + '   PIECES ' + String(p).padStart(3));
+  if (k++ < 8) console.log('  ' + name.padEnd(22) + ' verts ' + String(n).padStart(5)
+    + '   islands ' + String(p).padStart(3) + '   -> ' + parts.length + ' chunks, '
+    + parts.map(c => c.geo.attributes.position.count / 3).join('/') + ' tris');
 }
-console.log('\n' + seen.size + ' car meshes, all split. most pieces on one car: ' + worst);
-console.log('every vertex carries its piece centroid and one shared random -- so a piece moves as a piece.');
+console.log('\n' + seen.size + ' car meshes, all split. most islands on one car: ' + worst);
+console.log('every chunk is a real mesh with real triangles, and they account for every vertex.');
