@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c122</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c123</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c122';
+const BUILD = 'c123';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -4630,6 +4630,17 @@ function buildSkin(gltf, key) {
   // BEFORE `measureSkin`, because `measureSkin` is what they break.
   stripPoses(gltf.scene, key);
   const skin = measureSkin(gltf.scene, key);
+  // A CHARACTER WHO BRINGS HIS OWN ANIMATIONS DRIVES HIMSELF WITH THEM (c123). The borrowed
+  // rigs in here are a cheat that works -- Colin's rotations on somebody else's skeleton -- and
+  // it is only ever second best: `skinClips` has to drop every `.position` track, INCLUDING THE
+  // HIPS, because those bake COLIN'S bone lengths. The hips translation is the body's height
+  // off the ground and every crouch, roll, slide and landing in the set uses it, which is the
+  // landmine `tools/melee.mjs` already paid for once.
+  // `moussa_toon` ships all 48 of those clips retargeted to HIS proportions, and the game was
+  // throwing every one of them away. THE TEST IS STRUCTURAL: whatever is in the file wins, per
+  // clip name, so a partial custom set works too -- name the ones you have redone and the rest
+  // keep falling back to Colin's. Nothing is configured and nothing is per-character.
+  ownClips(skin, gltf);
   dressSkin(skin.model, key);
   // HIS OWN ROOT, ALWAYS IN THE SCENE. One shared root can only ever hold one character, and
   // the title card's swap needs two of them walking at once. `colin.root` becomes an alias for
@@ -4639,6 +4650,48 @@ function buildSkin(gltf, key) {
   skin.root.visible = false;
   scene.add(skin.root);
   CHARS.skins[key] = skin;
+  return skin;
+}
+// ...AND IT IS A FUNCTION SO THE HARNESS CAN CALL THE SAME ONE. `npm run wear` builds its skin
+// with `measureSkin` rather than `buildSkin`, so a capture written inline up there is a capture
+// the tool never performs -- and it then reports every character wearing borrowed clips whether
+// they are or not. That is the `normals.mjs` / `normGeo` mistake for the FIFTH time in this
+// repo, and it is always the same shape: the harness runs a path the game does not.
+function ownClips(skin, gltf) {
+  if (!skin || skin.key === 'colin' || !gltf || !gltf.animations || !gltf.animations.length) return skin;
+  // IT HAS TO COVER THE GAIT, OR IT IS NOT AN ANIMATION SET -- IT IS A HANDFUL OF CLIPS THAT
+  // HAPPEN TO SHARE A NAME. `alien_orange` ships 30 of Plutopia's own and twelve of those names
+  // collide with Colin's, so a bare name match would have given it a borrowed walk under its own
+  // run: mixed provenance, which is the thing this change exists to END rather than to move
+  // somewhere else. The three gait clips are the test because everything else is measured
+  // against them -- `GAIT.walkRef` and `runRef` are their cycle rates, and a pool without them
+  // cannot be driving this locomotion at all.
+  const GAITC = ['idle_neutral', 'walk_fwd_neutral', 'run_fwd'];
+  const have = new Set(gltf.animations.map(c => c.name));
+  if (!GAITC.every(n => have.has(n))) {
+    console.log('[skin] ' + skin.key + ' has ' + gltf.animations.length + ' clips of its own but not the gait (' +
+      GAITC.filter(n => !have.has(n)).join(', ') + ') -- wearing colin\'s, as before');
+    return skin;
+  }
+  // AND A CLIP OF A DIFFERENT LENGTH NEEDS A DIFFERENT REFERENCE SPEED, which is `npm run gait`'s
+  // closed form: `ref = GAIT.ref * (colinDur / thisDur)`. Eyeballing that is what put the rifle
+  // run 36% too fast and the walk 37% too slow in one build, so a re-export that changes a
+  // length says so here rather than being found by watching the feet.
+  for (const c of gltf.animations) {
+    const his = colin.clips && colin.clips.find(x => x.name === c.name);
+    if (!his || !his.duration || Math.abs(c.duration - his.duration) / his.duration < .05) continue;
+    console.warn('[skin] ' + skin.key + ' ' + c.name + ' is ' + c.duration.toFixed(3) + 's against colin\'s ' +
+      his.duration.toFixed(3) + ' -- any reference speed built on it wants x' + (his.duration / c.duration).toFixed(2));
+  }
+  const mine = gltf.animations.slice();
+  // THE TRIM AND THE DERIVE LIVE OUTSIDE THE `SKIN:` MARKERS, so the text `npm run wear` lifts
+  // does not carry them. Guarded rather than assumed: the harness then measures the CAPTURE --
+  // which clips a character actually drives, and what his soles do on them -- and the two
+  // derived families are covered in the game by `npm run check:boot`. A stated gap, not a
+  // silent one; move them inside the markers the day the harness needs to test them.
+  if (typeof trimClips === 'function') trimClips(mine);      // his `back_flip` opens with the same crouch
+  if (typeof deriveClips === 'function') deriveClips(mine);  // his own sighted hold and leg clones
+  skin.own = new Map(mine.map(c => [c.name, c]));
   return skin;
 }
 // COLIN'S CLIPS, CUT TO FIT SOMEBODY ELSE. Three things, in order:
@@ -4652,6 +4705,12 @@ function buildSkin(gltf, key) {
 function skinClips(skin, clips) {
   clips = clips || colin.clips;
   if (skin.key === 'colin') return clips;
+  // HIS OWN, RAW, WHEREVER HE HAS ONE. No track filter and no `HIPFIX`: both of those exist to
+  // survive wearing ANOTHER skeleton's animation, and neither means anything for a clip that
+  // was authored on this one. The position tracks are the whole point -- they are his
+  // proportions, and dropping them is what makes a borrowed clip read wrong.
+  const own = skin.own || null;
+  let mineN = 0, borrowN = 0;
   // The rigid correction measured for this rig. Identity for anything sharing Colin's
   // convention, which is every Plutopia character and Colin himself.
   const f = HIPFIX[skin.key];
@@ -4659,6 +4718,8 @@ function skinClips(skin, clips) {
   const _q = new THREE.Quaternion();
   const out = [];
   for (const src of clips) {
+    if (own && own.has(src.name)) { out.push(own.get(src.name)); mineN++; continue; }
+    borrowN++;
     const tracks = [];
     for (const t of src.tracks) {
       const dot = t.name.indexOf('.'); const node = dot > 0 ? t.name.slice(0, dot) : t.name;
@@ -4673,6 +4734,10 @@ function skinClips(skin, clips) {
     }
     const c = new THREE.AnimationClip(src.name, src.duration, tracks); out.push(c);
   }
+  // Said out loud, because "he animates really odd" and "he is wearing somebody else's clips"
+  // are the same picture from outside and only this number tells them apart.
+  if (own) console.log('[skin] ' + skin.key + ' drives ' + mineN + ' of its OWN clips, ' + borrowN + ' borrowed from colin');
+  else if (borrowN) console.log('[skin] ' + skin.key + ' has no clips of its own -- all ' + borrowN + ' borrowed from colin');
   return out;
 }
 // PUT A SKIN ON. Each skin keeps its own mixer, actions AND clip weights, so switching back is
@@ -4799,12 +4864,7 @@ function buildColin(gltf, extra) {
   // know when a LoopOnce action is done. A head is taken by starting the action late --
   // the frames are still in the file, nothing ever reaches them.
   // ON THE CLIP OBJECTS, before any skin clones them, so every skin inherits the cut.
-  for (const nm in TRIM) {
-    const c = colin.clips.find(x => x.name === nm), t = TRIM[nm];
-    if (!c) { console.warn('[trim] no clip named ' + nm); continue; }
-    if (t.end) c.duration = Math.max(.05, c.duration - t.end / FPS);
-    if (t.start) TRIM_IN[nm] = Math.min(t.start / FPS, c.duration - .05);
-  }
+  trimClips(colin.clips);
   // BRACED, NOT AT EASE. `rifle_idle_01` is the gun DOWN and him standing about, which is the
   // wrong body for a man holding a charge on a trigger -- and until c105 that is what played
   // while the shot spun up, with the sighted pose only appearing AFTER the release, when the
@@ -4816,13 +4876,38 @@ function buildColin(gltf, extra) {
   // an action flag: a paused action still has a duration the mixer walks, and ONE KEYFRAME
   // CANNOT DRIFT. It is built here so it is in `colin.clips` before any skin clones the pool,
   // which is what makes every borrowed character get it through `skinClips` unchanged.
+  deriveClips(colin.clips);
+  buildSkin(gltf, 'colin');
+  wear('colin');
+  colin.ready = true;
+}
+// A TAIL IS TAKEN by shortening the clip's own duration, which is all the mixer reads to know
+// when a LoopOnce action is done. A HEAD is taken by starting the action late -- the frames are
+// still in the file and nothing ever reaches them.
+// ON THE CLIP OBJECTS, before any skin clones them, so every skin inherits the cut -- and on
+// whatever pool it is handed, because a character that brings his OWN clips needs the same cut
+// taken on his (his `back_flip` opens with the same standing crouch Colin's does).
+function trimClips(list) {
+  for (const nm in TRIM) {
+    const c = list.find(x => x.name === nm), t = TRIM[nm];
+    if (!c) continue;
+    if (t.end) c.duration = Math.max(.05, c.duration - t.end / FPS);
+    if (t.start) TRIM_IN[nm] = Math.min(t.start / FPS, c.duration - .05);
+  }
+}
+// THE CLIPS THAT ARE MADE RATHER THAN EXPORTED, over whatever pool they are given. This used to
+// run only over `colin.clips`, which was right while every skin wore his -- but a character with
+// his OWN animations has to derive his own sighted hold and his own leg clones, or he rides with
+// Colin's legs under his own arms, which is exactly the kind of mixed provenance that reads as
+// "he animates really odd" and cannot be pinned on any one clip.
+function deriveClips(list) {
   {
-    const sh = colin.clips.find(c => c.name === WEAP.clip);
-    if (sh && !colin.clips.some(c => c.name === WEAP.aimPose)) {
+    const sh = list.find(c => c.name === WEAP.clip);
+    if (sh && !list.some(c => c.name === WEAP.aimPose)) {
       const aim = sh.clone(); aim.name = WEAP.aimPose;
       for (const t of aim.tracks) { const sz = t.getValueSize(); t.times = new t.times.constructor([0]); t.values = t.values.slice(0, sz); }
       aim.duration = .1;            // a zero-length clip on repeat divides by its own length
-      colin.clips.push(aim);
+      list.push(aim);
     } else if (!sh) console.warn('[aim] no ' + WEAP.clip + ' -- the sighted hold falls back to the rifle idle');
     // RETREATING IS THE FORWARD CLIP RUN BACKWARDS, and it needs to be a CLONE rather than the
     // same action with a negative time scale. Walking diagonally backwards is genuinely part
@@ -4845,26 +4930,24 @@ function buildColin(gltf, extra) {
     const UPPER = /spine|chest|neck|head|shoulder|arm|hand|fore|clavicle|thumb|index|middle|ring|pinky/i;
     const boneOf = t => { const d = t.name.indexOf('.'); return d > 0 ? t.name.slice(0, d) : t.name; };
     const carve = (nm, suf, keep) => {
-      if (!nm || colin.clips.some(c => c.name === nm + suf)) return;
-      const src = colin.clips.find(c => c.name === nm);
+      if (!nm || list.some(c => c.name === nm + suf)) return;
+      const src = list.find(c => c.name === nm);
       if (!src) return;
       const c2 = src.clone(); c2.name = nm + suf;
       c2.tracks = c2.tracks.filter(t => UPPER.test(boneOf(t)) === keep);
-      if (c2.tracks.length) colin.clips.push(c2);
+      if (c2.tracks.length) list.push(c2);
     };
     // ...and every strike, because a punch thrown from a moving board is the same trick: the
     // swing on the spine-up tracks, the ride on the legs.
     for (const nm of [WEAP.aimPose, WEAP.idle, WEAP.clip, MELEE.slide, MELEE.roll, ...MELEE.chain]) carve(nm, '__up', true);
     // every board clip, so this holds through a push and in the air as well as standing still
-    for (const c of colin.clips.slice()) if (/^skate_/.test(c.name)) carve(c.name, '__legs', false);
-    const fr = colin.clips.find(c => c.name === WEAP.aimRun);
-    if (fr && WEAP.aimBack && !colin.clips.some(c => c.name === WEAP.aimBack)) {
-      const bk = fr.clone(); bk.name = WEAP.aimBack; colin.clips.push(bk);
+    for (const c of list.slice()) if (/^skate_/.test(c.name)) carve(c.name, '__legs', false);
+    const fr = list.find(c => c.name === WEAP.aimRun);
+    if (fr && WEAP.aimBack && !list.some(c => c.name === WEAP.aimBack)) {
+      const bk = fr.clone(); bk.name = WEAP.aimBack; list.push(bk);
     }
   }
-  buildSkin(gltf, 'colin');
-  wear('colin');
-  colin.ready = true;
+  return list;
 }
 // EVERY CLIP IS A WEIGHT, and the weights are eased rather than crossfaded. A state
 // machine of crossFadeFrom calls has to know what it is coming FROM, which is exactly the

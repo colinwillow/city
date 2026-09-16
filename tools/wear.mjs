@@ -79,7 +79,7 @@ const colin = { clips: gl.colin.animations };
   }
 }
 const fn = new Function('THREE', 'CHARS', 'COLIN_HEIGHT', 'colin', 'TITLE',
-  shipped + '\n; return { measureSkin, skinClips, sitSkin, stripPoses };')(THREE, CHARS, COLIN_HEIGHT, colin, { hand: 'mixamorig_RightHand' });
+  shipped + '\n; return { measureSkin, skinClips, sitSkin, stripPoses, ownClips };')(THREE, CHARS, COLIN_HEIGHT, colin, { hand: 'mixamorig_RightHand' });
 
 const ANKLE = { v: 0 }, YAW = { v: 0 };
 const root = new THREE.Group();
@@ -90,6 +90,10 @@ function check(key, gltf) {
   // twice. It is what the scale is read from, so it has to be the same scene.
   fn.stripPoses(gltf.scene, key);
   const skin = fn.measureSkin(gltf.scene, key);
+  // THE GAME'S ORDER, NOT THIS TOOL'S. `buildSkin` captures the character's OWN clips before
+  // anything is cloned; a harness that skips that step reports every rig wearing borrowed
+  // animation whether it is or not.
+  fn.ownClips(skin, gltf);
   CHARS.skins[key] = skin;
   root.add(skin.model);
   const mixer = new THREE.AnimationMixer(skin.model);

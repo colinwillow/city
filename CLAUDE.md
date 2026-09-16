@@ -863,6 +863,54 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   local translations up the parent chain, which ignores every rotation and scale on the way:
   it put Colin's hips at 52.8 and three candidates at a NEGATIVE height, and that number was
   about to pick the scale every character is drawn at.
+- **A CHARACTER WHO BRINGS HIS OWN ANIMATIONS DRIVES HIMSELF WITH THEM (c123, `ownClips`).**
+  *"He has all of Colin's animations baked into his own GLB and those are offset for his
+  proportions exactly... he should be using his own animations. Is he not right now?"* He was
+  not. c122 measured his rig, pronounced it clean and then threw all 48 of his clips away.
+  **AND THE RETARGET IS ONLY EVER SECOND BEST, BY CONSTRUCTION.** `skinClips` has to drop every
+  `.position` track because those bake COLIN'S bone lengths — **including the Hips, which is the
+  body's height off the ground**, and every crouch, roll, slide and landing in the set uses it.
+  That is the landmine `tools/melee.mjs` already paid for once ("the legs fold underneath and
+  his soles hang in the air"), and wearing borrowed clips re-creates it on every borrowed skin.
+  Measured, before and after:
+      moussa_toon  tracks kept 3594 / 10127  ->  10122 / 10127     lift -0.048 -> -0.021
+                   48 of his OWN clips, 5 borrowed (the melee set, which he has not drawn)
+  **THE TEST IS STRUCTURAL AND IT IS THE GAIT.** `alien_orange` ships 30 of Plutopia's clips and
+  twelve of those names collide with Colin's, so a bare name match would have given it a
+  borrowed walk under its own run — mixed provenance, which is the thing this change exists to
+  END rather than to relocate. A pool has to carry `idle_neutral`, `walk_fwd_neutral` and
+  `run_fwd` to be an animation set at all: `GAIT.walkRef`/`runRef` ARE their cycle rates, and
+  everything else is measured against them. Robot (91 clips), alien (30) and moussa_robit (0)
+  are all unchanged, and the log says which and why for each.
+  **Per-clip fallback under that gate**, so a partial custom set works the day there is one:
+  name the clips you have redone and the rest keep coming from Colin.
+  **HIS OWN CLIPS ARE USED RAW** — no track filter, no `HIPFIX`. Both of those exist to survive
+  wearing ANOTHER skeleton's animation and neither means anything for a clip authored on this
+  one.
+  **AND THEY GET THE SAME TRIM AND THE SAME DERIVED FAMILIES.** `trimClips` and `deriveClips`
+  are functions over a POOL now, not over `colin.clips` — his `back_flip` opens with the same
+  standing crouch, and he needs his own `rifle_aim`, his own `__up`/`__legs` clones and his own
+  backpedal or he rides with Colin's legs under his own arms.
+  **A CLIP OF A DIFFERENT LENGTH NEEDS A DIFFERENT REFERENCE SPEED** — `npm run gait`'s closed
+  form, `ref = GAIT.ref * (colinDur / thisDur)`. Eyeballing that put the rifle run 36% too fast
+  and the walk 37% too slow in one build, so a own clip more than 5% off Colin's says so at load
+  with the multiplier it wants. moussa_toon's 48 are identical to the frame, so every reference
+  speed in the file still means what it meant.
+  **THE REMAINING GAP ON HIM IS FIVE CLIPS**: `melee_punch_01`, `melee_slash`,
+  `melee_round_kick`, `slide`, `roll` — Plutopia's alien's, borrowed, and therefore still
+  rotation-only and still missing their hips translation. Those five are the ones that will
+  read worst on him, and drawing them is what closes it.
+- **`npm run wear` BUILDS ITS SKIN WITH `measureSkin`, NOT `buildSkin` — SO THE CAPTURE HAD TO
+  BE A SHIPPED FUNCTION (c123).** Written inline in `buildSkin`, `skin.own` is a step the
+  harness never performs, and it then reported every character wearing borrowed clips whether
+  they were or not — **the `normals.mjs` / `normGeo` mistake for the FIFTH time in this repo**,
+  always the same shape: the harness runs a path the game does not. `ownClips(skin, gltf)` lives
+  inside the `SKIN:` markers and both call it.
+  **`trimClips`/`deriveClips` are OUTSIDE those markers**, so the lifted text has neither and
+  they are called through a `typeof` guard. The harness therefore measures the CAPTURE — which
+  clips a character drives and what his soles do on them — and the two derived families are
+  covered in the game by `npm run check:boot`. **A stated gap, not a silent one**; move them
+  inside the markers the day the harness has to test them.
 - **`moussa_toon` IS THE BEST-CASE RIG IN HERE, AND EVERY TOOL SAID SO BEFORE ANYTHING WAS
   BUILT (c122).** He needed one roster line and not one typed constant:
       65/65 of the bones Colin's clips drive, rest-pose offset mean 0.0 deg / worst 0 deg
