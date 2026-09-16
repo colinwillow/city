@@ -38,6 +38,7 @@
     "wreck": "node tools/wreck.mjs",
     "cars": "node tools/cars.mjs",
     "glsl": "node tools/glsl.mjs",
+    "push": "node tools/push.mjs",
     "bar": "node tools/bar.mjs",
     "slash": "node tools/slash.mjs"
   },

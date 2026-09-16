@@ -314,7 +314,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c170</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c171</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -328,7 +328,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c170';
+const BUILD = 'c171';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -443,7 +443,14 @@ const SK8 = {
   pushFast: .60,     // the cycle at a dead stop -- the clip runs 2.6x through it
   pushEase: 16,      // the speed by which it has stretched back to pushDur
   shoveDur: .40,     // how long one shove is spread over -- see `shove` in stepSkate
-  pushPlant: .42,    // where in the cycle the foot shoves
+  // WHERE IN THE CYCLE THE FOOT IS ACTUALLY ON THE ROAD -- MEASURED (`npm run push`), and for
+  // every build until c171 THIS CONSTANT WAS NEVER READ BY ANYTHING. The shove, and the scrape
+  // that is the sound of it, fired at the TOP of the cycle, where his foot is still up on the
+  // deck. Half a cycle before the push, which at a 1.55 s cruise is 0.72 s: *"the sound is in
+  // the in-between space."* He is describing the gap exactly.
+  // Per clip, because the two are authored differently and one number would be wrong for one of
+  // them; keyed by name so a re-export measures again rather than inheriting a guess.
+  pushPlant: { skate_push_standing: .46, skate_push_crouch: .56 },
   // PUSHING KEEPS PAYING, JUST LESS. Each shove gives less the faster he is already going
   // while drag takes more, so speed BUILDS over a long stretch and settles near 20 m/s
   // instead of being cut off at a number. A short street will not get him there.
@@ -1473,6 +1480,18 @@ const SFX = {
   near: 10, far: 85, floor: .10,          // how a sound a long way off is attenuated
   raw: {}, buf: {}, miss: [], ready: 0,
   live: 0, cap: 8, beat: 38, _at: {},     // voices at once, and the shortest gap between two of a kind
+  // WHERE THE SOUND STARTS IS NOT WHERE IT BECOMES AUDIBLE (c171). `edge` looked for the first
+  // sample over an ABSOLUTE floor, which on a real recording is room tone and the shoe moving
+  // through the air, not the event. Measured on his own four, transient against that floor:
+  //     skateboarding_start    edge opened at 0.029 s and the SCRAPE is at 0.130   -> 101 ms late
+  //     skateboarding_ollie              0.029                          0.076      ->  46 ms
+  //     skateboarding_landing            0.029                          0.074      ->  44 ms
+  // A hundred milliseconds bolted to the front of the push is exactly what nothing on the
+  // trigger side can fix. So the onset is found RELATIVE to the file's own peak, and the
+  // absolute floor stays as the outer bound and as the tail. Tabled over all 25 effects before
+  // shipping: every borrowed one moves by 0 to 18 ms and keeps its attack; the push moves 68.
+  hit: .25,          // the fraction of the file's own peak that counts as the event starting
+  pre: .030,         // and how much of the run-up to keep in front of it -- the attack
   fetchAll() {
     for (const k in SND_FILES) {
       this.raw[k] = [];
@@ -1490,15 +1509,23 @@ const SFX = {
   edge(buf) {
     if (buf._lead !== undefined) return buf;
     const n = buf.length, sr = buf.sampleRate, TH = .005, B = 128;
-    let a = -1, b = -1; const ch = [];
+    let a = -1, b = -1, top = 0; const ch = [], blk = [];
     for (let c = 0; c < buf.numberOfChannels; c++) ch.push(buf.getChannelData(c));
     for (let i = 0; i < n; i += B) {
       const e = Math.min(n, i + B); let peak = 0;
       for (const d of ch) for (let k = i; k < e; k++) { const v = d[k] < 0 ? -d[k] : d[k]; if (v > peak) peak = v; }
+      blk.push(peak); if (peak > top) top = peak;
       if (peak > TH) { if (a < 0) a = i; b = e; }
     }
     if (a < 0) { buf._lead = 0; buf._end = buf.duration; return buf; }
-    buf._lead = Math.max(0, a / sr - .02);        // keep the attack: it is what carries a transient
+    const lo = Math.max(0, a / sr - .02);         // the first audible sample, less a hair
+    // AND THEN FORWARD TO THE EVENT. The first block reaching `hit` of this file's own peak is
+    // where the sound actually happens; `pre` keeps the attack in front of it, which is what
+    // carries a transient. It can only ever move the start LATER, so a file that opens on its
+    // own event is untouched.
+    let on = lo;
+    for (let i = 0; i < blk.length; i++) if (blk[i] >= top * this.hit) { on = i * B / sr; break; }
+    buf._lead = Math.max(lo, Math.min(on - this.pre, b / sr));
     buf._end = Math.min(buf.duration, b / sr + .04);
     return buf;
   },
@@ -7146,6 +7173,11 @@ function deriveClips(list) {
 // bookkeeping that breaks the first time two transitions overlap. Asking for a set of
 // weights each frame and damping toward it cannot get into that state.
 function colinScale(name, s) { const a = colin.actions[name]; if (a) a.setEffectiveTimeScale(s); }
+// WHICH PUSH CLIP, IN ONE PLACE. `stepSkate` needs it to know where the plant is and `colinAnim`
+// needs it to play the thing; the same test written twice is two things to keep in step, which
+// is this file's oldest structural complaint about itself.
+const pushClip = p => (p.crouch > .5 ? 'skate_push_crouch' : 'skate_push_standing');
+const pushPlantOf = nm => (SK8.pushPlant[nm] === undefined ? .46 : SK8.pushPlant[nm]);
 // Clips that are an event rather than a cycle: they play once and hold their last frame,
 // and they are rewound whenever their weight comes up off the floor.
 const ONCE = ['jump_going_up', 'jump_coming_down', 'landing_roll', 'idle_jump_init', 'run_jump_init',
@@ -7248,7 +7280,7 @@ function colinAnim(dt) {
     else if (p.pushing) {
       // one clip per cycle whatever the cycle is: the clip is stretched to the period so
       // the plant stays on the shove. clipLen, not a constant, so either push clip works.
-      const nm = p.crouch > .5 ? 'skate_push_crouch' : 'skate_push_standing';
+      const nm = pushClip(p);
       colinScale(nm, clipLen(nm, SK8.pushDur) / Math.max(.2, p.pushPeriod)); t[nm] = 1;
     }
     else if (p.crouch > .04) { colinScale('skate_idol_crouch', 1); t['skate_idol_crouch'] = p.crouch; t['skate_idol_standing'] = 1 - p.crouch; }
@@ -7370,6 +7402,21 @@ function colinAnim(dt) {
     }
   }
   colinSet(t, dt);
+  // AND THE CLIP IS PUT ON THE PHASE, ONCE A CYCLE (c171). Both advance at `dt / pushPeriod`, so
+  // once they are together they stay together -- but they have to be PUT together: `skinWeights`
+  // rewinds an action to zero the moment its weight comes up off the floor, and that happens
+  // again every time `p.crouch` crosses .5 and swaps which push clip is playing, mid-cycle.
+  // ONCE A CYCLE AND NOT EVERY FRAME: writing an action's time from a counter every frame is
+  // what the old push code did and it is one more thing to get stuck, which it did.
+  // It has to sit AFTER `colinSet`, because that is where the rewind happens.
+  {
+    const nm = p.board && p.pushing ? pushClip(p) : '';
+    if (nm && (p.pushSync || nm !== p.pushNm)) {
+      const a = colin.actions[nm];
+      if (a) a.time = a.getClip().duration * clamp(p.pushT, 0, .999);
+    }
+    p.pushNm = nm; p.pushSync = 0;
+  }
 }
 
 // ---------- skateboard ----------
@@ -8809,7 +8856,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushSync: 0, pushNm: '', pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -9959,8 +10006,28 @@ function stepSkate(dt) {
           // push cycle cannot machine-gun it.
           snd.push();
         };
-        if (!p.pushing) { p.pushing = true; p.pushT = 0; shove(); }   // the first one lands at once
-        else { p.pushT += dt; if (p.pushT >= p.pushPeriod) { p.pushT -= p.pushPeriod; shove(); } }
+        // ONE CLOCK, AND A PHASE RATHER THAN A STOPWATCH (c171). `p.pushT` used to accumulate raw
+        // seconds and be compared against `p.pushPeriod` -- which MOVES with speed, from .60 at a
+        // standstill to 1.55 at a cruise. The clip meanwhile advances by `dt / period` through its
+        // own timeScale, which is the honest phase integral. Two different integrals of the same
+        // thing: they agree only while the period is constant, and it never is while he is
+        // accelerating. The comment above the clip said "its clock is the very phase the shove is
+        // fired from, so the foot and the push cannot drift apart" -- a protection asserted only
+        // in a comment, which is the FIFTH time in this file. It is the phase now, so there is
+        // one clock and nothing left to drift.
+        const plant = pushPlantOf(pushClip(p));
+        if (!p.pushing) {
+          // STARTED AT THE PLANT, so the first push is still instant. Waiting a plant's worth of
+          // wind-up for the first one is honest and it is also a quarter of a second of nothing
+          // happening when the thumb goes down; a skater leaving a dead stop already has a foot
+          // on the road. `p.pushSync` puts the CLIP at the same phase, so the foot is down too.
+          p.pushing = true; p.pushT = plant; p.pushSync = 1; shove();
+        } else {
+          const was = p.pushT;
+          p.pushT += dt / Math.max(.2, p.pushPeriod);
+          if (was < plant && p.pushT >= plant) shove();
+          if (p.pushT >= 1) { p.pushT -= 1; p.pushSync = 1; }
+        }
       } else {
         p.pushing = false; p.pushT = 0;
         if (braking && !p.turnT) { const b = SK8.brake * dt * Math.abs(fwdC); along = along > 0 ? Math.max(0, along - b) : Math.min(0, along + b); }

@@ -1198,6 +1198,65 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE PUSH SOUND LANDED HALF A CYCLE BEFORE THE PUSH, AND `SK8.pushPlant` WAS NEVER READ BY
+  ANYTHING (c171, `npm run push`, `JAM_PROBE=tools/probe-push.mjs`).** *"The push sound is offset
+  from the push. It's like it goes in between where it needs to go -- if he's pushing every second
+  or so, the sound effect is in the in-between space."* Three separate faults, and the first one
+  is the whole complaint.
+  **1. THE SHOVE FIRED AT THE TOP OF THE CYCLE, WHERE HIS FOOT IS STILL ON THE DECK.**
+  `SK8.pushPlant: .42` has sat in this file since the push cycle was built, with the comment above
+  it saying *the shove fires at the point in that cycle where his foot is actually on the road* --
+  and `grep` returns ONE line for it, its own declaration. **A behaviour asserted only in a comment
+  is not a behaviour**, which is the fifth time in this file, and this one was audible.
+  Measured off the real clip through a real mixer (`npm run push`, the free foot found by
+  excursion rather than by name, touchdown = the LONGEST run within 15% of its own floor):
+      skate_push_standing  1.567s   touchdown phase 0.46   contact 0.11 of the cycle
+      skate_push_crouch    1.467s   touchdown phase 0.56   contact 0.16
+  So the scrape was heard **0.28 s early at a standstill and 0.71 s early at the cruise**, which
+  on a 1.55 s cycle is squarely between two pushes. His sentence, exactly.
+  **The first version of that tool took the FIRST dip under the gate and reported 0.22 with a
+  contact lasting 0.025 of a cycle** -- a wobble on the way past. The free foot rides ON the deck
+  for most of the cycle, so the trace is a long plateau with one kick UP and one dip DOWN, and the
+  dip is the one that LASTS. Longest run, read circularly. It is stable at gates of .10 and .15
+  and falls apart at .25, which is where it starts swallowing the plateau.
+  **2. TWO CLOCKS, AND THEY CANNOT AGREE WHILE HE IS ACCELERATING.** `p.pushT` accumulated RAW
+  SECONDS and was compared against `p.pushPeriod` -- which moves with speed, .60 at a standstill
+  to 1.55 at a cruise. The clip meanwhile advances by `dt / period` through its own timeScale,
+  which is the honest phase integral. `T/P(now)` and `integral dt/P(t)` are the same number only
+  while P is constant, and it never is. The comment claimed *"its clock is the very phase the
+  shove is fired from, so the foot and the push cannot drift apart"* -- same landmine, one line
+  over. `p.pushT` IS the phase now, in [0,1), so there is one clock and nothing to drift.
+  **AND THE CLIP IS PUT ON IT ONCE A CYCLE, NOT EVERY FRAME.** `skinWeights` rewinds an action to
+  zero the moment its weight comes off the floor, and that happens again every time `p.crouch`
+  crosses .5 and swaps which push clip is playing, mid-cycle. One write at the start of a push and
+  one at each wrap; writing an action's time from a counter EVERY frame is what an earlier build
+  did and it got stuck. It sits after `colinSet`, because that is where the rewind happens.
+  **THE FIRST PUSH STILL LANDS AT ONCE** -- the cycle is STARTED at the plant (`p.pushT = plant`,
+  and `p.pushSync` puts the clip there too, so the foot is already down). Waiting a plant's worth
+  of wind-up would be honest and it is also a quarter of a second of nothing happening when the
+  thumb goes down, and a skater leaving a dead stop already has a foot on the road.
+  **3. AND `SFX.edge` WAS OPENING ON ROOM TONE, NOT ON THE EVENT.** It found the first sample over
+  an ABSOLUTE floor (.005, about -46 dBFS), which on a real recording is the room and the shoe
+  moving through the air. Measured on his own four:
+      skateboarding_start    edge opened 0.029s, the SCRAPE is at 0.130   -> 101 ms bolted on
+      skateboarding_ollie                0.029                  0.076     ->  46 ms
+      skateboarding_landing              0.029                  0.074     ->  44 ms
+  A tenth of a second of nothing in front of the push, which is exactly the thing that note says
+  nothing on the trigger side can fix. The onset is found RELATIVE to the file's own peak now
+  (`SFX.hit` .25, with `SFX.pre` 30 ms of run-up kept so the attack survives); the absolute floor
+  stays as the outer bound and as the tail, and the start can only ever move LATER, so a file that
+  opens on its own event is untouched. **Tabled over all 25 effects before shipping** -- every
+  borrowed one moves by 0 to 18 ms, the push by 68, the rolling loop by 103 (which is a loop and
+  only starts further into its own steady part).
+  **`JAM_PROBE=tools/probe-push.mjs` WRAPS `snd.push` AND READS THE PHASE IT FIRED ON**, which is
+  the complaint measured rather than the mechanism described. Holding forward from a dead stop:
+      c170   every sound at phase 0.000   = 46% of a cycle before the foot, 0.28s to 0.71s early
+      c171   0.460 / 0.474 / 0.463 / 0.472 / 0.463 ...   worst 1.4% of a cycle, which is one frame
+  and `npm run jam`'s brake probe reads the push as 8.0 -> 15.72 against c170's 15.73, so the
+  impulse per cycle, the top speed and the turn are all untouched: only the phase moved.
+  **AND THE PROBE'S FIRST VERSION INVENTED A DOUBLE PUSH.** It detected a shove by watching
+  `p.shoveT` rise, which also ticks on its own, and reported two sounds a cycle that do not exist.
+  Wrapping the function that makes the noise is the only thing that answers a question about noise.
 - **MUSIC AND EFFECTS ARE TWO SWITCHES NOW, AND THE SPLIT IS A BUS (c170, `musicSet`, `sfxSet`,
   `SFX.bus`).** *"I think there's a button to mute the music, but I'd like to mute the music
   without muting the sound effects -- sometimes I wanna do screen records and I wanna record the
