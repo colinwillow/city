@@ -314,7 +314,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c176</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c177</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -328,7 +328,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c176';
+const BUILD = 'c177';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -443,6 +443,11 @@ const SK8 = {
   pushFast: .60,     // the cycle at a dead stop -- the clip runs 2.6x through it
   pushEase: 16,      // the speed by which it has stretched back to pushDur
   shoveDur: .40,     // how long one shove is spread over -- see `shove` in stepSkate
+  pushBlend: .018,   // how fast the push clip comes up -- see `BLENDIN`. .055 is a sixth of a
+                     // second to be visible, and the scrape has already been heard by then.
+  pushGrace: .45,    // let go and take the stick again inside this and the CYCLE CARRIES ON
+                     // rather than restarting -- see `stepSkate`. A jiggled thumb is not four
+                     // pushes, and restarting the phase is what made it sound like four.
   // WHERE IN THE CYCLE THE FOOT IS ACTUALLY ON THE ROAD -- MEASURED (`npm run push`), and for
   // every build until c171 THIS CONSTANT WAS NEVER READ BY ANYTHING. The shove, and the scrape
   // that is the sound of it, fired at the TOP of the cycle, where his foot is still up on the
@@ -4800,6 +4805,18 @@ function missing() {
   // A SAVED SETTING THAT CONTRADICTS THE FILE HAS TO BE VISIBLE, which is the whole c175 lesson:
   // `COP.solid` sat at 0 in his `city.opt` for five builds and read as the collider being broken.
   if (!COP.solid) m += ' · COPS GHOST';
+  // DO THE FOOT AND THE SCRAPE AGREE? (c177) *"They don't really line up."* That is a question
+  // about two clocks on a phone, which is the one place neither gate nor probe can look: no
+  // harness in this repo can build a skin, so the clip's real phase has never once been read
+  // while the game was running. It is silent when they agree, which is `rollREC`'s own rule --
+  // and if it ever shows a number, that number IS the diagnosis.
+  if (player.board && player.pushing) {
+    const ph = pushPhase();
+    if (ph >= 0) {
+      const d = Math.abs(((ph - player.pushT + 1.5) % 1) - .5);
+      if (d > .06) m += ' · PUSHDRIFT ' + d.toFixed(2);
+    }
+  }
   }
   if (kitOut('jet')) {
     const js = jetSize();
@@ -7295,8 +7312,30 @@ function colinScale(name, s) { const a = colin.actions[name]; if (a) a.setEffect
 // is this file's oldest structural complaint about itself.
 const pushClip = p => (p.crouch > .5 ? 'skate_push_crouch' : 'skate_push_standing');
 const pushPlantOf = nm => (SK8.pushPlant[nm] === undefined ? .46 : SK8.pushPlant[nm]);
+// WHICH ACTION IS ACTUALLY PLAYING THE PUSH, AND IT IS NOT ALWAYS THE ONE NAMED (c177). Riding
+// with the blaster out, c115 swaps every `skate_*` clip for its `__legs` clone -- so a sync that
+// wrote `colin.actions[pushClip(p)]` was writing to an action with no weight, and the clip the
+// eye can see free-ran. Whichever of the pair carries the weight is the one that matters, which
+// is the same question `colinSet` answers everywhere else: ask the weight, never the name.
+function pushAct() {
+  const nm = pushClip(player), A = colin.actions;
+  if (!A) return null;
+  const a0 = A[nm], a1 = A[nm + '__legs'];
+  const w0 = a0 ? a0.getEffectiveWeight() : -1, w1 = a1 ? a1.getEffectiveWeight() : -1;
+  return w1 > w0 ? a1 : a0;
+}
+// ...and where it has got to, as a fraction of one cycle. -1 when there is no clip at all.
+function pushPhase() {
+  const a = pushAct(); if (!a) return -1;
+  const d = a.getClip().duration || 1;
+  return ((a.time % d) + d) % d / d;
+}
 // Clips that are an event rather than a cycle: they play once and hold their last frame,
 // and they are rewound whenever their weight comes up off the floor.
+// CLIPS THAT MUST ARRIVE ON THE BEAT RATHER THAN EASE IN. The `__legs` clones are in it too --
+// riding with the blaster out, THEY are what actually plays (see c115), and a rule that only
+// covers the base name silently stops applying in the one state the gun is out.
+const BLENDIN = /^skate_push_/;
 const ONCE = ['jump_going_up', 'jump_coming_down', 'landing_roll', 'idle_jump_init', 'run_jump_init',
   'skate_ollie_init_air', 'skate_ollie_air', 'skate_ollie_landing', 'back_flip', 'front_flip',
   'flying_backwards', 'flying_forwards', 'fall_to_back', 'fall_to_face_down',
@@ -7328,7 +7367,16 @@ function skinWeights(skin, t, dt, snap, fb) {
     if (cur < .01 && want > .01) { a.reset(); a.play(); if (TRIM_IN[nm]) a.time = TRIM_IN[nm]; }
     // .085 was a quarter of a second to cross, which on anything sharp reads as mush.
     // .055 is about a sixth and still hides the seam between two clips.
-    const w = cw[nm] = damp(cur, want, snap ? HIT.snapHL : .055, dt);
+    // A PUSH BLENDS IN FAST, AND THAT IS WHY THE FIRST ONE NEVER LINED UP (c177). The sound
+    // fires at full volume on the frame the stroke begins -- correctly, it is the scrape -- while
+    // the CLIP starts at weight zero and needs about .15 s of damping to be visible at all. So the
+    // first push of every start was heard a sixth of a second before anything on screen moved,
+    // which is exactly *"it plays the first sound when you push the left stick, which is not
+    // really quite when he pushes"*. Nothing here CUTS -- the file's rule stands -- it is a much
+    // shorter blend, and only on the way IN, and only for the clip whose whole job is to be on
+    // the beat. `HIT.snapHL`'s precedent, one state along.
+    const rise = want > cur && BLENDIN.test(nm);
+    const w = cw[nm] = damp(cur, want, rise ? SK8.pushBlend : snap ? HIT.snapHL : .055, dt);
     if (w > .002) { if (!a.isRunning()) a.play(); a.setEffectiveWeight(w); }
     // A FINISHED `ONCE` CLIP IS PAUSED, AND `isRunning()` IS FALSE FOR A PAUSED ACTION.
     // Gating the shutdown on it therefore skipped it for exactly the clips that need it:
@@ -7529,8 +7577,14 @@ function colinAnim(dt) {
   {
     const nm = p.board && p.pushing ? pushClip(p) : '';
     if (nm && (p.pushSync || nm !== p.pushNm)) {
-      const a = colin.actions[nm];
-      if (a) a.time = a.getClip().duration * clamp(p.pushT, 0, .999);
+      // BOTH THE CLIP AND ITS `__legs` CLONE, because which one is up depends on whether the
+      // blaster is out and the sync must not care. One of the two has no weight and writing to
+      // it costs a field assignment.
+      const A = colin.actions;
+      for (const k of [nm, nm + '__legs']) {
+        const a = A && A[k];
+        if (a) a.time = a.getClip().duration * clamp(p.pushT, 0, .999);
+      }
     }
     p.pushNm = nm; p.pushSync = 0;
   }
@@ -8971,6 +9025,8 @@ const OPT_ROWS = [
   ['num', 'Plough speed', () => COP.ploughV, v => { COP.ploughV = v; }, 2, 20, .5],
   ['num', 'Plough speed on foot', () => COP.footPlough, v => { COP.footPlough = v; }, 4, 20, .5],
   ['num', 'Melee thud', () => MELEE.thud, v => { MELEE.thud = v; }, 0, 6, .1],
+  ['num', 'Push blend in', () => SK8.pushBlend, v => { SK8.pushBlend = v; }, .005, .08, .002],
+  ['num', 'Push grace', () => SK8.pushGrace, v => { SK8.pushGrace = v; }, 0, 1.2, .05],
   ['num', 'Melee fly speed', () => COP.flyV, v => { COP.flyV = v; }, 2, 20, .5],
   ['tog', 'Air kick', () => MELEE.air, v => { MELEE.air = v; }],
   ['num', 'Air kick speed', () => MELEE.airV, v => { MELEE.airV = v; }, 4, 20, .5],
@@ -9130,7 +9186,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushSync: 0, pushNm: '', pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, melHit: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, copPass: 0, melEntry: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushSync: 0, pushNm: '', pushOff: 9, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, melHit: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, copPass: 0, melEntry: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -10183,6 +10239,7 @@ function stepGrind(dt) {
 }
 function stepSkate(dt) {
   const s = stickWorld(); const p = player;
+  p.pushOff = p.pushing ? 0 : (p.pushOff || 0) + dt;
   if (p.rail) { stepGrind(dt); return; }
   // CATCH ONE: a tap on the right pad while he is in the air and over a rail. Deliberate,
   // not automatic -- riding past a rail must not snag him, and the tap is the same one that
@@ -10317,11 +10374,17 @@ function stepSkate(dt) {
         // one clock and nothing left to drift.
         const plant = pushPlantOf(pushClip(p));
         if (!p.pushing) {
-          // STARTED AT THE PLANT, so the first push is still instant. Waiting a plant's worth of
-          // wind-up for the first one is honest and it is also a quarter of a second of nothing
-          // happening when the thumb goes down; a skater leaving a dead stop already has a foot
-          // on the road. `p.pushSync` puts the CLIP at the same phase, so the foot is down too.
-          p.pushing = true; p.pushT = plant; p.pushSync = 1; shove();
+          // A THUMB THAT CAME OFF AND WENT BACK ON IS ONE PUSH CYCLE, NOT TWO (c177).
+          // *"It seems like once I stop skating, start skating, stop skating, it's playing the
+          // sound and then basing all the additional sound effects off that."* Exactly: every
+          // release RESTARTED the cycle at the plant and fired a scrape on the frame the stick
+          // came forward, whatever the clip was in the middle of -- so a jiggled thumb was four
+          // sounds, four re-seeds of the animation, and a new rhythm each time that had nothing
+          // to do with the one before it. Inside `pushGrace` the phase simply CARRIES ON: no
+          // extra scrape, no re-seed, and the loop he can see keeps its beat.
+          const warm = p.pushOff < SK8.pushGrace && p.pushT > 0;
+          p.pushing = true;
+          if (!warm) { p.pushT = plant; p.pushSync = 1; shove(); }
         } else {
           const was = p.pushT;
           p.pushT += dt / Math.max(.2, p.pushPeriod);
@@ -10329,11 +10392,13 @@ function stepSkate(dt) {
           if (p.pushT >= 1) { p.pushT -= 1; p.pushSync = 1; }
         }
       } else {
-        p.pushing = false; p.pushT = 0;
+        // THE PHASE IS KEPT, NOT ZEROED -- see `pushGrace` above. `p.pushOff` is how long the
+        // thumb has been off it, and it is what decides whether coming back is the same cycle.
+        p.pushing = false;
         if (braking && !p.turnT) { const b = SK8.brake * dt * Math.abs(fwdC); along = along > 0 ? Math.max(0, along - b) : Math.min(0, along + b); }
       }
-    } else { p.pushing = false; p.pushT = 0; }
-  } else { p.pushing = false; p.pushT = 0; p.braked = 0; }   // the thumb is gone: the brake is over
+    } else p.pushing = false;
+  } else { p.pushing = false; p.braked = 0; }   // the thumb is gone: the brake is over
   // the stroke in progress, delivered whether or not the stick is still asking for another
   if (p.shoveT > 0 && p.grounded) {
     const u = 1 - p.shoveT / p.shoveDur;                       // 0 at the plant, 1 at the end

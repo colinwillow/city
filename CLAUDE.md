@@ -1198,6 +1198,44 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE PUSH CLIP IS A LOOP AND THE SCRAPE WAS ARRIVING BEFORE IT (c177, `SK8.pushBlend`,
+  `SK8.pushGrace`, `pushAct`, `PUSHDRIFT`).** *"It plays the first sound when you push the left
+  stick forward, which is not really quite when he pushes. It seems like the animation is on a
+  consistent rhythmic loop and the sound fires every time I push the stick -- they don't line
+  up. And once I stop skating, start skating, stop skating, it plays the sound and bases all the
+  additional ones off that."* **His reading of the mechanism is exactly right** -- the clip IS a
+  free loop and the scrape IS fired per cycle -- and there were three reasons they came apart.
+  **1. THE POSE TOOK A SIXTH OF A SECOND TO EXIST.** The sound fires at full volume on the frame
+  the stroke begins, correctly, because it is the scrape. The CLIP starts at weight zero and
+  `skinWeights` damps it in at .055 -- so the first push of every start was HEARD about 150 ms
+  before anything on screen moved. Nothing cuts (the file's rule stands): `BLENDIN` gives the push
+  clip a much shorter half-life, on the way IN only, which is `HIT.snapHL`'s precedent one state
+  along. **The `__legs` clones are in that regex too**, or the rule silently stops applying in the
+  one state the blaster is out.
+  **2. EVERY RELEASE RESTARTED THE CYCLE AND FIRED A SCRAPE.** A thumb that came off and went back
+  on was a new push at the plant, whatever the clip was in the middle of -- so a jiggled stick was
+  four sounds, four re-seeds of the animation, and a new rhythm each time with no relation to the
+  one before it. That is his "stop skating, start skating" sentence exactly. Inside `pushGrace`
+  the phase CARRIES ON: `p.pushOff` is how long the thumb has been off, the phase is kept rather
+  than zeroed, and coming back inside the window adds no sound and re-seeds nothing.
+  **3. THE SYNC WAS WRITING TO AN ACTION WITH NO WEIGHT.** c171's once-a-cycle seek wrote
+  `colin.actions[pushClip(p)]` -- and riding with the blaster out, c115 swaps every `skate_*` clip
+  for its `__legs` clone, so the thing being seeked was not the thing being drawn and the visible
+  clip free-ran. `pushAct` asks which of the pair carries the WEIGHT, which is `colinSet`'s own
+  rule everywhere else: ask the weight, never the name. The seek now writes both.
+  Driven through the shipped `stepSkate` with `snd.push` wrapped (`JAM_PROBE=tools/probe-push.mjs`),
+  two seconds on and a moment off, over and over at 14 m/s:
+      released 0.10 s   6 scrapes   gaps 1.55 1.67 1.67 1.67 1.55   worst 0.7% off the plant
+      released 0.30 s   6 scrapes   gaps 1.55 1.87 1.87 1.87 1.55   worst 0.7%
+      released 0.80 s   7 scrapes   gaps 1.55 1.27 1.57 1.23 ...    worst 1.1%   <- past the grace
+  The third row is correct: past `pushGrace` taking the stick again IS a fresh push and lands one
+  at once. Inside it, the beat is the beat it already had.
+  **AND THE CHIP CAN NOW SAY WHETHER THEY AGREE (`· PUSHDRIFT`).** "Do the foot and the scrape
+  line up" is a question about two clocks on a phone, and it is the one place neither gate nor
+  probe can look: **no harness in this repo can build a skin**, so the clip's real phase had never
+  once been read while the game was running -- which is why three builds of push fixes were all
+  reasoned rather than seen. Silent when they agree, `rollREC`'s rule; and if it ever shows a
+  number, that number IS the diagnosis.
 - **A MAN HAS WEIGHT, AND THE LUNGE WAS DELETING EVERY IMPACT BEFORE IT COULD BE FELT (c176,
   `p.melHit`, `MELEE.thud`, `COP.footPlough`).** *"He doesn't feel like he has any weight. Your
   character sort of goes through him and the cop goes flying -- that's not what I'm going for. I

@@ -45,9 +45,47 @@ function run(secs, label) {
   return worst;
 }
 const w = run(9, 'HOLDING FORWARD FROM A DEAD STOP -- where every push sound lands in the cycle');
+
+// ---- AND A JIGGLED THUMB IS NOT FOUR PUSHES (c177) ----
+// *"Once I stop skating, start skating, stop skating, it's playing the sound and then basing all
+// the additional sound effects off that."* Every release used to restart the cycle at the plant
+// and fire a scrape on the frame the stick came forward. Held for two seconds and released for a
+// tenth, six times over: the sounds must stay on the ORIGINAL beat and there must be no extra one.
+function jiggle(offSecs, label) {
+  hits.length = 0; T = 0;
+  P.board = true; P.rail = null; P.bar = null; P.hit = ''; P.mel = ''; P.hang = 0; P.lad = 0;
+  P.grounded = true; P.braked = 0; P.turnT = 0; P.turnRem = 0; P.crouch = 0;
+  P.pushing = false; P.pushT = 0; P.pushSync = 0; P.pushNm = ''; P.pushOff = 9; P.shoveT = 0;
+  P.heading = 0; P.faceH = 0; P.pos.copy(HOME); P.vel.set(0, 0, 14); P.speed = 14;
+  aimCam();
+  const dt = 1 / 60;
+  let t = 0;
+  for (let i = 0; i < Math.round(9 / dt); i++) {
+    // two seconds on, `offSecs` off, over and over
+    const ph = t % (2 + offSecs);
+    const on = ph < 2;
+    G.stick.L.x = 0; G.stick.L.y = on ? -1 : 0; G.stick.L.mag = on ? 1 : 0; G.stick.L.down = on ? 1 : 0;
+    aimCam(); G.stepPlayer(dt); T += dt; t += dt;
+  }
+  const gaps = hits.slice(1).map((h, i) => h.t - hits[i].t);
+  const plant = SK8.pushPlant.skate_push_standing;
+  const worst = hits.reduce((m, h) => Math.max(m, Math.abs(((h.ph - plant + 1.5) % 1) - .5)), 0);
+  console.log('  ' + label.padEnd(34) + hits.length + ' scrapes'
+    + '   gaps ' + gaps.map(g => g.toFixed(2)).join(' ')
+    + '   worst off the plant ' + (worst * 100).toFixed(1) + '%');
+  return { n: hits.length, worst, min: Math.min(...gaps.concat([9])) };
+}
+console.log('\nSTOP-START -- two seconds on, a moment off, over and over\n');
+const j1 = jiggle(.10, 'released for 0.10 s (inside grace)');
+const j2 = jiggle(.30, 'released for 0.30 s (inside grace)');
+const j3 = jiggle(.80, 'released for 0.80 s (past grace)');
+console.log('\n  inside `pushGrace` the cycle CARRIES ON: no extra scrape and no gap under a');
+console.log('  period. Past it, taking the stick again is a fresh push and lands one at once.');
 console.log('\n  FOR COMPARISON, what shipped through c170: the shove fired at the TOP of the cycle,');
 console.log('  phase 0.000 -- ' + (SK8.pushPlant.skate_push_standing * 100).toFixed(0) + '% of a cycle before the foot reached the road, which is');
 console.log('  ' + (SK8.pushPlant.skate_push_standing * SK8.pushFast).toFixed(2) + 's at the standstill cycle and '
   + (SK8.pushPlant.skate_push_standing * SK8.pushDur).toFixed(2) + 's at the cruise.');
-console.log('\n' + (w < .02 ? 'PASS: every push sound is on the plant.' : 'FAIL: ' + (w * 100).toFixed(0) + '% off.'));
+const jig = j1.worst < .03 && j2.worst < .03 && j1.min > .55 && j2.min > .55;
+console.log('\n' + (w < .02 && jig ? 'PASS: every push sound is on the plant, and a jiggled thumb does not restart it.'
+  : 'FAIL: ' + JSON.stringify({ w, j1, j2, j3 })));
 snd.push = real;
