@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c162</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c163</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c162';
+const BUILD = 'c163';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -4549,6 +4549,13 @@ function missing() {
   if (kitOut('blaster')) {
     const gs = gunSize();
     m += gs < 0 ? ' · NO BLASTER GLB' : ' · gun' + (gs * 100).toFixed(0) + 'cm';
+    // AND WHETHER A SAVED SLIDER IS MOVING IT (c163). `WEAP.grip` is seven rows in the
+    // settings panel, and `optSave` writes every row into `city.opt` -- so one nudge while
+    // experimenting is baked into that phone for ever and reapplied on every boot. From
+    // where he is standing that is indistinguishable from "the export did not update",
+    // because no re-export can ever move it. Identity is silent; anything else says so.
+    const g = WEAP.grip;
+    if (g.x || g.y || g.z || g.rx || g.ry || g.rz || g.s !== 1) m += ' · GRIP OFF';
   }
   if (kitOut('jet')) {
     const js = jetSize();
@@ -8584,7 +8591,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -9627,12 +9634,32 @@ function stepSkate(dt) {
     // speed rotated him AWAY from where it was pointing, and only the half cab afterwards
     // undid it. There is no fakie push clip for `rel` to serve; restore it the day
     // `skate_push_fakie` lands and he can honestly ride tail-first.
-    steer = clamp(ang / .9, -1, 1) * s.mag;
+    // A BRAKE IS NOT A DIRECTION, AND THE STICK WAS ANSWERING BOTH QUESTIONS AT ONCE (c163).
+    // `steer` was computed here, unconditionally, from `ang` -- so a thumb pulled straight
+    // BACK reads |ang| ~ pi, saturates `clamp(ang / .9)` at full lock, and he carves round
+    // hard while `braking` scrubs underneath it. Worse, at exactly pi the SIGN of `ang` is
+    // whatever rounding says, so which way he swings is noise. Then the heading comes round
+    // toward the thumb, `dir` flips to +1, the brake stops being a brake and he PUSHES --
+    // so a held brake is a 180 carve into an acceleration, which is exactly what he
+    // described: *"it should slow you down, but instead it turns you."*
+    // **A held brake is a brake until the thumb leaves it** (`p.braked`), and that one latch
+    // answers all three halves: no steering, no half cab at `fakieAt`, no fakie push at the
+    // bottom. He decelerates, stops, and stays stopped.
+    // AND THE LATCH NEEDS A REAL ZONE, NOT `dir`, WHICH IS A KNIFE EDGE AT NINETY DEGREES.
+    // `dir` is `fwdC >= 0`, and a thumb held exactly sideways puts `fwdC` at +/-1e-17 -- so
+    // whether he is "leading with the tail" is decided by rounding. The first version latched
+    // on that: the probe read `braked 1` on frame TWO of a pure right-hand turn and the
+    // steering was dead for the rest of the session. A brake is a thumb plainly BEHIND him,
+    // which is `fwdC < -.35` -- the same margin the push already demands in the other
+    // direction, so there is a wide band in the middle that is neither.
+    const back = fwdC < -.35;
+    const opp = back && along * dir < -.01;      // the thumb is against the way he is ROLLING
+    if (!back) p.braked = 0;                     // cleared by the thumb leaving, never by stopping
+    const braking = p.grounded && opp && (speed > SK8.fakieAt || p.braked);
+    if (braking) p.braked = 1;
+    steer = braking || p.braked ? 0 : clamp(ang / .9, -1, 1) * s.mag;
     if (p.grounded) {
       p.pushPeriod = lerp(SK8.pushFast, SK8.pushDur, clamp(speed / SK8.pushEase, 0, 1));
-      // the stick fights the way he is actually rolling, and he is rolling fast enough for
-      // that to be a foot down rather than a push the other way
-      const braking = along * dir < -.01 && speed > SK8.fakieAt;
       // ASKED TO LEAD WITH THE TAIL: turn round on the board rather than push backwards --
       // AND THE TURN IS THE SHORTEST WAY ROUND, MEASURED, NOT A FIXED HALF TURN. `ang` is
       // already the signed shortest rotation from his nose to the thumb, so it is the whole
@@ -9645,7 +9672,7 @@ function stepSkate(dt) {
       // world and he comes onto it by the near side, from either side, identically.
       // The duration goes with the angle (the rate is the same PI/turnDur), so a small
       // correction is quick and a true half cab still takes `turnDur`.
-      if (!braking && !p.turnT && dir < 0 && s.mag > .35) {
+      if (!braking && !p.braked && !p.turnT && dir < 0 && s.mag > .35) {
         p.turnRem = Math.abs(ang); p.turnSide = ang >= 0 ? 1 : -1;
         p.turnT = p.turnFull = Math.max(.12, SK8.turnDur * p.turnRem / Math.PI);
         p.pushing = false; p.pushT = 0;
@@ -9656,7 +9683,7 @@ function stepSkate(dt) {
         colinScale(nm, clipLen(nm, SK8.turnDur) / p.turnT);
         snd.jump();
       }
-      if (!p.turnT && !braking && Math.abs(fwdC) > .35 && speed < SK8.pushMax) {
+      if (!p.turnT && !braking && !p.braked && Math.abs(fwdC) > .35 && speed < SK8.pushMax) {
         // A PLAIN REPEATING TIMER, and the clip simply loops beside it. I had been
         // writing the action's time from my own phase counter every frame, which is one
         // more thing to get stuck -- and it did. The clip and the timer are both one
@@ -9691,7 +9718,7 @@ function stepSkate(dt) {
         if (braking && !p.turnT) { const b = SK8.brake * dt * Math.abs(fwdC); along = along > 0 ? Math.max(0, along - b) : Math.min(0, along + b); }
       }
     } else { p.pushing = false; p.pushT = 0; }
-  } else { p.pushing = false; p.pushT = 0; }
+  } else { p.pushing = false; p.pushT = 0; p.braked = 0; }   // the thumb is gone: the brake is over
   // the stroke in progress, delivered whether or not the stick is still asking for another
   if (p.shoveT > 0 && p.grounded) {
     const u = 1 - p.shoveT / p.shoveDur;                       // 0 at the plant, 1 at the end

@@ -1198,6 +1198,43 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **PULLING BACK BRAKED AND FULL-LOCK STEERED AT THE SAME TIME (c163, `p.braked`,
+  `JAM_PROBE=tools/probe-brake.mjs`).** *"When you're on your skateboard and you pull down on the
+  left stick, it should slow you down -- maybe I'll even put in a little skid animation so we can
+  have a stop, but for now it just slows you down. Instead, it turns you."*
+  **ONE STICK WAS ANSWERING TWO QUESTIONS.** `steer = clamp(ang / .9, -1, 1) * s.mag` was computed
+  unconditionally, above the `braking` test -- so a thumb pulled straight back reads |ang| ~ pi,
+  saturates that clamp at FULL LOCK, and he carves round hard while the brake scrubs underneath
+  it. **And at exactly pi the SIGN of `ang` is whatever rounding says**, so which way he swings is
+  noise. Then the heading comes round toward the thumb, `dir` flips to +1, the brake stops being a
+  brake and the push block takes over -- so a held brake was a 180 carve into an acceleration,
+  which is his sentence exactly.
+  **A HELD BRAKE IS A BRAKE UNTIL THE THUMB LEAVES IT.** One latch answers all three halves: no
+  steering, no half cab at `fakieAt`, no fakie push at the bottom. He decelerates, stops, and
+  stays stopped -- which is the "for now it just slows you down" he asked for, and the skid clip
+  drops into it later with no rule change.
+  **AND THE LATCH CANNOT BE HUNG ON `dir`, WHICH IS A KNIFE EDGE AT NINETY DEGREES.** `dir` is
+  `fwdC >= 0`, and a thumb held exactly sideways puts `fwdC` at +/-1e-17 -- so "is he leading with
+  the tail" is decided by rounding. **My first version latched on that and the probe caught it on
+  frame two**: `braked 1` during a pure right-hand turn, and the steering dead for the rest of the
+  session. The zone is `fwdC < -.35`, the same margin the push already demands the other way.
+  **AND THE PROBE'S OWN FIRST RUN HAD THE PAD UPSIDE DOWN**, reporting the brake accelerating him
+  to 21 m/s -- which is the PUSH working perfectly. `stickWorld` maps `w`/up to `ly -= 1`, so the
+  pad's +Y is DOWN THE SCREEN and pulling back is `(0, +1)`. Written down because it is the same
+  handedness trap this file gets wrong half the time when it is argued instead of run.
+  Driven through the shipped `stepPlayer` over the real collider, before and after:
+      thumb straight back, 15 / 8 / 4 m/s   yaw 0.0 deg, stopped at 1.53 / 0.82 / 0.40 s
+      15 deg off either way                 yaw 0.0 deg, stopped at 1.58 s
+      thumb FORWARD (a push)                8.0 -> 15.73, untouched
+      thumb RIGHT (a turn)                  179.4 deg in 2 s -- still a real carve
+- **AND A SAVED SLIDER CAN HOLD THE BLASTER WHERE NO EXPORT CAN REACH IT (c163, `GRIP OFF`).**
+  c158 put `WEAP.grip` on seven rows of the settings panel, and `optSave` writes every row into
+  `city.opt` -- so **one nudge while experimenting is baked into that phone for ever** and
+  reapplied by `optLoad` on every boot. From where he is standing that is indistinguishable from
+  "the export did not update", because no re-export can ever move it, which is exactly the
+  complaint that has now been made five times. The chip says `· GRIP OFF` when the grip is not
+  identity and is silent when it is -- `gun93cm`'s rule, one cause along. `city.grip({x:0, y:0,
+  z:0, rx:0, ry:0, rz:0, s:1})` clears it, and so does the Defaults preset.
 - **"ARE YOU JUST NOT USING THE MODELS I'M PUSHING?" -- WE ARE, AND THE GUN'S OFFSET WAS NEVER IN
   `colin.glb` (c162, `npm run gunpose`, `markClips`).** *"I really cannot figure out why the
   blaster is wrong. I've corrected it five times. It's right in Cinema 4D, it's right in Blender.
