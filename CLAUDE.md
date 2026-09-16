@@ -1198,6 +1198,35 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **A MAN IS A TARGET, NOT A WALL (c169, `COP.solid`).** *"If I skate by a cop and melee, right
+  now I bounce off the cop. I want to run through him instead of bouncing off his collider. I
+  wanna be able to hit the cops a bunch instead of flying and not bounce off."*
+  **TWO THINGS WERE DOING THAT AND THEY ARE THE SAME LINE** -- the one in `groundUnder` that
+  pushes every nearby officer's box into the PLAYER's resolver. On the board `SK8.bounce` gives
+  every solid a restitution, so an officer was a bollard to pinball off; and on foot the push-out
+  interrupts the lunge `MELEE.lock` had just aimed at him, so **the one case the lock exists for
+  -- arriving ON the man -- was the case the collider prevented.**
+  Measured through the shipped `stepPlayer`, skating at an officer 6 m ahead at 12 m/s:
+      COP.solid 1 (was)   travelled  -1.38 m   ends at  -5.52 m/s   <- BEHIND where he started
+      COP.solid 0 (now)   travelled  18.15 m   ends at  10.73 m/s
+  He was not slowed by the officer, he was **fired backwards off him**, which is why the melee
+  chain could never land twice.
+  **THE SWITCH IS ONE-SIDED BY CONSTRUCTION**, which is the only reason it is one line: a cop
+  walks on `resolveBoxes` too, but against his OWN list inside `stepCops`, and `groundUnder` is
+  the player's alone. So the police still collide with the world and with each other.
+  **AND `COP.r` STILL MEANS HIS BODY** everywhere it matters -- the punch cone, the bullet, the
+  aim lock and the amber box in the collider view all read it. Nothing about hitting him changed;
+  only whether he stops you. `COP.solid = 1`, or the Cops solid row, puts the wall back.
+- **YES, THE SETTINGS SAVE -- AND `city.opt()` IS HOW THEY REACH ME (c169).** *"Do my preferences
+  save when I edit something in the settings? Maybe I need to send you the startup preferences."*
+  They save: `optSave` runs on **every slider drag, every toggle and every preset**, straight into
+  `localStorage` under `city.opt`, and `optLoad` applies it at boot. There is nothing to remember
+  and nothing to lose.
+  **BUT THEY SAVE ON HIS PHONE**, which is exactly why a fresh device starts on the file's
+  defaults and why the constants in this file drift out of agreement with what he is actually
+  looking at -- c83 is the last time they were reconciled. `city.opt()` prints the live panel as
+  JSON; paste it back and it becomes what everybody starts with. `city.grip()`'s rule applied to
+  the whole panel, and the answer to a question he should not have had to ask.
 - **THE KIT KEYS RING THE RIGHT STICK (c168, `KIT.ring`, `KIT.slots[].at`).** *"Put the
   skateboard directly above the right stick and the blaster directly to the left of it, and the
   jetpack in the middle of those two -- if you were to draw a greater circle around the right

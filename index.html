@@ -308,7 +308,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c168</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c169</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -322,7 +322,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c168';
+const BUILD = 'c169';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -7487,6 +7487,8 @@ const COP = {
   // 0 = AS AUTHORED. He aligned the pistol to the officer's own `weapon_root` in its own file,
   // so the default is to touch nothing. Set a length and `city.gunFit()` to override.
   gunLen: 0,
+  solid: 0,         // is an officer a wall to the PLAYER? See `groundUnder`. Off: you run through
+                    // him, which is what lets a melee chain land instead of bouncing off him.
   clips: { idle: 'idle_01', walk: 'walk_01', run: 'run_01', draw: 'draw_weapon', shoot: 'shoot_pistol',
            hits: ['hit_body', 'hit_head', 'hit_ribs', 'hit_stomach'],
            downF: 'knock_down_front', downB: 'knock_down_back', upF: 'get_up_front', upB: 'get_up_back',
@@ -8625,6 +8627,7 @@ const OPT_ROWS = [
   ['num', 'Grip yaw', () => WEAP.grip.ry, v => { WEAP.grip.ry = v; weapFit(); }, -3.15, 3.15, .02],
   ['num', 'Grip roll', () => WEAP.grip.rz, v => { WEAP.grip.rz = v; weapFit(); }, -3.15, 3.15, .02],
   ['num', 'Grip size', () => WEAP.grip.s, v => { WEAP.grip.s = v; weapFit(); }, .3, 2.5, .02],
+  ['tog', 'Cops solid', () => !!COP.solid, v => { COP.solid = v ? 1 : 0; }],
   ['tog', 'Air kick', () => MELEE.air, v => { MELEE.air = v; }],
   ['num', 'Air kick speed', () => MELEE.airV, v => { MELEE.airV = v; }, 4, 20, .5],
   ['num', 'Sprint x', () => MOVE.sprint, v => { MOVE.sprint = v; }, 1, 4, .05],
@@ -8635,6 +8638,14 @@ const OPT_ROWS = [
 const optGrab = () => { const o = {}; for (const r of OPT_ROWS) if (OPT_VAL[r[0]]) o[r[1]] = r[2](); return o; };
 const optApply = o => { if (o) for (const r of OPT_ROWS) if (OPT_VAL[r[0]] && o[r[1]] !== undefined) r[3](o[r[1]]); };
 function optSave() { try { localStorage.setItem(OPT.key, JSON.stringify(optGrab())); } catch (e) {} }
+// AND A WAY TO HAND THEM OVER (c169). *"Do my preferences save when I edit something in the
+// settings? Maybe I need to send you the startup preferences."* They save -- `optSave` runs on
+// every slider drag, every toggle and every preset, so there is nothing to remember and nothing
+// to lose -- but they save ON HIS PHONE, which is exactly why a fresh device starts on the
+// file's defaults and why the constants in this file drift out of agreement with what he is
+// actually looking at. `city.opt()` prints the live panel as JSON: paste it back and it becomes
+// what everybody starts with. `city.grip()`'s rule, applied to the whole panel.
+function optDump() { const o = optGrab(); const j = JSON.stringify(o, null, 1); console.log(j); return j; }
 function optLoad() { let o = null; try { o = JSON.parse(localStorage.getItem(OPT.key) || 'null'); } catch (e) {} optApply(o); }
 // A PRESET IS THE LIVE SETTINGS UNDER A DIFFERENT KEY, and that is the whole feature -- there
 // is no second schema to keep in step with the panel, so a row added tomorrow is in every slot
@@ -8779,10 +8790,20 @@ function groundUnder(p, step, vel, fromY, bounce) {
   // heightmap + roofs + cars; walls push the position out
   gridQuery(p.x, p.z, 1.2, _boxes);
   for (const c of carsNear(p.x, p.z, 8, _cars)) _boxes.push(c.box);
-  // AND THE POLICE. They are not in `gridQuery` -- that grid is built once at load and they
-  // walk -- so without this you stood inside them. There are eight, so a flat scan is cheaper
-  // than a second spatial grid would be to keep.
-  for (const c of cops) if (c.box && Math.abs(c.x - p.x) < 4 && Math.abs(c.z - p.z) < 4) _boxes.push(c.box);
+  // AND THE POLICE -- BUT ONLY IF `COP.solid` SAYS SO (c169). They are not in `gridQuery`, which
+  // is built once at load while they walk, so this is the only thing that ever made one solid to
+  // HIM. (A cop walks on `resolveBoxes` too, but against his own list at `stepCops` -- this
+  // function is the player's alone, which is what makes the switch one-sided.)
+  // *"If I skate by a cop and melee, right now I bounce off him. I want to run through him
+  // instead of bouncing off his collider -- I wanna be able to hit the cops a bunch instead of
+  // flying and not bouncing off."* Two things were doing that and both are this line: on the
+  // board `SK8.bounce` gives every solid a restitution, so a cop was a bollard you pinball off;
+  // and on foot the push-out interrupts the lunge `MELEE.lock` had just aimed at him, so the one
+  // case the lock exists for -- arriving ON the man -- was the case the collider prevented.
+  // **A MAN IS A TARGET, NOT A WALL.** `COP.r` still means his body everywhere it matters: the
+  // punch cone, the bullet, the aim lock and the amber box in the collider view all read it.
+  // `COP.solid = 1` (or the Cops solid row) puts the wall back.
+  if (COP.solid) for (const c of cops) if (c.box && Math.abs(c.x - p.x) < 4 && Math.abs(c.z - p.z) < 4) _boxes.push(c.box);
   if (SHIP.box && Math.abs(SHIP.box.minx - p.x) < 14 && Math.abs(SHIP.box.minz - p.z) < 14) _boxes.push(SHIP.box);
   const r = resolveBoxes(p, .38, 1.7, step, _boxes, vel, bounce);
   // The real triangle where there is one, and only then the heightmap. They are not
@@ -10914,7 +10935,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
