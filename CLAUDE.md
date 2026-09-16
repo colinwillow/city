@@ -1236,6 +1236,22 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   protection down is not implementing it, and the two are indistinguishable when you are reading
   rather than running.** When a feature does nothing, check WHERE it is called before checking
   what it does.
+- **THE BARS ARE DRAWN NOW, BECAUSE THE TWO BUGS HAD TO BE SEPARATED (c152).** *"I can't tell
+  if I can't find what I can swing on, or if I'm trying to swing on it and it's not working."*
+  That sentence is this file's oldest complaint about itself -- `cloud0` against `cloud28/vis0`,
+  `NO BLASTER GLB` against `gun1cm` -- and the answer has always been the same: put the thing
+  that tells them apart where he can see it. All 67 are a thin bright tube on one merged
+  geometry, one draw call, unlit so they read at any distance. **`BAR.show` is on by default
+  while the feature is new and is meant to be turned off**; it is the diagnostic half, the way
+  the badge cycle is.
+  **AND `city.bar()` PUTS HIM ON THE NEAREST ONE.** If that swings and the street does not, the
+  mechanic works and FINDING is the problem -- which is the whole question he could not answer.
+  Same rule as `city.boom()` and `city.fx('boom')`.
+  **THE CATCH IS SWEPT, NOT SAMPLED.** At twenty metres a second a frame is a third of a metre,
+  so testing only where he IS lets a fast pass straddle the bar with neither end inside the
+  window -- the bolt gets two half-steps a frame for exactly this reason. Three points along the
+  frame's travel, and `grab` went .95 -> 1.35. Measured through the shipped `barCatch`, flying
+  straight at 40 bars at 8 / 16 / 24 m/s: **120 of 120, 100%.**
 - **AND 67 BARS IN A CITY OF LAMP POSTS IS A FINDING PROBLEM (c150).** Nothing on screen told him
   which pole was catchable, and most are not. The map draws them (the ramps' own argument -- it
   exists because he could not find those either) and the chip carries `BAR 34m@-78,-44 h5.9`,

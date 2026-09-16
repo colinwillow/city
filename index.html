@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c151</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c152</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c151';
+const BUILD = 'c152';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -679,7 +679,15 @@ const BAR = {
   maxLen: 12,       // AND A CAP ON THE JOIN. The first run produced a 71.3 m "bar" -- `barJoin`
                     // had welded a whole roof edge into one. Past this it is a building, not
                     // something you swing on, and the segments are left as they were.
-  grab: .95,        // how close his hands have to pass
+  // **SHOWN, BECAUSE "I CAN'T TELL IF I CAN'T FIND ONE OR IT ISN'T WORKING" IS TWO BUGS WEARING
+  // ONE FACE (c152).** That sentence is this file's oldest complaint about itself -- `cloud0` vs
+  // `cloud28/vis0`, `NO BLASTER GLB` vs `gun1cm` -- and the answer has always been to put the
+  // thing that tells them apart where he can see it. A bar he can SEE turns "where is one" into
+  // a question with an answer, and then a failed catch is unambiguously a failed catch.
+  // On by default while it is new. `city.BAR.show = 0`, or the World row in settings.
+  show: 1,
+  grab: 1.35,       // how close his hands have to pass -- WIDER than c148's .95, because at
+                    // twenty metres a second on a board a metre of window is three frames
   cool: .45,        // and how long after letting go before he can catch again
   // WHICH TWO NODES MARK THE BAR, IN ORDER OF PREFERENCE (c149). *"You could also just use the
   // hand joints, doesn't really matter."* It genuinely does not -- the pair is only ever read to
@@ -5532,6 +5540,26 @@ function carHurt(car, hx, hz) {
   }
   return stage;
 }
+// PUT HIM ON THE NEAREST BAR, WITHOUT HAVING TO FIND ONE (c152). *"I can't tell if I can't find
+// what I can swing on, or if I'm trying to swing on it and it's not working."* Those are two
+// different bugs and this is what separates them: if `city.bar()` swings and the street does not,
+// the mechanic works and the FINDING is the problem. Same rule as `city.boom()` and
+// `city.fx('boom')` -- a look-at-it question should not need a hunt to answer.
+function barGo() {
+  const p = player;
+  if (!bars.length) { console.log('[bar] there are no bars -- barsFrom() found nothing'); return null; }
+  let best = null, bd = 1e9;
+  for (const r of bars) { const d = Math.hypot(r.x - p.pos.x, r.z - p.pos.z); if (d < bd) { bd = d; best = r; } }
+  if (p.board) dropBoard();
+  p.hit = ''; p.hang = 0; p.lad = 0; p.mel = ''; p.rollT = 0; p.barCool = 0; p.bar = null;
+  p.pos.set(best.x, best.y - BAR.len - COLIN_HEIGHT * .5, best.z);
+  p.vel.set(0, 0, 0); p.speed = 0; p.grounded = false;
+  barGrab(best, 0);
+  console.log('[bar] on the bar at ' + best.x.toFixed(0) + ',' + best.z.toFixed(0)
+    + '  height ' + best.y.toFixed(1) + '  length ' + (best.half * 2).toFixed(1)
+    + '  (it was ' + bd.toFixed(0) + ' m away). Hold the LEFT stick forward to pump.');
+  return best;
+}
 // BLOW THE NEAREST CAR ON DEMAND. Four accurate shots is a long way to go to look at an effect
 // once -- `city.fx('boom')`'s own rule, that a look-at-it decision should not need a fight.
 function boomNear(step) {
@@ -7855,6 +7883,7 @@ const OPT_ROWS = [
   ['h', 'World'],
   ['tog', 'Map', () => MAP.on, v => { MAP.on = v; }],
   ['tog', 'Police', () => COP.on, v => { COP.on = v; }],
+  ['tog', 'Show bars', () => BAR.show, v => { BAR.show = v; barDraw(); }],
   ['tog', 'Money', () => CASH.on, v => { CASH.on = v; if (cashMesh) cashMesh.visible = !!v; }],
   ['tog', 'Cars break up', () => WRECK.on, v => { WRECK.on = v; }],
   ['num', 'Shots to destroy', () => WRECK.hp, v => { WRECK.hp = v; }, 1, 8, 1],
@@ -8340,6 +8369,27 @@ function barJoin() {
   }
   bars.length = 0; bars.push(...out);
 }
+// AND THEY ARE DRAWN. One merged geometry, one draw call for all 67 -- a thin bright tube along
+// each, unlit, so it reads at any distance and in any light. This is the diagnostic half of the
+// feature and it is meant to be turned off once he knows where they are.
+let barMesh = null;
+function barDraw() {
+  if (barMesh) { cityGroup.remove(barMesh); barMesh.geometry.dispose(); barMesh = null; }
+  if (!BAR.show || !bars.length) return;
+  const parts = [];
+  for (const r of bars) {
+    const g = new THREE.BoxGeometry(r.ax ? r.half * 2 : .11, .11, r.az ? r.half * 2 : .11);
+    g.translate(r.x, r.y, r.z);
+    parts.push(g);
+  }
+  const geo = mergeGeometries(parts, false);
+  for (const g of parts) g.dispose();
+  if (!geo) return;
+  barMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xffd76a, toneMapped: false }));
+  barMesh.frustumCulled = false;
+  barMesh.userData.noHole = 1;          // it is a signpost; the see-through hole must not dither it
+  cityGroup.add(barMesh);
+}
 // CAUGHT IN THE AIR, THE WAY A LEDGE IS. It runs BEFORE the collider, because the whole point is
 // that the thing which currently bank-shots him should catch him instead -- resolve first and the
 // bounce has already happened.
@@ -8347,17 +8397,29 @@ const _barB = [];
 function barCatch() {
   const p = player;
   if (!BAR.on || p.bar || p.hit || p.grounded || p.hang || p.lad || p.barCool > 0 || !bars.length) return false;
-  const hx = p.pos.x, hy = p.pos.y + COLIN_HEIGHT * .92, hz = p.pos.z;   // his hands, near the crown
-  let best = null, bd = BAR.grab * BAR.grab;
-  for (const r of bars) {
-    // nearest point on the bar SEGMENT, which is why `half` is stored: a lamp arm caught at its
-    // far end should hold at the end and not at the middle
-    const dx = hx - r.x, dz = hz - r.z, dy = hy - r.y;
-    const t = clamp(dx * r.ax + dz * r.az, -r.half, r.half);
-    const ox = dx - r.ax * t, oz = dz - r.az * t;
-    const d = ox * ox + oz * oz + dy * dy;
-    if (d < bd) { bd = d; best = r; best._t = t; }
+  // SWEPT, NOT SAMPLED (c152). A bolt gets two half-steps a frame for exactly this reason: at
+  // twenty metres a second a single frame is a third of a metre, and testing only where he IS
+  // means a fast pass can straddle the bar without either end of it landing inside the window.
+  // Three points along the frame's travel, which is cheap and closes it.
+  const px = p.barPX === undefined ? p.pos.x : p.barPX;
+  const py = p.barPY === undefined ? p.pos.y : p.barPY;
+  const pz = p.barPZ === undefined ? p.pos.z : p.barPZ;
+  let best = null, bd = BAR.grab * BAR.grab, bt = 0;
+  for (let k = 0; k <= 2; k++) {
+    const f = k * .5;
+    const hx = px + (p.pos.x - px) * f, hz = pz + (p.pos.z - pz) * f;
+    const hy = py + (p.pos.y - py) * f + COLIN_HEIGHT * .92;   // his hands, near the crown
+    for (const r of bars) {
+      // nearest point on the bar SEGMENT, which is why `half` is stored: a lamp arm caught at
+      // its far end should hold at the end and not at the middle
+      const dx = hx - r.x, dz = hz - r.z, dy = hy - r.y;
+      const t = clamp(dx * r.ax + dz * r.az, -r.half, r.half);
+      const ox = dx - r.ax * t, oz = dz - r.az * t;
+      const d = ox * ox + oz * oz + dy * dy;
+      if (d < bd) { bd = d; best = r; bt = t; }
+    }
   }
+  if (best) best._t = bt;
   if (!best) return false;
   barGrab(best, best._t);
   return true;
@@ -9100,6 +9162,7 @@ function stepPlayer(dt) {
   if (player.barCool > 0) player.barCool -= dt;
   if (player.bar) { stepBar(dt); poseColin(dt); return; }
   if (!player.grounded && barCatch()) { stepBar(dt); poseColin(dt); return; }
+  player.barPX = player.pos.x; player.barPY = player.pos.y; player.barPZ = player.pos.z;
   if (player.board) stepSkate(dt); else stepFoot(dt);
   // A STRIKE THROWN WHILE RIDING, after the skate step so his position is the one the mark and
   // the punch cone are measured from. `stepFoot` already hands over to `stepMelee` itself; the
@@ -9874,6 +9937,7 @@ frame();
     buildCity(city, ramps);
     buildLadders();
     barsFrom();       // after the solids exist: a bar IS one of them
+    barDraw();
     buildCash();      // after the collider: every strap's height is read off the ground
     if (copGlb) buildCops(copGlb, gunGlb);
     {
@@ -9925,7 +9989,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, barsFrom, stick, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
