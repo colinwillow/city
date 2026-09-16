@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c153</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c154</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c153';
+const BUILD = 'c154';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -734,6 +734,46 @@ const BAR = {
   relDur: .40,      // `bar_release` is 0.40 s at 1x
   minW: .5,         // release under this and he just drops
   catchW: 1.1,      // how much of his incoming speed becomes swing
+  // WHICH WAY HE FACES ON THE CATCH, AND HOW MUCH SPEED IT TAKES TO DECIDE (c154).
+  // *"When I jumped onto the pole he flipped direction so that he was facing towards me -- he
+  // should be able to enter from either direction."* `along` is his speed IN THE SWING PLANE,
+  // which is the right answer when he flies across a bar at pace and is NOISE when he drops
+  // onto one from above: near zero, sign arbitrary, and `>= 0` then picked +1 every time.
+  // So a real approach decides it and anything under this hands the question to his FACING,
+  // which is a direction he always has. There is no case left where nothing answers it.
+  faceV: 1.2,
+  // AND THE BAR HAS ITS OWN SHOT (c154). *"The camera gets all messed up -- we need it to stay
+  // stationary, maybe a little bit of aim, but it definitely needs a special camera so that
+  // it's behind him."* The play camera looks at the PLAYER, and on a bar the player is a point
+  // going round a circle at up to seven radians a second -- so the lens is whipped round with
+  // him and the swing is unreadable. **IT LOOKS AT THE BAR INSTEAD**, which does not move at
+  // all, and that one change is most of the fix: nothing has to be damped to buy it.
+  camDist: 7.2,     // a fixed boom -- `CAM.distV` means nothing here, his speed is zero on a bar
+  // **`camLook` HAS TO CLEAR THE ARM, AND HALF A METRE DOES NOT.** A bar IS a solid box, so a
+  // look point just under it starts the boom probe inside that box and `camFree` hands back
+  // `CAM.min` -- a lens 1.7 m from his chest. Measured through the shipped `camFree` over all
+  // 67 bars, boom 7.2 m, sweeping the WHOLE circle of bearings:
+  //     look -0.5    0 of 67 bars reach 4 m, at ANY bearing      <- pinned, every one
+  //     look -1.4   24 of 67 dead behind him, 66 of 67 once the bearing is searched
+  // So it aims at the HANG rather than at the bar, which is where he is most of the time
+  // anyway, and the top of a giant is still 2.5 m up against a 3.5 m half-frame.
+  camLook: -1.4,
+  camEl: .10,       // nearly level: a steep pitch foreshortens the circle into a line
+  camHL: .15,       // slower than `CAM.half`, because the thing it is following is not moving
+  // **AND THE BEARING IS SEARCHED, NOT SET (`barAim`)** -- `titleAimClear`'s rule, which exists
+  // because the title camera was aimed on paper and ended up inside a house. A bar is bolted to
+  // something, and behind-him is INTO that thing on a good half of them. Behind him first, then
+  // further round either way, and the first bearing with real room wins; if none has any, the
+  // roomiest does, which still beats the first. Measured deviation over the 67: 24 bars need
+  // none at all, 2 take 60 deg, 21 take 90, 19 take 120 -- and a broadside lens is a perfectly
+  // good shot of a swing, because `stickWorld` keeps the pump pointing wherever the thumb does.
+  camOk: 4.0,       // how much boom counts as "this bearing has room"
+  // BEHIND HIM IS WHAT THE CONTROL NEEDS, not only what he asked for. `stickWorld` reads the pad
+  // in the CAMERA's frame, so a broadside lens would put the pump on left-and-right and leave
+  // the forward thumb doing nothing at all. `p.barAz` is latched on the catch and the lens eases
+  // round to it -- and a drag on the right pad MOVES THE LATCH rather than fighting it, so his
+  // "little bit of aim" sticks instead of being pulled back the moment the thumb lifts.
+  camEase: 2.6,
 };
 const HANG = {
   reach: .72,        // how close to the face he has to be
@@ -8078,7 +8118,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -8478,12 +8518,49 @@ function barGrab(r, t) {
   const fx = -r.az, fz = r.ax;                        // "forward" across the bar
   const along = p.vel.x * fx + p.vel.z * fz;
   p.barA = 0; p.barW = clamp(along / Math.max(.2, BAR.len) * BAR.catchW, -BAR.wMax, BAR.wMax);
-  // and he faces whichever way he was going, so the catch does not spin him round
-  p.barSide = along >= 0 ? 1 : -1;
+  // AND HE FACES THE WAY HE CAME IN, FROM EITHER DIRECTION (c154). `along` decides it only when
+  // there is enough of it to mean something: dropping onto a bar from above has a plane-speed of
+  // roughly nothing, whose SIGN is whatever rounding says, and `along >= 0` then chose +1 every
+  // single time -- which is the spin-round he saw. Under `faceV` his own nose answers instead.
+  const nose = Math.sin(p.faceH) * fx + Math.cos(p.faceH) * fz;
+  p.barSide = (Math.abs(along) > BAR.faceV ? along : nose) < 0 ? -1 : 1;
+  // the shot is latched here so the lens has a fixed bearing to ease round to -- see `camEase`.
+  // Behind him if there is room behind him, and the nearest bearing that HAS room if not.
+  p.barAz = barAim(p.bar, Math.atan2(fx * p.barSide, fz * p.barSide));
   p.barT = 0; p.barRel = 0; p.jumps = 1;
   p.vel.set(0, 0, 0); p.speed = 0;
   if (p.board) dropBoard();
   snd.land(.35, false);
+}
+// WHERE THE LENS CAN ACTUALLY STAND (c154). Behind him is what he asked for and what the pump
+// control wants -- but a bar is an arm bolted to a post or a facade, and on a good half of the
+// 67 in this city the space behind the swing plane is that post. `titleAimClear` is the same
+// function one camera along, and it exists because a bearing aimed on paper put the title lens
+// inside a house. Behind him first, then out either way, first one with room wins.
+// **NINETY DEGREES IS NOT ON THE LADDER, AND THAT IS STRUCTURAL.** A quarter turn off the swing
+// plane points the lens straight DOWN THE BAR'S OWN AXIS, so the boom runs the length of the arm
+// grazing it -- half a thousandth of a radian decided 7.20 m against 1.70 in the harness, which
+// is a shot that flips to a close-up as the ease settles.
+const BARAIM = [0, 1.047, -1.047, 2.094, -2.094, 2.618, -2.618, Math.PI];
+// **AND A BEARING IS TESTED ACROSS THE RANGE IT OCCUPIES, NEVER AT ITS CENTRE** -- `titleAimClear`
+// learnt that when a bearing clear at the middle of the sway breathed into a wall two seconds
+// later. Here the range is the settle: the ease lands a fraction off the latch, so a bearing that
+// only just clears is one that grazes once it has arrived.
+const BARJIT = [0, .09, -.09];
+function barAim(B, az0) {
+  const ce = Math.cos(BAR.camEl), by = Math.sin(BAR.camEl), ty = B.y + BAR.camLook;
+  let best = az0, bd = -1;
+  for (const off of BARAIM) {
+    let room = Infinity;
+    for (const j of BARJIT) {
+      const az = az0 + off + j;
+      room = Math.min(room, camFree(B.x, ty, B.z, -Math.sin(az) * ce, by, -Math.cos(az) * ce, BAR.camDist));
+    }
+    if (room >= BAR.camOk) return az0 + off;
+    // and if NOTHING has room, the roomiest -- which still beats taking the first by default
+    if (room > bd) { bd = room; best = az0 + off; }
+  }
+  return best;
 }
 // THE SWING. A real pendulum, so the giant needs no case of its own -- see the note on `BAR`.
 function stepBar(dt) {
@@ -9801,8 +9878,8 @@ function stepCam(dt) {
   // THE AIM OWNS THE PAD WHILE IT IS LIVE. `stepAim` eases `cam.az` in behind the aim, and a
   // yaw drag on the same thumb in the same frame is two writers fighting over one number --
   // the loop would never settle and the picture would shake.
-  if (!player.turning && Math.abs(rx) > .05) { cam.az -= rx * CAM.yawRate * dt; cam.idle = 0; }
-  else cam.idle += dt;
+  const yaw = (!player.turning && Math.abs(rx) > .05) ? -rx * CAM.yawRate * dt : 0;
+  if (yaw) { cam.az += yaw; cam.idle = 0; } else cam.idle += dt;
   const sp = player.speed;
   // AND IT DOES NOT CHASE HIM ROUND EITHER. The auto-follow is what makes riding pleasant
   // on the ground, and it is exactly what makes a spin unreadable in the air: he turns, the
@@ -9821,19 +9898,37 @@ function stepCam(dt) {
     const want = sp > 1.2 ? Math.atan2(player.vel.x, player.vel.z) : player.faceH;
     cam.az += wrapAngle(want - cam.az) * Math.min(1, CAM.follow * dt * clamp(sp / 5, .3, 1.4));
   }
-  cam.el = CAM.el;
-  cam.tgt.set(player.pos.x, player.pos.y + CAM.look, player.pos.z);
+  // THE BAR HAS ITS OWN SHOT (c154). *"The camera gets all messed up... we need a special camera
+  // for when he's on a pole, so that it's behind him."* Everything below this is written against
+  // `player.pos`, and on a bar that is a point travelling round a circle at up to `wMax` radians
+  // a second -- so the boom is whipped round with him and a giant is unreadable. **The BAR is
+  // what it looks at**, which is a fixed point by construction, and the lens then simply holds
+  // still while he swings in front of it. Nothing has to be damped harder to get that.
+  // And the bearing is LATCHED (`p.barAz`, set on the catch) rather than followed: the pad still
+  // nudges it -- his "little bit of aim" -- but a nudge moves the latch, so it stays where it is
+  // put instead of being dragged back the instant the thumb comes off.
+  const camB = player.bar;
+  if (camB) {
+    if (yaw) player.barAz = wrapAngle(player.barAz + yaw);
+    cam.az += wrapAngle(player.barAz - cam.az) * Math.min(1, BAR.camEase * dt);
+    cam.el = BAR.camEl;
+    cam.tgt.set(camB.x, camB.y + BAR.camLook, camB.z);
+  } else {
+    cam.el = CAM.el;
+    cam.tgt.set(player.pos.x, player.pos.y + CAM.look, player.pos.z);
+  }
   const ce = Math.cos(cam.el);
   // the direction the boom points, so the distance along it is the only thing collision moves
   const bx = -Math.sin(cam.az) * ce, by = Math.sin(cam.el), bz = -Math.cos(cam.az) * ce;
-  const want = CAM.dist + sp * CAM.distV;
+  const want = camB ? BAR.camDist : CAM.dist + sp * CAM.distV;
   const free = camFree(cam.tgt.x, cam.tgt.y, cam.tgt.z, bx, by, bz, want);
   // SNAP IN, EASE OUT. Coming in has to be immediate or the lens spends those frames inside
   // the wall; going back out is eased, or every doorway and lamp post makes the shot lurch.
   cam.dist = free < (cam.dist || want) ? free : damp(cam.dist || want, free, CAM.outHL, dt);
   const wx = cam.tgt.x + bx * cam.dist, wy = cam.tgt.y + by * cam.dist, wz = cam.tgt.z + bz * cam.dist;
   if (cam.pos.lengthSq() === 0) cam.pos.set(wx, wy, wz);
-  cam.pos.x = damp(cam.pos.x, wx, CAM.half, dt); cam.pos.y = damp(cam.pos.y, wy, CAM.half, dt); cam.pos.z = damp(cam.pos.z, wz, CAM.half, dt);
+  const camHL = camB ? BAR.camHL : CAM.half;
+  cam.pos.x = damp(cam.pos.x, wx, camHL, dt); cam.pos.y = damp(cam.pos.y, wy, camHL, dt); cam.pos.z = damp(cam.pos.z, wz, camHL, dt);
   // THE REAL COLLIDER, AND CAPPED AT HIS OWN HEIGHT. `groundAt` knows what is BELOW something;
   // `hmAt` does not, and that is the whole of "the camera stays up on the bridge".
   const cg = groundAt(cam.pos.x, cam.pos.z, cam.pos.y, .6);
@@ -10034,7 +10129,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, stepCam, camFree, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

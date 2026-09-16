@@ -1198,6 +1198,75 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE BAR HAS ITS OWN CAMERA, AND THE CATCH STOPPED SPINNING HIM ROUND (c154).** *"I found
+  swing pole! Problem now is the camera gets all messed up... when I jumped onto the pole he
+  flipped direction so that he was facing towards me, where he should be able to enter from
+  either direction. And we need a special camera for when he's on a pole, so that it's behind
+  him and it stays stationary, maybe with a little bit of aim."* Two separate faults.
+  **1. THE FACING.** `p.barSide = along >= 0 ? 1 : -1`, where `along` is his speed IN THE SWING
+  PLANE. That is exactly right for flying across a bar at pace and it is **NOISE** for the case
+  he was actually playing -- dropping onto one from above, where the plane speed is roughly zero
+  and its SIGN is whatever rounding says. `>= 0` then picked +1 every single time, so half of all
+  drop-on catches turned him round. Over `BAR.faceV` the approach decides; under it his own NOSE
+  does, which is a direction he always has, so **there is no case left where nothing answers it.**
+  **2. THE CAMERA WAS LOOKING AT THE PLAYER, WHICH ON A BAR IS NOT A PLACE.** Every line of
+  `stepCam` is written against `player.pos`, and on a bar that is a point going round a circle at
+  up to `wMax` 7 rad/s -- so the boom is whipped round with him and a giant is unreadable. **It
+  looks at the BAR instead**, which cannot move by construction, and that one substitution is
+  most of the fix: nothing had to be damped harder to buy it. Measured through the shipped
+  `stepCam` on a real 6.5 rad/s giant:
+      lens worst frame 0.0004 m, mean 0.0002 m, bearing wandered 0.00 deg over 2.5 s
+  **AND BEHIND HIM IS WHAT THE CONTROL NEEDS, not only what he asked for.** `stickWorld` reads
+  the pad in the CAMERA's frame and the pump dots that against the plane forward -- so a
+  broadside lens puts the pump on left-and-right and leaves the forward thumb doing nothing at
+  all. Catching a bar with the camera anywhere would have made the pump mean a different thing
+  every time.
+  **THE BEARING IS LATCHED, NOT FOLLOWED (`p.barAz`).** An auto-follow would be a second writer
+  on `cam.az` and would undo his aim the instant the thumb lifted; a drag on the right pad MOVES
+  THE LATCH, so the nudge sticks and the ease only ever serves the swing-round on the catch.
+  That is the `KIT.on` rule -- one fact, one owner -- applied to a bearing.
+  **3. AND THEN THE BOOM WAS PINNED AT `CAM.min` ON EVERY BAR IN THE CITY, WHICH THE FIRST
+  MEASUREMENT CAUGHT AND NO AMOUNT OF READING WOULD HAVE.** Looking at the bar with the lens 1.7 m
+  from his chest is not a shot; it is a close-up of a shoulder, and it is what would have shipped.
+  **A BAR IS A SOLID BOX**, so a look point tucked just under one starts `camFree`'s probe inside
+  that box. Swept over all 67 bars through the shipped `camFree`, the WHOLE circle of bearings:
+      look -0.5    0 of 67 reach 4 m, AT ANY BEARING AT ALL   <- every bar, every direction
+      look -1.4   24 of 67 dead behind him, and 66 of 67 once the bearing is searched too
+  So it aims at the HANG (`camLook` -1.4), which clears the arm and is where he spends most of
+  his time anyway -- the top of a giant is still only 2.5 m up against a 3.5 m half-frame.
+  **AND THE BEARING IS SEARCHED, NOT SET (`barAim`)**, which is `titleAimClear`'s rule exactly:
+  that function exists because the title camera's bearing was aimed on paper and put the lens
+  inside a house. A bar is bolted to a post or a facade and behind-him is INTO it on half of
+  them, so it tries behind him, then further round either way, and takes the first bearing with
+  real room -- or the roomiest if none has any, which still beats taking the first by default.
+  A broadside or front-on lens is a perfectly good shot of a swing, and nothing about the CONTROL
+  depends on which side it lands: `stickWorld` reads the pad in the camera's frame, so the pump
+  always answers the thumb pointing where he should go.
+  **4. AND NINETY DEGREES IS NOT ON THE LADDER, WHICH THE HARNESS FOUND BY DISAGREEING WITH
+  ITSELF.** The first search picked +/-90 for 21 of the 67, and on the very bar the probe swung,
+  `camFree` said **7.20 m at the latched bearing while the running camera sat at 1.70** -- the
+  same function, the same look point, the same `want`, 0.0005 rad apart. That tiny gap is the
+  whole tell: **a quarter turn off the swing plane points the lens straight down the BAR'S OWN
+  AXIS**, so the boom runs the length of the arm grazing it, and which side of the metal it
+  passes is decided by where the ease happens to settle. A shot that flips to a close-up as it
+  arrives. Gone from the ladder on that structural argument, not as a fudge.
+  **AND A BEARING IS TESTED ACROSS THE RANGE IT OCCUPIES, NEVER AT ITS CENTRE (`BARJIT`).** That
+  is `titleAimClear`'s own sentence, which it learnt when a bearing clear in the middle of the
+  sway breathed into a wall two seconds later; here the range is the SETTLE. Measured over all 67
+  through the shipped path, before and after:
+      +/-90 allowed, centre only    0/67 under 4 m on paper -- and 1.70 m in the running camera
+      +/-90 gone, settle tested     63/67 get the full 7.2 m boom, worst 2.47, NONE at CAM.min
+  The four that never find 4 m are boxed in on every side and take the roomiest bearing there is,
+  which is the honest answer and still beats taking the first by default.
+  **`camEl` IS NEARLY LEVEL** for the same reason the shot exists: this game's usual .17 rad of
+  downward pitch foreshortens the circle into a line, which is the one shape it must not be.
+  **`npm run jam` with `tools/probe-bar3.mjs` DRIVES THE SHIPPED `barCatch`, `stepBar` AND
+  `stepCam`** -- nine approach cases (both directions at 8 and 3 m/s, four drop-ons with no plane
+  speed at all, one along the bar), a real 6.5 rad/s giant, and then the shot on every bar in the
+  city. The drop-ons are the four the old facing rule could not answer, and they are the ones he
+  was hitting. `tools/probe-bar5.mjs` is the other half: it sweeps the whole circle of bearings
+  over every bar and prints the table above, which is what to re-run if `camLook`, `camDist` or
+  the ladder is ever retuned.
 - **ONE MARKER PAIR CANNOT HOLD TWO JOBS, AND `npm run joints` PROVED IT (c151).** *"I didn't
   realise that keyframing their position -- because their position wasn't keyframed in the T-pose
   -- moved it in ALL positions, which made the gun messed up in every pose. Then I corrected the
