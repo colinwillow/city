@@ -250,6 +250,28 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   wrong" are different bugs. `deck0.11(proc)` and `gun1cm`'s rule, one asset along.
   **`audio/skateboarding_sound_effects` HAD TO GO INTO `bump.mjs`'s `DIRS`** — `readdirSync` is
   not recursive, so a new folder is a new entry or every file in it goes stale silently.
+- **A SONG STREAMS, IT IS NOT DECODED — AND THAT IS WHAT WAS KILLING THE PHONE (c133).**
+  *"Every time I choose a character the app crashes and resets."* Nothing in the pick path was
+  at fault and a headless harness driving `pickChar` across the whole roster threw nothing.
+  `decodeAudioData` hands back FLOAT32 PCM and holds it for the session. Measured on his own two:
+      shredworld_song_01   3.1 min, 48 kHz stereo   ->    70 MB
+      shredworld_song_02   3.7 min, 48 kHz stereo   ->    86 MB
+      9.8 MB of mp3 on disk                         ->   157 MB HELD
+  On top of the city, five character skins and the render targets that is over the line, and iOS
+  does not throw — **it kills the tab, which comes back as the game reloading**. That is also the
+  "camera teleports and the others are gone" he described: he was watching a RELOAD.
+  **AND THE TRIGGER IS WHY IT LOOKED LIKE THE CHARACTER PICK.** `SFX.wake()` is bound to
+  `pointerdown` WITH CAPTURE, so the FIRST TOUCH ANYWHERE builds the context and decodes — and
+  on the title card the first touch is a chip. **The pick was the trigger and never the cause**,
+  which is exactly why nothing in it could be found to blame. A crash that follows an action
+  reliably is not evidence that the action caused it.
+  **THE SPLIT IS THE RULE: EFFECTS DECODE, SONGS STREAM.** An effect is kilobytes, needs
+  sample-accurate retriggering and needs `SFX.edge`'s trimming; a song is megabytes, plays once
+  and needs none of that. It is an `<audio>` element through a `MediaElementAudioSourceNode` now
+  — the browser holds seconds rather than minutes, and the bus, the fades and the two-track
+  handover are gain nodes either way, so nothing above it changed.
+  **`createMediaElementSource` MAY BE CALLED ONCE PER ELEMENT, FOR EVER.** A second call throws
+  and takes the theme down with it, so the node is cached on the element.
 - **SOUND IS `SFX`, PORTED FROM PLUTOPIA, AND TWO OF ITS IDEAS ARE LOAD-BEARING.**
   1. **Two-stage load.** A browser will not build an `AudioContext` outside a gesture but it
      will happily fetch, so the bytes come down at page load and decode on the first touch.
@@ -2279,6 +2301,27 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
     anything meant to be SEEN is placed in the frame's terms and never in metres.
     `startParade` stays for the case it was written for — no line-up, one man, walking in from
     off frame — and `LINE.on = 0` gets you back to it.
+- **`TITLE.az` WAS TYPED AND THE LENS ENDED UP INSIDE A HOUSE (c134, `titleAimClear`).**
+  *"There's just this giant geometry including the camera view."* The bearing was aimed at the
+  skyline on paper — measured, but measured for what is in FRONT of the shot and never for what
+  is behind the lens. The spawn has a house there, so `camClear` pulled the boom to its minimum
+  and the whole frame was one wall, with the line-up standing perfectly well behind three metres
+  of building.
+  **SO IT IS SEARCHED AT LOAD, NOT SET.** The aimed bearing first, then further either side, and
+  the first that is clear wins — **checked across the WHOLE SWAY**, because a bearing that is
+  clear at the centre is one that breathes into the wall two seconds later. That is the same
+  shape as clamping a total instead of a request: test the range the thing actually occupies.
+  `npm run spots`' rule is why it is searched at all — placing a camera by eye off a screenshot
+  is how you get one inside a bank.
+- **A PICK THAT LANDS WHILE ITS SKIN IS LOADING HAS TO COMPLETE (c134).** `pickChar` bails when
+  the key is already loading, which — now the card loads everybody in the background — is most
+  of the time. Without `lineFill` finishing the pick itself, tapping a chip while its skin is in
+  flight sets `want`, lights the chip and then silently never becomes `cur`.
+- **`npm run title` DRIVES THE CARD HEADLESS.** It boots the real module, runs `titleFrame` and
+  then picks every character through the same `pickChar` a chip press goes through. Neither the
+  syntax gate nor the boot gate can see any of this: both stop at `init()`, and the frame loop
+  is a no-op stub in them. It is what proved the crash was NOT in the pick path, which is what
+  sent me to look at memory instead.
 - **`camClear` AND `camFree` WERE THE SAME FUNCTION (c131).** c129 wrote the play camera's boom
   probe without noticing the title camera had had one since c65. They answer one question, so
   there is one of them now: `camClear` delegates. The newer body is strictly better — 0.6 m

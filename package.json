@@ -31,7 +31,8 @@
     "gait": "node tools/gait.mjs",
     "sheet": "node tools/sheet.mjs",
     "jam": "node tools/jam.mjs",
-    "aim": "node tools/aim.mjs"
+    "aim": "node tools/aim.mjs",
+    "title": "node tools/title.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

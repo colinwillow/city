@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c131</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c134</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c131';
+const BUILD = 'c134';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -915,7 +915,7 @@ const TITLE = {
   // the skyline and the light coming over his shoulder. Do not chase the disc.
   // 1.34 rather than 1.379 so the sway does not take the towers off the near edge: the swing
   // is +-.26, and a phone held PORTRAIT has only .24 rad of half-frame across.
-  az: 1.34,
+  az: 1.34, az0Want: 1.34,   // `az` is SEARCHED at load; `az0Want` is the bearing it aims for
   turn: .38,       // and he stands a little off square to it, so it is a three-quarter view
   // A HELD SHOT THAT SWAYS, NEVER AN ORBIT -- Plutopia's title learnt this the expensive way.
   // Half of a full turn is spent round the back of the subject, so the composition the card
@@ -957,7 +957,9 @@ TITLE.face = TITLE.az + Math.PI + TITLE.turn;   // facing back down the barrel, 
 // arrive and take their places. Which is also what "when you unlock more characters they will
 // be on there" looks like, with nothing extra to build.
 const LINE = {
-  on: 1, gap: 1.45, back: 1.25, ease: .80, lean: .34, pan: .6, fill: 1,
+  // `pan` 1 puts the man you picked DEAD CENTRE of the frame; anything less leaves him off to
+  // one side, which is what "the camera is not really centred on them" was.
+  on: 1, gap: 1.45, back: 1.25, ease: .80, lean: .34, pan: 1, fill: 1,
   t: {},          // per-key 0..1, back..front
 };
 const PARADE = {
@@ -988,10 +990,13 @@ const PARADE = {
 // on its side every frame, and `K = A_target^-1 * A_colin` premultiplied onto that one track
 // puts it back. The alien shares Colin's bind pose exactly and K is the identity.
 const CHARS = {
+  // THE ORDER IS THE LAY-OUT (c132). The line-up is centred on the roster, so with five of them
+  // the THIRD stands dead centre -- *"Colin should be in the middle and every other character
+  // should be to his side"*. A new character goes on an END, never next to him.
   list: [
-    { key: 'colin',  name: 'Colin',  url: 'models/colin.glb' },            // the clips come from him
-    { key: 'robot',  name: 'Robit',  url: 'models/chars/robot.glb' },
     { key: 'moussa', name: 'Moussa Bot', url: 'models/chars/moussa_robit.glb' },
+    { key: 'robot',  name: 'Robit',  url: 'models/chars/robot.glb' },
+    { key: 'colin',  name: 'Colin',  url: 'models/colin.glb' },            // the clips come from him
     // THE TOON MOUSSA IS THE BEST-CASE RIG IN HERE (c122). Measured before anything was built:
     // 65/65 of the bones Colin's clips drive, rest-pose offset mean 0.0 deg / worst 0 deg, so
     // he shares Colin's bind pose EXACTLY the way `alien_orange` does -- no `HIPFIX`, and the
@@ -1305,41 +1310,69 @@ const MUSIC = {
     if (!this.gain) { this.gain = SFX.ctx.createGain(); this.gain.gain.value = this.vol; this.gain.connect(SFX.master); }
     return this.gain;
   },
+  // A SONG STREAMS. IT IS NOT DECODED (c132), AND THAT IS WHAT WAS CRASHING THE PHONE.
+  // `decodeAudioData` hands back FLOAT32 PCM and holds it for the session. Measured on his own
+  // two tracks:
+  //     shredworld_song_01   3.1 min, 48 kHz stereo  ->   70 MB
+  //     shredworld_song_02   3.7 min, 48 kHz stereo  ->   86 MB
+  //     ---------------------------------------------------------
+  //     9.8 MB of mp3 on disk                        ->  157 MB HELD
+  // On top of the city, five character skins and the render targets that is over the line on a
+  // phone, and iOS does not throw -- it kills the tab, which comes back as the game reloading.
+  // *"Every time I choose a character the app crashes and resets."*
+  // AND THE TRIGGER IS WHY IT LOOKED LIKE THE CHARACTER PICK. `SFX.wake()` is bound to
+  // `pointerdown` WITH CAPTURE, so the FIRST TOUCH ANYWHERE builds the context and runs this --
+  // and on the title card the first touch is a chip. The pick was the trigger and never the
+  // cause, which is why nothing in the pick path could be found to blame.
+  // SO IT STREAMS: an `<audio>` element through a `MediaElementAudioSourceNode`. The browser
+  // holds a few seconds, not four minutes, and the bus, the fades and the two-track handover
+  // are all gain nodes either way so nothing above this changed.
+  // THE SHORT EFFECTS STILL DECODE, and that split is the whole rule: an effect is kilobytes and
+  // needs sample-accurate retriggering and `SFX.edge`'s trimming; a song is megabytes, plays
+  // once and needs none of that. `SFX.edge` cannot reach a streamed element, which costs
+  // nothing here -- an exported song does not open with a second of silence.
+  el: {},
   fetchAll() {
-    for (const k in this.files) {
-      const set = [].concat(this.files[k]); this.raw[k] = this.raw[k] || [];
-      // its own key: these are two megabytes each, and a build stamp would re-fetch both on
-      // every push. Bump MUSICV when a track is replaced in place.
-      set.forEach((f, i) => fetch(A('audio/' + f + '.mp3')).then(r => r.ok ? r.arrayBuffer() : null)
-        .then(b => { if (b) { this.raw[k][i] = b; this.decode(); } }).catch(() => {}));
-    }
+    // nothing to fetch up front any more: the element does its own, on demand, and a song that
+    // is never played is never pulled down at all.
   },
-  decode() {
-    if (!SFX.ctx) return;
-    for (const k in this.raw) (this.raw[k] || []).forEach((b, i) => {
-      if (!b) return; this.raw[k][i] = null;
-      SFX.ctx.decodeAudioData(b.slice(0), out => {
-        (this.track[k] = this.track[k] || [])[i] = SFX.edge(out);
-        if (this.want === k && !this.cur) this.go(k);
-      }, () => {});
-    });
+  decode() { if (SFX.ctx && this.want && !this.cur) this.go(this.want, true); },
+  make(k, i, f) {
+    const key = k + i;
+    let a = this.el[key];
+    if (a) return a;
+    a = new Audio(); a.src = A('audio/' + f + '.mp3');
+    a.crossOrigin = 'anonymous'; a.preload = 'none'; a.loop = false;
+    this.el[key] = a;
+    return a;
   },
   go(k, again) {
     const ctx = SFX.ctx, bus = this.bus();
-    if (!ctx || !bus || !this.on) return;
-    const list = (this.track[k] || []).filter(Boolean);
-    if (!list.length) { this.want = k; return; }
+    if (!ctx || !bus || !this.on) { this.want = k; return; }
     if (this.cur && !again) return;
-    const other = list.filter(b => b !== this.curBuf);
-    const pick = other.length ? other : list;
-    const buf = pick[(Math.random() * pick.length) | 0];
-    const src = ctx.createBufferSource(); src.buffer = buf;
-    const g = ctx.createGain(); g.gain.setValueAtTime(0, ctx.currentTime);
-    g.gain.linearRampToValueAtTime(1, ctx.currentTime + this.fade);
-    src.connect(g); g.connect(bus);
-    src.onended = () => { if (this.cur === src) { this.cur = null; this.go(k, true); } };
-    src.start(ctx.currentTime, buf._lead || 0);
-    this.cur = src; this.curBuf = buf; this.want = k;
+    const set = [].concat(this.files[k] || []);
+    if (!set.length) return;
+    // the two trade rather than loop: whichever is not the one just heard
+    const pool = set.length > 1 ? set.filter((f, i) => (k + i) !== this.curKey) : set;
+    const j = (Math.random() * pool.length) | 0;
+    const f = pool[j], i = set.indexOf(f);
+    const el = this.make(k, i, f);
+    let node = el._node;
+    if (!node) {
+      // ONE SOURCE NODE PER ELEMENT, FOR EVER. `createMediaElementSource` may be called only
+      // once on an element -- a second call throws and takes the whole theme down with it.
+      try { node = ctx.createMediaElementSource(el); } catch (e) { console.warn('[music] no stream node', e); return; }
+      const g = ctx.createGain(); node.connect(g); g.connect(bus);
+      el._node = node; el._gain = g;
+    }
+    el._gain.gain.cancelScheduledValues(ctx.currentTime);
+    el._gain.gain.setValueAtTime(0, ctx.currentTime);
+    el._gain.gain.linearRampToValueAtTime(1, ctx.currentTime + this.fade);
+    el.currentTime = 0;
+    el.onended = () => { if (this.cur === el) { this.cur = null; this.go(k, true); } };
+    const pr = el.play();
+    if (pr && pr.catch) pr.catch(e => console.warn('[music] blocked', e));
+    this.cur = el; this.curKey = k + i; this.want = k;
   },
 };
 // WHAT MAKES WHICH NOISE. Every one falls back to the synth if its file has not arrived, so a
@@ -7900,6 +7933,40 @@ function lineStep(dt) {
 // the boot path -- the card comes up with whoever was worn last time and the rest take their
 // places as they land. A failure is remembered, because retrying a missing file every frame is
 // a request storm that looks exactly like the file being slow.
+// THE SHOT HAS TO BE CLEAR, AND `TITLE.az` WAS TYPED (c132). *"There's just this giant geometry
+// including the camera view."* The bearing is aimed at the skyline and was chosen on paper --
+// but the spawn has a house behind it, so the lens ends up INSIDE that house, `camClear` pulls
+// the boom to its minimum, and the whole frame is one wall. The line-up was standing there
+// perfectly well behind three metres of building.
+// SO IT IS SEARCHED, NOT SET. Try the aimed bearing first, then further either side, and take
+// the first where the boom is clear ACROSS THE WHOLE SWAY -- checking only the centre picks a
+// bearing that is fine until the shot breathes into the wall two seconds later, which is the
+// same mistake as clamping a total instead of a request.
+// `npm run spots`' rule is why it is searched at all: placing a camera by eye off a screenshot
+// is how you get one inside a bank.
+function titleAimClear() {
+  const P = player.pos, el = TITLE.el, ce = Math.cos(el), want = TITLE.dist;
+  const test = az => {
+    let worst = want;
+    for (let k = -1; k <= 1; k++) {
+      const a = az + k * TITLE.sweep;
+      const dx = -Math.sin(a) * ce, dy = Math.sin(el), dz = -Math.cos(a) * ce;
+      worst = Math.min(worst, camFree(P.x, P.y + TITLE.look, P.z, dx, dy, dz, want));
+    }
+    return worst;
+  };
+  let best = TITLE.az0Want, bestD = test(TITLE.az0Want);
+  if (bestD >= want - .01) { TITLE.az = best; return best; }
+  for (let step = .18; step <= Math.PI && bestD < want - .01; step += .18) {
+    for (const sgn of [1, -1]) {
+      const az = TITLE.az0Want + sgn * step, d = test(az);
+      if (d > bestD) { bestD = d; best = az; }
+    }
+  }
+  TITLE.az = best;
+  console.log('[title] bearing ' + best.toFixed(2) + ' rad, boom clear to ' + bestD.toFixed(1) + ' of ' + want + ' m');
+  return best;
+}
 function lineFill() {
   if (!LINE.fill || !TITLE.on || !colin.ready) return;
   for (const k in CHARS.loading) if (CHARS.loading[k]) return;
@@ -7908,7 +7975,14 @@ function lineFill() {
   if (!next) return;
   CHARS.loading[next.key] = true;
   loadGLB(next.url, 'loading ' + next.name)
-    .then(g => buildSkin(g, next.key))
+    .then(g => {
+      buildSkin(g, next.key);
+      // AND IT FINISHES A PICK THAT WAS WAITING ON IT. `pickChar` bails when the key is already
+      // loading -- which, now that the card loads everybody in the background, is most of the
+      // time -- so without this, tapping a chip while its skin is in flight sets `want` and
+      // then silently never becomes `cur`. The chip lights and nothing happens.
+      if (CHARS.want === next.key && CHARS.cur !== next.key) enterChar(next.key, 0, 0);
+    })
     .catch(e => { console.warn('[line] ' + next.key + ' failed', e); CHARS.failed[next.key] = 1; CHARS.miss = (CHARS.miss || 0) + 1; })
     .finally(() => { CHARS.loading[next.key] = false; });
 }
@@ -8282,6 +8356,8 @@ frame();
     const sg = groundAt(player.pos.x, player.pos.z, 60, 0);
     player.pos.y = sg.hit ? sg.floor : hmAt(player.pos.x, player.pos.z); player.safe.copy(player.pos);
     buildMap();
+    // AFTER the collider exists, because it is what the search reads.
+    try { titleAimClear(); } catch (e) { console.warn('[title] aim search failed', e); }
     ready = true;
     setBoot('drop in', 1);
     await bootHold();                  // the splash is a card, not a flicker
@@ -8292,7 +8368,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
