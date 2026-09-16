@@ -1198,6 +1198,34 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **MUSIC AND EFFECTS ARE TWO SWITCHES NOW, AND THE SPLIT IS A BUS (c170, `musicSet`, `sfxSet`,
+  `SFX.bus`).** *"I think there's a button to mute the music, but I'd like to mute the music
+  without muting the sound effects -- sometimes I wanna do screen records and I wanna record the
+  sound effects, so later I can composite the clips over the same song that's in the game, and
+  that way the song doesn't cut."* The reason the split has to exist is in the sentence: a
+  capture with the game's own music baked into it can never be laid back under that same music,
+  because the two copies do not line up.
+  **`SFX.on` ALONE WAS NEVER ENOUGH, WHICH IS WHY THE OLD SWITCH LANDED ON THE MASTER.** `play()`
+  already refuses every one-shot while it is false -- but the WHEELS and the blaster's CHARGE HUM
+  are looping sources started once, not `play` calls, and they would carry on underneath for ever.
+  So the master stops being the mute: `SFX.bus` carries the effects, the synth fallbacks and both
+  loops, `MUSIC.gain` hangs off the master beside it, and either can go to zero alone.
+  **A MUTED SONG IS PAUSED, NOT TURNED DOWN.** It is a streamed `<audio>` element (c133), so one
+  left running under a zero gain goes on pulling megabytes down a phone connection to be thrown
+  away -- and paused it keeps its POSITION, so unmuting picks the track up rather than restarting
+  it. The bus goes to zero as well, because `pause()` is not sample accurate and a few
+  milliseconds of music at the top of a recording is the frame he would have to cut out again.
+  **THE NOTE KEY KEEPS THE JOB HE ALREADY THOUGHT IT HAD.** *"I think there's a button to mute
+  the music"* -- there was, and it muted everything. It is in the same place with the same glyph
+  and now does what he thought; the speaker beside it is the new one. A key that quietly changed
+  meaning under him would have been the worse half of this. **Two keys rather than a three-way
+  cycle**, which is `optStore`'s own rule: a mode you can be in without knowing it is worse than
+  two controls that say what they are by being two controls. The gear moved 48 px right to keep
+  the two audio keys adjacent.
+  **AND THE PRESS CALLS `optSave`**, so a mute survives a reload -- he reloads for every build,
+  and a mute he has to re-press on each one is a mute that does not work. The Audio rows in the
+  panel read and write the same `MUSIC.on` / `SFX.on` the keys do, so the two cannot disagree.
+  `city.music()` / `city.sfx()` from the console, plus Music vol and Effects vol.
 - **A MAN IS A TARGET, NOT A WALL (c169, `COP.solid`).** *"If I skate by a cop and melee, right
   now I bounce off the cop. I want to run through him instead of bouncing off his collider. I
   wanna be able to hit the cops a bunch instead of flying and not bounce off."*
