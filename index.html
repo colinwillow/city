@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c123</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c125</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c123';
+const BUILD = 'c125';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -986,7 +986,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -999,6 +999,16 @@ const SND_FILES = {
   // PLUTOPIA'S OWN BLASTER, THE TWO FILES AND THE TWO NUMBERS. `snd.trick()` was standing in
   // -- a deck tick, which is a skateboard noise on a plasma cannon.
   blast: ['blaster_sound_01', 'blaster_sound_02'],
+  // HIS OWN SKATEBOARD, RECORDED (c124). The folder name is his and the `.mp4` in the middle of
+  // three of them is his converter's -- LEFT EXACTLY AS UPLOADED, because a rename here is a
+  // 404 the next time he drops the same files in, and `A()` keys on the path.
+  ollie: ['skateboarding_sound_effects/skateboarding_ollie'],
+  deck:  ['skateboarding_sound_effects/skateboarding_landing.mp4'],
+  push:  ['skateboarding_sound_effects/skateboarding_start'],
+  // THE ROLL, WHICH IS THE ONE THIS FILE HAS BEEN WAITING FOR. It goes through the same fetch,
+  // decode and `edge` as every other sound so there is no second loading path -- but it is
+  // never `play()`ed: `WHEELS` holds one looping source and rides it, below.
+  roll: ['skateboarding_sound_effects/skateboarding_riding_01.mp4', 'skateboarding_sound_effects/skateboarding_riding.mp4'],
 };
 const rnd = (a, b) => a + Math.random() * (b - a);
 const SFX = {
@@ -1119,8 +1129,47 @@ const SFX = {
 // THE WHEELS ARE A SYNTH AND THAT IS TEMPORARY. Neither repo has a rolling sound and it is
 // the one noise this game cannot do without, so it is a loop of brown noise through a bandpass
 // whose gain and centre follow his speed. Drop a real one in audio/ and bind it here.
+// THE ROLLING WHEELS. Two paths and the REAL ONE WINS: his recording on a looping source when
+// it has arrived, the brown-noise synth underneath it when it has not. The synth is not deleted
+// -- a phone that failed one fetch should still have wheels, and it is the same rule the
+// procedural skateboard keeps.
+// BOTH FOLLOW SPEED, and that is the whole mechanic either way. The synth moved a bandpass
+// centre; a sample moves its PLAYBACK RATE, which is the honest analogue -- a wheel turning
+// faster IS the recording played faster -- with the gain riding on top of it.
 const WHEELS = {
   src: null, g: null, f: null,
+  samp: null, sg: null, pick: 0,          // `city.WHEELS.pick = 1` takes the other recording
+  rate0: .70, rateSpan: .70,              // at a standstill, and how much it climbs by 20 m/s
+  grindRate: 2.1, vol: 1.0,
+  // A LOOP POINT HAS TO BE A ZERO CROSSING OR IT TICKS, once every time round, for ever. The
+  // `edge` bounds are where the sound starts and stops; these are the nearest samples to them
+  // that are actually crossing zero, which is most of a click gone for a dozen lines.
+  zc(b, t, dir) {
+    const d = b.getChannelData(0), sr = b.sampleRate, n = b.length;
+    let i = Math.max(1, Math.min(n - 2, Math.round(t * sr)));
+    for (let k = 0; k < sr * .05; k++) {
+      const j = i + dir * k;
+      if (j < 1 || j > n - 2) break;
+      if ((d[j - 1] <= 0 && d[j] >= 0) || (d[j - 1] >= 0 && d[j] <= 0)) return j / sr;
+    }
+    return t;
+  },
+  sample() {
+    if (this.samp) return this.samp;
+    if (!SFX.ctx) return null;
+    const b = SFX.buf.roll && SFX.buf.roll[this.pick];
+    if (!b || b === 0) return null;                 // 0 means claimed and still decoding
+    const ctx = SFX.ctx, s = ctx.createBufferSource();
+    s.buffer = b; s.loop = true;
+    s.loopStart = this.zc(b, b._lead || 0, 1);
+    s.loopEnd = Math.max(s.loopStart + .2, this.zc(b, b._end || b.duration, -1));
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(g); g.connect(SFX.master); s.start(0, s.loopStart);
+    this.samp = s; this.sg = g;
+    // and the synth stands down the moment the real one is up, or both are rolling at once
+    if (this.g) this.g.gain.setTargetAtTime(0, ctx.currentTime, .05);
+    return s;
+  },
   start() {
     if (this.src || !SFX.ctx) return;
     const ctx = SFX.ctx, n = (ctx.sampleRate * 2) | 0;
@@ -1135,8 +1184,19 @@ const WHEELS = {
   },
   set(speed, on, grind) {
     if (!SFX.ctx) return;
+    const t = SFX.ctx.currentTime, k = clamp(speed / 20, 0, 1);
+    // Tried every call rather than once at load: the buffer decodes asynchronously, so the
+    // first seconds of a session legitimately have no recording yet and must still have wheels.
+    const s = this.sample();
+    if (s) {
+      const want = grind ? .34 : (on && SFX.on ? .06 + .34 * k * k : 0);
+      this.sg.gain.setTargetAtTime(want * this.vol * (SFX.on ? 1 : 0), t, .06);
+      // A WHEEL TURNING FASTER IS THE RECORDING PLAYED FASTER. Grind takes it up hard, which is
+      // the metal-under-the-trucks the synth reached for with a 2.2 kHz bandpass.
+      s.playbackRate.setTargetAtTime(grind ? this.grindRate : this.rate0 + this.rateSpan * k, t, .08);
+      return;
+    }
     this.start(); if (!this.g) return;
-    const k = clamp(speed / 20, 0, 1), t = SFX.ctx.currentTime;
     // the same loop, taken up an octave and a half: metal under the trucks rather than road
     this.g.gain.setTargetAtTime(grind ? .16 : (on && SFX.on ? .035 + .20 * k * k : 0) * (SFX.on ? 1 : 0), t, .06);
     this.f.frequency.setTargetAtTime(grind ? 2200 : 200 + 1000 * k, t, .06);
@@ -1200,7 +1260,14 @@ const MUSIC = {
 // WHAT MAKES WHICH NOISE. Every one falls back to the synth if its file has not arrived, so a
 // missing mp3 is quieter rather than silent.
 const snd = {
-  ollie: () => SFX.play('swoosh', .30, rnd(1.18, 1.38)) || SFX.noise(.10, .10, 2400),
+  // HIS OWN POP FIRST, the borrowed swoosh under it, the synth under that. `play()` returns
+  // TRUE when it REFUSES a sound (voice cap or per-key gap) and false when it has nothing, so
+  // this chain falls through on a missing file and stops on a deliberate refusal -- which is
+  // exactly why that return value is the way round it is.
+  ollie: () => SFX.play('ollie', .62, rnd(.94, 1.06)) || SFX.play('swoosh', .30, rnd(1.18, 1.38)) || SFX.noise(.10, .10, 2400),
+  // THE KICK OFF THE ROAD, which had no sound of its own at all -- the push was silent and the
+  // speedo just went up. It is a stroke over `SK8.shoveDur`, so this fires on the shove.
+  push: () => SFX.play('push', .50, rnd(.94, 1.08)) || SFX.noise(.09, .09, 900),
   jump: () => SFX.play('swoosh', .28, rnd(1.02, 1.22)) || SFX.noise(.11, .10, 2100),
   // a body flip is longer and lower than the pop that started it
   flip: () => SFX.play('swoosh', .44, rnd(.70, .84)) || SFX.noise(.22, .14, 1200),
@@ -1208,7 +1275,7 @@ const snd = {
   trick: () => { SFX.play('swoosh', .30, rnd(1.35, 1.60)); SFX.blip(760, .05, 'square', .05, 300); },
   // k is how hard he came down, 0..1
   land: (k, board) => board
-    ? (SFX.play('wood', .30 + .50 * k, rnd(.80, 1.05)) || SFX.noise(.09, .16, 900))
+    ? (SFX.play('deck', .44 + .46 * k, rnd(.92, 1.06)) || SFX.play('wood', .30 + .50 * k, rnd(.80, 1.05)) || SFX.noise(.09, .16, 900))
     : (SFX.noise(.10, .08 + .16 * k, 520), SFX.blip(96, .07, 'sine', .05 + .10 * k, 54)),
   bail: () => SFX.play('crack', .55, rnd(.80, 1.00)) || SFX.noise(.22, .22, 700),
   // the three car tiers, told apart by weight and pitch rather than by three different files
@@ -3242,7 +3309,11 @@ function census() {
   dbgInfo = ' · pts' + pts + ' spr' + spr + ' line' + ln + ' onBone' + bone + ' skin' + skin + ' mesh' + mesh
     + ' cloud' + clouds.length + '/vis' + vis + ' env' + (ENV.tex ? 1 : 0)
     + ' box' + solids.length + '/' + COLS.split + ' ramp' + PARK.built + ' rail' + RAILS.length + ' lad' + LADDERS.length
-    + ' deck' + BOARD.deck.toFixed(2) + (BOARD.got ? '' : '(proc)');
+    + ' deck' + BOARD.deck.toFixed(2) + (BOARD.got ? '' : '(proc)')
+    // "IS THAT THE REAL WHEEL SOUND OR THE SYNTH" IS A QUESTION A PHONE CANNOT ANSWER BY EAR,
+    // and they are two different bugs: the file never arrived, or it arrived and the loop is
+    // wrong. `deck0.11(proc)` and `gun1cm`'s rule, one asset along.
+    + ' roll' + (WHEELS.samp ? 'REC' : 'syn');
 }
 // ALBEDO ONLY: his textures with no lighting of any kind. If his hair and face read
 // correctly here, the grey is coming from the lights and not from the maps or the
@@ -6905,6 +6976,11 @@ function stepSkate(dt) {
           p.shoveV = SK8.pushV * (1 - SK8.taper * speed / SK8.pushMax);
           p.shoveDur = Math.min(SK8.shoveDur, p.pushPeriod * .75);
           p.shoveT = p.shoveDur; p.shoveDir = dir; p.pushK = 1;
+          // THE FOOT MEETS THE ROAD HERE, on the frame the stroke begins -- the same rule as
+          // the slash mark and the melee blow: the sound and the thing it is the sound OF have
+          // to be one event. `SFX.beat` already refuses two of a kind inside 38 ms, so a fast
+          // push cycle cannot machine-gun it.
+          snd.push();
         };
         if (!p.pushing) { p.pushing = true; p.pushT = 0; shove(); }   // the first one lands at once
         else { p.pushT += dt; if (p.pushT >= p.pushPeriod) { p.pushT -= p.pushPeriod; shove(); } }

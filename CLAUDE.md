@@ -217,6 +217,39 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   carries a query string, so those version their FILENAME instead.
   Add a new asset folder to `DIRS` in `bump.mjs` and load it through `A()`, or it will go
   stale silently.
+- **HIS OWN SKATEBOARD, RECORDED (c124) — AND THE ROLL IS THE ONE THIS FILE HAD BEEN WAITING
+  FOR.** `audio/skateboarding_sound_effects/`: an ollie (0.21 s), a landing (0.29 s), a push
+  (0.44 s) and two rolling loops (2.06 s and 4.81 s). The note above that said the rolling
+  wheels were HIS to record and that the synth was a stand-in is discharged.
+      ollie    -> `snd.ollie`, over the borrowed swoosh
+      landing  -> `snd.land(k, true)`, over the bamboo
+      start    -> `snd.push`, WHICH HAD NO SOUND AT ALL -- the push was silent and the
+                  speedometer just went up. It fires inside `shove()`, on the frame the stroke
+                  begins, the slash mark's rule: the sound and the thing it is the sound OF
+                  have to be one event.
+      riding   -> `WHEELS`, a looping source rather than a `play()`
+  **THE FILENAMES ARE LEFT EXACTLY AS UPLOADED**, `.mp4` in the middle of three of them and all.
+  A tidy-up here is a 404 the next time he drops the same files in, and `A()` keys on the path.
+  **TWO PATHS AND THE REAL ONE WINS.** The brown-noise synth is NOT deleted — a phone that
+  failed one fetch should still have wheels, which is the procedural skateboard's rule — and it
+  stands itself down the moment the recording is up, or both roll at once.
+  **A SAMPLE FOLLOWS SPEED WITH ITS PLAYBACK RATE**, which is the honest analogue of what the
+  synth did with a bandpass centre: a wheel turning faster IS the recording played faster, with
+  the gain riding on top. Grind takes the rate to `grindRate` the way the synth took the filter
+  to 2.2 kHz.
+  **AND A LOOP POINT HAS TO BE A ZERO CROSSING OR IT TICKS**, once every time round, for ever.
+  `SFX.edge` already says where the sound starts and stops; `WHEELS.zc` walks from each of those
+  to the nearest sample actually crossing zero. Most of a click gone for a dozen lines — and if
+  one is still audible at the seam, a crossfading PAIR of sources is the fix, not a different
+  edge.
+  **`sample()` IS TRIED ON EVERY `set()`, NOT ONCE AT LOAD.** The buffer decodes asynchronously,
+  so the first seconds of a session legitimately have no recording yet and must still have
+  wheels. `city.WHEELS.pick = 1` takes the other recording.
+  **THE CHIP SAYS `rollREC` OR `rollsyn`**, because "is that the real wheel sound" is a question
+  a phone cannot answer by ear, and "the file never arrived" and "it arrived and the loop is
+  wrong" are different bugs. `deck0.11(proc)` and `gun1cm`'s rule, one asset along.
+  **`audio/skateboarding_sound_effects` HAD TO GO INTO `bump.mjs`'s `DIRS`** — `readdirSync` is
+  not recursive, so a new folder is a new entry or every file in it goes stale silently.
 - **SOUND IS `SFX`, PORTED FROM PLUTOPIA, AND TWO OF ITS IDEAS ARE LOAD-BEARING.**
   1. **Two-stage load.** A browser will not build an `AudioContext` outside a gesture but it
      will happily fetch, so the bytes come down at page load and decode on the first touch.
