@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c129</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c130</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c129';
+const BUILD = 'c130';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1428,6 +1428,110 @@ const hemi = new THREE.HemisphereLight(0x9bc5ee, 0x4b5a48, LIGHT.hemi); scene.ad
 const fill = new THREE.DirectionalLight(0x9fd4e8, LIGHT.fill); fill.position.set(-1, .4, -.6); scene.add(fill);
 
 // ---------- the toon ramp (Plutopia's, on r180 chunk names) ----------
+// ---------- THE PALETTE ----------
+// *"It feels very McDonald's -- red and yellow. We need to tint the green, tint the red, tint
+// the blue so it has this nice painterly palette."* He is describing PALETTE RESTRICTION, which
+// every art-directed film does and which a low-poly GLB full of raw primaries has none of: the
+// source colours here are #ff0000 / #ffff00 / #00ff00 territory, and no amount of lighting
+// rescues a primary.
+// IT IS A HUE-VS-HUE CURVE, AND THE FIRST TWO ATTEMPTS WERE BOTH WORSE. Checked in node against
+// real colours rather than shipped and looked at:
+//   ANCHORS, NEAREST-WINS: pulls each hue to the closest of a few chosen ones. Strong, and
+//     DISCONTINUOUS -- primary red went rose while a brick two hundredths away went amber, so
+//     the grade pushed near-identical colours APART at every boundary.
+//   ANCHORS, SMOOTHLY WEIGHTED: continuous, and it CANCELS exactly where it matters. Red sits
+//     between the rose and amber anchors, both pull equally hard in opposite directions, and
+//     primary red -- the whole complaint -- moved 0.004 and stayed primary.
+// So: a few independent gaussian nudges on the hue wheel, which is literally "tint the red,
+// tint the green, tint the blue" and is how a hue-vs-hue curve works in any grading tool. No
+// anchors, no boundaries, nothing to cancel, and every entry is separately art-directable.
+// MEASURED, not asserted -- `pull` 1, the shipped curve:
+//     #ff0000 primary red -> #ff6197 rose       #d92121 McDonald's red -> #d95280
+//     #ffff00 primary yel -> #ffd761 gold       #00ff00 primary green  -> #61ffc4 mint
+//     #0000ff primary blu -> #9a61ff violet     #5999e6 sky blue       -> #646ae6 periwinkle
+//     #57575c road grey   -> UNCHANGED (the saturation gate: a grey has no hue to tint)
+// AND THE SATURATION CAP IS HALF THE PAINTERLY READ ON ITS OWN. A painter mixing from a limited
+// palette physically cannot reach full chroma; a renderer that can is what "too chromatic"
+// means as a complaint.
+// PLUS A SPLIT TONE -- cool shadows, warm lights. The oldest grading move there is, and it is
+// what makes a scene look lit by something rather than multiplied by something.
+// IT LANDS ON THE ALBEDO at `#include <color_fragment>`, BEFORE the toon ramp and before
+// shadows, so this is the paint the world is made OF and not a filter laid over the picture.
+// Colin is untouched -- his materials shadow the hook -- which keeps the mixed-media split.
+const PAL = {
+  on: 1, pull: 1, satK: .92, satMax: .62, tone: .5,
+  shadow: [.88, .90, 1.06],        // cool
+  light: [1.06, 1.00, .95],        // warm
+  // [centre hue, how far it moves, how wide the family is]
+  shift: [[0.00, -.055, .10], [0.15, -.050, .085], [0.33, .105, .105], [0.62, .075, .10]],
+  sets: {
+    plutopia: { shift: [[0, -.055, .10], [.15, -.05, .085], [.33, .105, .105], [.62, .075, .10]],
+                pull: 1, satMax: .62, shadow: [.88, .90, 1.06], light: [1.06, 1.00, .95] },
+    dusk:     { shift: [[0, -.035, .10], [.15, -.055, .09], [.33, -.06, .10], [.62, .06, .10]],
+                pull: 1, satMax: .58, shadow: [.90, .88, 1.04], light: [1.12, 1.00, .90] },
+    raw:      { pull: 0, satK: 1, satMax: 1, tone: 0 },
+  },
+  set(n) { const o = this.sets[n]; if (!o) return Object.keys(this.sets);
+    Object.assign(this, JSON.parse(JSON.stringify(o))); palSync(); return n; },
+};
+const PAL_UNI = { uPalK: { value: 1 }, uPalPull: { value: 1 }, uPalSatK: { value: .92 },
+  uPalSatMax: { value: .62 }, uPalTone: { value: .5 }, uPalN: { value: 4 },
+  uPalC: { value: new Float32Array(6) }, uPalA: { value: new Float32Array(6) }, uPalW: { value: new Float32Array(6) },
+  uPalSh: { value: new THREE.Color(.88, .90, 1.06) }, uPalLi: { value: new THREE.Color(1.06, 1.00, .95) } };
+function palSync() {
+  PAL_UNI.uPalK.value = PAL.on ? 1 : 0;
+  PAL_UNI.uPalPull.value = PAL.pull; PAL_UNI.uPalSatK.value = PAL.satK;
+  PAL_UNI.uPalSatMax.value = PAL.satMax; PAL_UNI.uPalTone.value = PAL.tone;
+  PAL_UNI.uPalN.value = Math.min(6, PAL.shift.length);
+  for (let i = 0; i < 6; i++) {
+    const e = PAL.shift[i] || [0, 0, 1];
+    PAL_UNI.uPalC.value[i] = e[0]; PAL_UNI.uPalA.value[i] = e[1];
+    PAL_UNI.uPalW.value[i] = Math.max(.005, e[2]);
+  }
+  PAL_UNI.uPalSh.value.setRGB(PAL.shadow[0], PAL.shadow[1], PAL.shadow[2]);
+  PAL_UNI.uPalLi.value.setRGB(PAL.light[0], PAL.light[1], PAL.light[2]);
+}
+function palPatch(sh) {
+  for (const k in PAL_UNI) sh.uniforms[k] = PAL_UNI[k];
+  sh.fragmentShader = `uniform float uPalK, uPalPull, uPalSatK, uPalSatMax, uPalTone;
+    uniform int uPalN; uniform float uPalC[6]; uniform float uPalA[6]; uniform float uPalW[6];
+    uniform vec3 uPalSh, uPalLi;
+    vec3 palToHsv(vec3 c){
+      vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+      vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+      vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+      float d = q.x - min(q.w, q.y);
+      return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
+    }
+    vec3 palToRgb(vec3 c){
+      vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+      vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+      return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+    }
+  ` + sh.fragmentShader
+    .replace('#include <color_fragment>', `#include <color_fragment>
+      if (uPalK > 0.5) {
+        vec3 hsv = palToHsv(max(diffuseColor.rgb, vec3(0.0)));
+        float off = 0.0;
+        for (int i = 0; i < 6; i++) {
+          if (i >= uPalN) break;
+          // WRAPPED, because hue is a circle: without this every red is judged to be a long
+          // way from a family centred at zero and the reds are the whole complaint.
+          float d = hsv.x - uPalC[i];
+          d -= floor(d + 0.5);
+          float t = d / uPalW[i];
+          off += uPalA[i] * exp(-t * t);
+        }
+        // A GREY HAS NO HUE, and tinting one is how a neutral road turns lilac. The shift is
+        // scaled by saturation, so the less colour a surface has the less it is moved -- which
+        // is why the road above comes out unchanged and the grass does not.
+        hsv.x = fract(hsv.x + off * uPalPull * smoothstep(0.02, 0.18, hsv.y));
+        hsv.y = min(hsv.y * uPalSatK, uPalSatMax);
+        diffuseColor.rgb = palToRgb(hsv);
+        float pl = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+        diffuseColor.rgb *= mix(vec3(1.0), mix(uPalSh, uPalLi, smoothstep(0.0, 0.85, pl)), uPalTone);
+      }`);
+}
 // ---------- THE PAINT PASS ----------
 // *"Is there a way where you could take a colour and procedurally generate that same colour but
 // with slight variation, so it looks kind of splotchy and painterly, without a rendered texture
@@ -3204,6 +3308,10 @@ THREE.MeshStandardMaterial.prototype.onBeforeCompile = function (sh) {
   // THE PAINT GOES ON EVERYTHING THE HOOK REACHES, which is the whole city, the ramps, the
   // cars and the props -- one patch, no per-asset work. `userData.noPaint` opts a material out.
   if (!this.userData.noPaint) paintPatch(sh);
+  // AFTER `paintPatch`, WHICH PUTS IT FIRST IN THE SHADER. Both replace the same include, so
+  // the last one patched ends up nearest it -- and the palette has to harmonise the BASE colour
+  // before the paint splotches it, or every patch edge is a different hue from its neighbour.
+  if (!this.userData.noPaint) palPatch(sh);
   // userData.noHole opts a material out: the board under his feet, and the clouds, which are
   // half a kilometre past him and would only ever be cut by the depth test being generous.
   if (!this.userData.noHole) holePatch(sh);
@@ -6672,6 +6780,12 @@ const OPT_ROWS = [
   ['h', 'World'],
   ['tog', 'Map', () => MAP.on, v => { MAP.on = v; }],
   ['tog', 'Police', () => COP.on, v => { COP.on = v; }],
+  ['h', 'Palette'],
+  ['tog', 'Palette grade', () => PAL.on, v => { PAL.on = v; }],
+  ['num', 'Tint strength', () => PAL.pull, v => { PAL.pull = v; }, 0, 2, .05],
+  ['num', 'Chroma cap', () => PAL.satMax, v => { PAL.satMax = v; }, .2, 1, .02],
+  ['num', 'Chroma scale', () => PAL.satK, v => { PAL.satK = v; }, .4, 1.2, .02],
+  ['num', 'Split tone', () => PAL.tone, v => { PAL.tone = v; }, 0, 1.5, .05],
   ['h', 'Paint'],
   ['tog', 'Painted surfaces', () => PAINT.on, v => { PAINT.on = v; }],
   ['num', 'Paint amount', () => PAINT.k, v => { PAINT.k = v; }, 0, 2, .05],
@@ -7945,7 +8059,7 @@ function frame() {
   // so every card spawned during the frame was born a sixtieth of a second in the FUTURE --
   // `vAge < 0.0` discards, and the frame that got dropped was the first one: the spark.
   FX.t += dt;
-  toonSync(); paintSync();
+  toonSync(); paintSync(); palSync();
   // The card runs the WHOLE scene -- traffic, clouds, his mixer, the post chain. Only the
   // player is suspended, and only because he is being posed rather than driven.
   // BEFORE `stepPlayer`, so a thumb holding a charge is not also read as a sprint.
@@ -8045,7 +8159,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

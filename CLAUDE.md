@@ -2320,6 +2320,41 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   not the locomotion. Suspect the camera before re-tuning movement.
 - **`Colin_Head_MIX` rides at weight 1.** It is the blend shape that turns the generic
   base head into his; the other 41 targets are visemes and stay at zero.
+- **THE PALETTE (`PAL`, `palPatch`) IS A HUE-VS-HUE CURVE, AND THE TWO OBVIOUS DESIGNS ARE BOTH
+  WRONG (c130).** *"It feels very McDonald's -- red and yellow. Tint the green, tint the red,
+  tint the blue."* The source GLB is full of raw primaries and no amount of lighting rescues one.
+  **BOTH ANCHOR SCHEMES FAILED, AND THEY FAILED IN OPPOSITE DIRECTIONS** — checked in node
+  against real colours rather than shipped and looked at, which is the only reason either was
+  caught:
+      NEAREST ANCHOR      strong, and DISCONTINUOUS. Primary red went rose while a brick two
+                          hundredths of a hue away went amber -- so the grade pushed
+                          near-identical colours APART at every boundary between anchors.
+      WEIGHTED ANCHORS    continuous, and it CANCELS exactly where it matters. Red sits between
+                          the rose and amber anchors, both pull equally hard in opposite
+                          directions, and primary red -- the entire complaint -- moved 0.004
+                          and stayed primary. Raising the sharpness does not fix it; the two
+                          distances are genuinely almost equal.
+  **SO IT IS A FEW INDEPENDENT GAUSSIAN NUDGES ON THE HUE WHEEL**, which is literally what he
+  asked for and is how a hue-vs-hue curve works in any grading tool: no anchors, no boundaries,
+  nothing to cancel, and every family separately art-directable. Measured at `pull` 1:
+      #ff0000 primary red -> #ff6197 rose      #d92121 McDonald's red -> #d95280
+      #ffff00 primary yel -> #ffd761 gold      #00ff00 primary green  -> #61ffc4 mint
+      #0000ff primary blu -> #9a61ff violet    #5999e6 sky blue       -> #646ae6 periwinkle
+      #57575c road grey   -> UNCHANGED
+  **THE HUE DISTANCE MUST WRAP.** Without it every red is judged to be a long way from a family
+  centred at zero, and the reds are the whole point.
+  **AND THE SHIFT IS SCALED BY SATURATION.** A grey has no hue, and tinting one is how a neutral
+  road turns lilac — which is why the road above comes out untouched and the grass does not.
+  **THE CHROMA CAP IS HALF THE PAINTERLY READ ON ITS OWN.** A painter mixing from a limited
+  palette physically cannot reach full chroma; a renderer that can is what "too chromatic" means
+  as a complaint. Plus a split tone, cool shadows and warm lights, which is what makes a scene
+  look lit by something rather than multiplied by something.
+  **IT LANDS ON THE ALBEDO, BEFORE THE TOON RAMP AND BEFORE SHADOWS** — this is the paint the
+  world is made OF, not a filter over the picture. And it is patched AFTER `paintPatch` so it
+  ends up FIRST in the shader: both replace the same include, and the palette has to harmonise
+  the base colour before the paint splotches it or every patch edge is a different hue from its
+  neighbour.
+  `city.PAL.set('plutopia' | 'dusk' | 'raw')`, or the Palette section in settings.
 - **THE PAINT PASS (`PAINT`, `paintPatch`) — PROCEDURAL, ZERO BYTES, AND IT IS NOT "ADD NOISE"
   (c127).** *"Is there a way you could take a colour and procedurally generate that same colour
   with slight variation, so it looks splotchy and painterly, without a rendered texture map?"*
