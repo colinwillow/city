@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c160</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c161</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c160';
+const BUILD = 'c161';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1373,7 +1373,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/colin_name_256.png":"d6a1be53","images/hdr_toon_03.png":"129d2760","images/moussa_name_256.png":"e8d784eb","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","images/zorp_name_256.png":"4aab0ca5","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"99d38b7d","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/senagal_flag.glb":"5ff5a849","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/colin.glb":"99d38b7d","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/colin_name_256.png":"d6a1be53","images/hdr_toon_03.png":"129d2760","images/moussa_name_256.png":"e8d784eb","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/shredworld_title_02.webp":"8e192e8b","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","images/zorp_name_256.png":"4aab0ca5","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"99d38b7d","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/senagal_flag.glb":"5ff5a849","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/colin.glb":"99d38b7d","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1519,6 +1519,9 @@ const SFX = {
     this.master = this.ctx.createGain(); this.master.gain.value = this.vol;
     this.master.connect(this.ctx.destination);
     this.decode();
+    // and the charge hum's recording, on the same gesture, if one was fetched
+    try { if (CHARGE.raw && !CHARGE.buf) this.ctx.decodeAudioData(CHARGE.raw.slice(0),
+      b => { CHARGE.buf = b; }, () => {}); } catch (e) {}
     try { MUSIC.fetchAll(); MUSIC.decode(); MUSIC.go('theme'); } catch (e) {}
   },
   wake() { if (!this.ctx) this.init(); else if (this.ctx.state !== 'running') try { this.ctx.resume(); } catch (e) {} },
@@ -1597,6 +1600,65 @@ const WHEELS = {
     // the same loop, taken up an octave and a half: metal under the trucks rather than road
     this.g.gain.setTargetAtTime(grind ? .16 : (on && SFX.on ? .035 + .20 * k * k : 0) * (SFX.on ? 1 : 0), t, .06);
     this.f.frequency.setTargetAtTime(grind ? 2200 : 200 + 1000 * k, t, .06);
+  },
+};
+// ---------- THE BLASTER'S CHARGE HUM (c161, `CHARGE`) ----------
+// *"I need a charge noise for the laser or the blaster -- when you're holding it, it hums. I
+// think I have one from robits but I can also just go find another one."*
+// **IT IS `WHEELS`, ONE WEAPON ALONG, AND THAT IS THE WHOLE DESIGN.** A charge is not a `play()`
+// -- it is ON for as long as the thumb is up, it RISES, and it stops the moment the shot leaves.
+// A one-shot sample cannot do any of that (it would either end early on a long hold or run past
+// a short one), which is exactly why the rolling wheels are a looping source and not an effect.
+// **TWO PATHS AND THE REAL ONE WINS**, the skateboard's rule: this is a synth stand-in and it is
+// MARKED as one, and it stands itself down the moment a recording is in `audio/` -- drop a file
+// at `CHARGE.file`, run `npm run bump`, and nothing here changes.
+// `robits/audio/powerup_01.mp3` is a one-shot RISE rather than a loop, so it is the wrong shape
+// for a hold even though it is the right idea; what this wants is a few seconds that loop.
+// A capacitor whine is two detuned saws under a lowpass that opens: the DETUNE is what makes it
+// read as electrical rather than as a note, and the filter opening is most of "it is filling up".
+const CHARGE = {
+  file: 'audio/blaster_charge_01.mp3',   // drop one in and it takes over; none is needed
+  buf: null, tried: 0, src: null, samp: null, sg: null,
+  a: null, b: null, f: null, g: null,
+  vol: .5, hz0: 68, hzSpan: 210, det: 7, cut0: 320, cutSpan: 2600, rate0: .82, rateSpan: .5,
+  start() {
+    if (this.src || !SFX.ctx) return;
+    const ctx = SFX.ctx;
+    const a = ctx.createOscillator(), b = ctx.createOscillator();
+    a.type = 'sawtooth'; b.type = 'sawtooth'; b.detune.value = this.det;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = this.cut0; f.Q.value = 6;
+    const g = ctx.createGain(); g.gain.value = 0;
+    a.connect(f); b.connect(f); f.connect(g); g.connect(SFX.master);
+    a.start(); b.start();
+    this.src = a; this.a = a; this.b = b; this.f = f; this.g = g;
+  },
+  // THE RECORDING IS TRIED ON EVERY `set`, NOT ONCE AT LOAD -- a buffer decodes asynchronously,
+  // so the first seconds of a session legitimately have none and must still hum.
+  sample() {
+    if (this.samp) return this.samp;
+    if (!SFX.ctx || !this.buf) return null;
+    const ctx = SFX.ctx, s = ctx.createBufferSource();
+    s.buffer = this.buf; s.loop = true;
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(g); g.connect(SFX.master); s.start();
+    this.samp = s; this.sg = g;
+    if (this.g) this.g.gain.setTargetAtTime(0, ctx.currentTime, .05);   // the synth stands down
+    return s;
+  },
+  set(k, on) {
+    if (!SFX.ctx) return;
+    const t = SFX.ctx.currentTime, c = clamp(k, 0, 1);
+    const s = this.sample();
+    if (s) {
+      this.sg.gain.setTargetAtTime((on && SFX.on ? (.25 + .55 * c) * this.vol : 0), t, .05);
+      s.playbackRate.setTargetAtTime(this.rate0 + this.rateSpan * c, t, .07);
+      return;
+    }
+    this.start(); if (!this.g) return;
+    this.g.gain.setTargetAtTime((on && SFX.on ? (.05 + .16 * c) * this.vol : 0), t, .05);
+    this.a.frequency.setTargetAtTime(this.hz0 + this.hzSpan * c, t, .06);
+    this.b.frequency.setTargetAtTime((this.hz0 + this.hzSpan * c) * 1.007, t, .06);
+    this.f.frequency.setTargetAtTime(this.cut0 + this.cutSpan * c * c, t, .06);
   },
 };
 const MUSIC = {
@@ -1743,6 +1805,12 @@ const snd = {
   step: hard => { SFX.noise(hard ? .085 : .065, hard ? .10 : .055, hard ? 620 : 460); SFX.blip(hard ? 92 : 78, .05, 'sine', hard ? .06 : .035, hard ? 55 : 48); },
 };
 SFX.fetchAll();
+// THE CHARGE HUM'S RECORDING, IF THERE IS ONE. Written the way `weapFit` is: the file does not
+// have to exist, and the day it does nothing here changes. It is fetched on the same breath as
+// the effects and decoded on the first touch, so the first hold HAS it rather than starting the
+// download -- `SFX`'s own two-stage rule.
+fetch(A(CHARGE.file)).then(r => r.ok ? r.arrayBuffer() : Promise.reject(0))
+  .then(b => { CHARGE.raw = b; }).catch(() => { /* no recording yet: the synth stands in */ });
 // The gesture that builds the context. Capture phase, because both pads stopPropagation.
 addEventListener('pointerdown', () => SFX.wake(), { capture: true, passive: true });
 addEventListener('keydown', () => SFX.wake(), { capture: true, passive: true });
@@ -3273,6 +3341,9 @@ function stepAim(dt) {
   // THE BALL WINDS UP AT THE MUZZLE while he holds it -- the swirl closing in is the whole
   // read of the charge, and it says the shot is getting bigger without a number on screen.
   stepChargeFx(p.aim ? WEAP.min + (1 - WEAP.min) * p.chg : 0, dt);
+  // AND THE HUM OFF THE SAME NUMBER THE BALL IS DRAWN FROM, so the sound and the picture can
+  // never disagree about how full the shot is -- the slash mark's rule, one sense along.
+  CHARGE.set(p.chg, !!p.aim && !TITLE.on);
   reticShow(p.lock, !!p.aim, p.aimH, dt);
 }
 // WHAT THE GUN IS POINTING AT. A cone about the aim, nearest-and-straightest first, and
@@ -3624,8 +3695,23 @@ class PBolt {
       this.pop('#ff9adf', 7, .95); return true;
     }
     for (const o of carsNear(this.x, this.z, 8, _cn)) {
-      if (Math.hypot(o.x - this.x, o.z - this.z) > R + o.hl) continue;
-      if (this.y > o.box.maxy + 1) continue;
+      // **A CAR IS AN ORIENTED BOX, AND THIS WAS A CIRCLE ON ITS LONG AXIS (c161).** *"One will
+      // be next to me, I'm not even really near it, I'm trying to shoot something else, and when
+      // I shoot there's a big flat line and the car gets hit even though I didn't shoot at the
+      // car at all."* Exactly right, and the number says how far out it was: `hypot(...) > R + hl`
+      // is a CIRCLE of radius `hl` about the centre -- the car's half LENGTH, 2.49 m -- so a bolt
+      // passing two and a half metres off a car's FLANK, where the car is 0.95 m wide, scored a
+      // hit. Almost three times the metal in every direction, on a car pointing any way at all.
+      // **THIS FILE ALREADY HAD THE NOTE, ONE SYSTEM OVER**: *cars are oriented boxes, not the
+      // AABB of a rotated one -- that is the phantom hit, where the box touches you and the mesh
+      // plainly does not.* `carHit` and `resolveBoxes` both test in the car's OWN frame; the bolt
+      // was the one thing still using a radius. Same frame, same `hl`/`hw` half extents, so the
+      // three cannot drift apart.
+      const dx = this.x - o.x, dz = this.z - o.z;
+      const cf = Math.sin(o.yaw), cz = Math.cos(o.yaw);
+      const along = dx * cf + dz * cz, side = -dx * cz + dz * cf;
+      if (Math.abs(along) > o.hl + R || Math.abs(side) > o.hw + R) continue;
+      if (this.y > o.box.maxy + R || this.y < o.box.miny - R) continue;
       // FOUR SHOTS, AND EACH ONE LOOKS DIFFERENT (c145). The first still just stops it, which
       // is what `BOLT.stun` always did; after that the panels wander, it catches light, and the
       // fourth takes it apart. `carHurt` owns all of that and raises the heat itself.
@@ -4389,7 +4475,7 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
 // possible source of pale specks on a silhouette.
 let DBG = 0;
 const DBGN = ['', 'rim off', 'outline off', 'fxaa off', 'bloom off', 'full res', 'no post', 'albedo only',
-  'sun only', 'nan map', 'no shadow', 'no hole'];
+  'sun only', 'nan map', 'no shadow', 'no hole', 'colliders'];
 // What is actually IN the scene graph, counted rather than assumed. Answers the question
 // directly on the phone, where there is no console to traverse from.
 let dbgInfo = '';
@@ -4555,6 +4641,67 @@ function albedoFor(m) {
 function applyShade() {
   sun.castShadow = DBG !== 10 && SHADE.mode === 'map';
   sun.shadow.intensity = SHADE.k;
+}
+// ---------- SHOW ME THE COLLIDERS (c161, `BOXES`, `stepBoxes`) ----------
+// *"Is there a debug code for the collider? Because I think the vehicle colliders are way too
+// big. I wanna see them."* He should be able to -- and he was right, which is the point: the
+// bolt's car test was a circle on the long axis and no amount of describing it would have been
+// worth one look. This file's oldest rule, applied to geometry instead of to a framebuffer:
+// **measure the buffer, do not reason about it.**
+// CARS ARE DRAWN IN THEIR OWN FRAME, which is the whole question here -- an axis-aligned wire
+// box around a car at 45 degrees would show the phantom, not the collider. Each one is a unit
+// cube scaled to `hl`/`hw`/`hh` and yawed by `car.yaw`, exactly as `carHit` reads it.
+// ONE `LineSegments` PER FAMILY, rebuilt only while the mode is on, so it costs nothing at all
+// when it is off -- and the static grid is thirty thousand boxes, so those are taken from
+// `gridQuery` around HIM rather than drawn whole.
+const BOXES = { on: 0, near: 26, cars: '#ff5aa0', solid: '#5aff9a', cop: '#ffd23a', max: 900 };
+let _bxCar = null, _bxSolid = null, _bxCop = null;
+function _bxMake(col) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(BOXES.max * 24 * 3), 3));
+  const m = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: col, depthTest: false, transparent: true, opacity: .85 }));
+  m.frustumCulled = false; m.renderOrder = 9; m.userData.noHole = 1; m.visible = false;
+  scene.add(m); return m;
+}
+// the twelve edges of a unit cube, as pairs
+const _BXE = [[0,1],[1,3],[3,2],[2,0],[4,5],[5,7],[7,6],[6,4],[0,4],[1,5],[2,6],[3,7]];
+const _bxV = new THREE.Vector3();
+function _bxPush(arr, n, cx, cy, cz, hx, hy, hz, yaw) {
+  if (n.i + 24 > BOXES.max * 24) return;
+  const c = Math.cos(yaw || 0), s = Math.sin(yaw || 0);
+  const pt = [];
+  for (let k = 0; k < 8; k++) {
+    const ax = (k & 1 ? hx : -hx), ay = (k & 2 ? hy : -hy), az = (k & 4 ? hz : -hz);
+    // yaw about Y, the car's own frame: forward is (sin, cos), so x' = ax*c + az*s
+    pt.push([cx + ax * c + az * s, cy + ay, cz - ax * s + az * c]);
+  }
+  for (const [a, b] of _BXE) {
+    arr[n.i * 3] = pt[a][0]; arr[n.i * 3 + 1] = pt[a][1]; arr[n.i * 3 + 2] = pt[a][2]; n.i++;
+    arr[n.i * 3] = pt[b][0]; arr[n.i * 3 + 1] = pt[b][1]; arr[n.i * 3 + 2] = pt[b][2]; n.i++;
+  }
+}
+function stepBoxes() {
+  const on = BOXES.on || DBG === 12;
+  if (!on) { for (const m of [_bxCar, _bxSolid, _bxCop]) if (m) m.visible = false; return; }
+  if (!_bxCar) { _bxCar = _bxMake(BOXES.cars); _bxSolid = _bxMake(BOXES.solid); _bxCop = _bxMake(BOXES.cop); }
+  const px = player.pos.x, pz = player.pos.z, R = BOXES.near;
+  // CARS, in their own frame -- `hl` is the LENGTH and lies along the car's forward.
+  { const a = _bxCar.geometry.attributes.position.array, n = { i: 0 };
+    for (const c of carsNear(px, pz, R, _cn)) _bxPush(a, n, c.x, c.y + c.hh * .5, c.z, c.hw, c.hh * .5, c.hl, c.yaw);
+    _bxCar.geometry.setDrawRange(0, n.i); _bxCar.geometry.attributes.position.needsUpdate = true; _bxCar.visible = n.i > 0; }
+  // THE STATIC GRID, which is what he actually walks into. Axis-aligned by construction.
+  { const a = _bxSolid.geometry.attributes.position.array, n = { i: 0 };
+    _sbox.length = 0; gridQuery(px, pz, Math.ceil(R / 8), _sbox);
+    for (const b of _sbox) _bxPush(a, n, (b.minx + b.maxx) / 2, (b.miny + b.maxy) / 2, (b.minz + b.maxz) / 2,
+      (b.maxx - b.minx) / 2, (b.maxy - b.miny) / 2, (b.maxz - b.minz) / 2, 0);
+    _bxSolid.geometry.setDrawRange(0, n.i); _bxSolid.geometry.attributes.position.needsUpdate = true; _bxSolid.visible = n.i > 0; }
+  // AND THE POLICE, who are a box handed to the player's resolver every frame rather than a
+  // member of the static grid -- so if one of them is wrong it is wrong HERE and nowhere else.
+  { const a = _bxCop.geometry.attributes.position.array, n = { i: 0 };
+    for (const c of cops) { if (!c || c.y === undefined) continue;
+      if (Math.abs(c.x - px) > R || Math.abs(c.z - pz) > R) continue;
+      _bxPush(a, n, c.x, c.y + COLIN_HEIGHT * .5, c.z, COP.r, COLIN_HEIGHT * .5, COP.r, 0); }
+    _bxCop.geometry.setDrawRange(0, n.i); _bxCop.geometry.attributes.position.needsUpdate = true; _bxCop.visible = n.i > 0; }
 }
 function applyDbg() {
   buildNEl.textContent = BUILD + (DBG ? ' /' + DBGN[DBG] : '');
@@ -5315,7 +5462,23 @@ function stepTraffic(dt) {
     // faster than it could drive up it. One bad cell can no longer fire one into orbit.
     const cg = groundAt(c.x, c.z, c.y + .8, 1.2);
     c.y += clamp((cg.hit ? cg.floor : hmAt(c.x, c.z)) + c.lift - c.y, -14 * dt, 14 * dt);
+    // **A SHOT CAR TAKES THE HIT (c161, `WRECK.kick`).** *"When you shoot the cars they should
+    // kind of get a little kickback."* It is integrated HERE, into `c.x/c.z`, rather than drawn
+    // as an offset on the group -- so the collider, the traffic grid and the picture all move
+    // together and there is no second position to keep in step. A shot car has `speed = 0` and
+    // `zap = 1e9` (c147), so nothing else is driving it and this nudge is all there is.
+    // **AND IT IS A SHOVE, NOT A LAUNCH.** `Math.exp(-k*dt)`, never a bare `*= k` per frame --
+    // this file's own rule -- and the jolt is a ROLL on its springs rather than the car leaving
+    // the road, because a car that takes off from a plasma bolt reads as a bug, not as recoil.
+    if (c.kx || c.kz || c.kr) {
+      const decay = Math.exp(-WRECK.kickDrag * dt);
+      c.x += c.kx * dt; c.z += c.kz * dt;
+      c.kx *= decay; c.kz *= decay; c.kr *= decay;
+      if (Math.abs(c.kx) + Math.abs(c.kz) < .02) { c.kx = 0; c.kz = 0; }
+      if (Math.abs(c.kr) < .002) c.kr = 0;
+    }
     c.g.position.set(c.x, c.y, c.z); c.g.rotation.y = c.yaw;
+    c.g.rotation.z = c.kr || 0;
     // world box for the player to bump into
     const ex = Math.abs(fx) * c.hl + Math.abs(fz) * c.hw, ez = Math.abs(fz) * c.hl + Math.abs(fx) * c.hw;
     // the AABB is the broad phase; yaw/cx/cz/hl/hw are what resolveBoxes actually tests
@@ -5353,7 +5516,20 @@ const BOOT = { art: 'images/splash_screen_01.webp', png: 'images/splash_screen_0
 // HIS WORDMARK. `shredworld_title_01.png` is the other cut of it -- `city.TITLE.art` and a
 // reload swaps them, or set it here. Loaded through `A()` like everything else, so repainting
 // it under the same filename actually arrives on a phone that has already seen the old one.
-const TITLE_ART = 'images/shredworld_title_02.png';
+// **AND IT IS THE WEBP (c161), WITH THE PNG KEPT UNDER IT.** *"Does WebP do transparency? I did
+// them as PNGs but I'm wondering if in the future I should do WebP for things with transparency."*
+// It does, and lossy WebP WITH ALPHA is the right default for anything drawn -- measured on his
+// own art with `sharp`, quality 82 / alphaQuality 90:
+//     shredworld_title_02   2129x739   2042 KB  ->   348 KB   5.9x
+//     shredworld_title_01   2172x724   1762 KB  ->   249 KB   7.1x
+//     the three name cards   256 wide   37-50 KB ->  10-12 KB  4x
+// The wordmark is the one that pays: 1.7 MB off the screen that loads FIRST, which is the same
+// argument the splash's own 2.65 MB -> 270 KB was made on at c106.
+// **THE PNG STAYS AND IS WORTH ITS ONE LINE**, `BOOT.png`'s rule exactly: a phone that cannot
+// decode WebP would otherwise show nothing where the title is, and blank is indistinguishable
+// from a bug. The `onerror` is the whole fallback.
+const TITLE_ART = 'images/shredworld_title_02.webp';
+const TITLE_ART_PNG = 'images/shredworld_title_02.png';
 const bootBar = document.getElementById('bootBar'), bootMsg = document.getElementById('bootMsg'), bootErr = document.getElementById('bootErr');
 const bootEl = document.getElementById('boot');
 {
@@ -5372,7 +5548,13 @@ const bootEl = document.getElementById('boot');
   // AND THE WORDMARK ON THE SAME BREATH. It is wanted the instant the boot card lifts, and
   // fetching it here means it is decoded and waiting rather than popping in a beat late.
   const t = document.getElementById('titleArt');
-  if (t) { t.onerror = () => console.warn('[title] no wordmark at ' + TITLE_ART); t.src = A(TITLE_ART); }
+  if (t) {
+    t.onerror = () => {
+      if (t.dataset.fell) { console.warn('[title] no wordmark at ' + TITLE_ART_PNG); return; }
+      t.dataset.fell = '1'; t.src = A(TITLE_ART_PNG);     // no WebP on this phone: take the PNG
+    };
+    t.src = A(TITLE_ART);
+  }
 }
 // HOW LONG IS LEFT OF THE SPLASH. Nothing if the art never arrived -- a blank hold is just a
 // delay -- and nothing if it has already been up for `min`.
@@ -5562,6 +5744,12 @@ const WRECK = {
   fade: 1.5,
   smokeEvery: .34,  // while it burns
   burnH: .55,       // where the flames sit, as a fraction of the car's height
+  // WHAT A HIT SHOVES IT BY (c161). *"When you shoot the cars they should kind of get a little
+  // kickback."* Metres a second along the shot, decaying -- so a car covers about
+  // `kick / kickDrag` in TOTAL however long it is on screen. That arithmetic is the one c146
+  // paid for with debris that left the postcode: a launch speed means nothing without the clock
+  // beside it. 5.5 over 3.4 is about 1.6 m of shunt, and the roll is the body on its springs.
+  kick: 5.5, kickDrag: 3.4, kickRoll: .10,
 };
 // ONE SPLIT PER DISTINCT CAR MODEL, CACHED. There are thirty models and several hundred cars, so
 // the cost is paid once per model and only for models that actually get shot.
@@ -5705,6 +5893,15 @@ function carHurt(car, hx, hz) {
   // which also meant four shots had to land inside eight seconds on a moving target, and they
   // never did. A car with a hole in it does not resume its commute.
   car.zap = 1e9; car.speed = 0; car.stop = 0;
+  // THE KICK, ALONG THE WAY THE SHOT WAS TRAVELLING. `hx,hz` is the bolt's OWN velocity, which
+  // is the direction already stored -- recovering it from the geometry of the impact is the
+  // mistake `copFly` made once, where the bolt is on top of the thing it hit and the bearing is
+  // whatever rounding says. **When a direction is already stored, do not derive it.**
+  { const m = Math.hypot(hx || 0, hz || 0) || 1;
+    const k = WRECK.kick * (1 + stage * .35);           // and a later hit moves it further
+    car.kx = (car.kx || 0) + (hx || 0) / m * k;
+    car.kz = (car.kz || 0) + (hz || 0) / m * k;
+    car.kr = (car.kr || 0) + WRECK.kickRoll * (Math.random() < .5 ? -1 : 1); }
   if (!car.wreck) {
     while (WRECKS.length >= WRECK.max) wreckDrop(WRECKS[0]);   // oldest goes, so this is bounded
     const w = wreckMake(car);
@@ -8225,6 +8422,7 @@ const OPT_ROWS = [
   ['seg', 'Muzzle flash', () => WEAP.flash, v => { WEAP.flash = v; }, [['plasma', 'Plasma'], ['tight', 'Tight'], ['card', 'Card'], ['both', 'Both']]],
   ['seg', 'Jet exhaust', () => JET.look, v => { JET.look = v; }, [['flame', 'Flame'], ['cards', 'Cards'], ['glow', 'Glow'], ['both', 'Both']]],
   ['seg', 'Slash mark', () => SLASH.lay, v => { SLASH.lay = v; }, [['ground', 'Flat'], ['card', 'Card']]],
+  ['tog', 'Show colliders', () => !!BOXES.on, v => { BOXES.on = v ? 1 : 0; }],
   ['num', 'Slash tilt', () => SLASH.tilt, v => { SLASH.tilt = v; }, 0, 1.2, .02],
   ['num', 'Impact size', () => FX.impact, v => { FX.impact = v; }, .2, 1.5, .05],
   ['num', 'Jet flame width', () => JET.flame.wide, v => { JET.flame.wide = v; }, .02, .4, .005],
@@ -10345,6 +10543,7 @@ function frame() {
   stepHole();
   blobStep();
   stepSlash(dt);
+  stepBoxes();
   fxStep(dt);
   {
     // THE RING IS ALSO HOW HE FINDS THE CONTROL. Showing it only while charging means the pad
@@ -10471,7 +10670,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

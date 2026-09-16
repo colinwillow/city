@@ -1198,6 +1198,75 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE BOLT TESTED A CIRCLE ON THE CAR'S LONG AXIS (c161).** *"I think the vehicle colliders are
+  way too big -- one will be next to me, I'm not even really near it, trying to shoot something
+  else, and when I shoot there's a big flat line and the car gets hit even though I didn't shoot
+  at the car at all."* He is right, and the line says exactly how wrong:
+      if (Math.hypot(o.x - this.x, o.z - this.z) > R + o.hl) continue;
+  `hl` is the car's half **LENGTH**. So the test was a CIRCLE of that radius about the centre,
+  whichever way the car was pointing. Measured on the 341 real cars in the real city
+  (`JAM_PROBE=tools/probe-box.mjs`), against a 1.40 m bolt:
+      the average car                     5.02 m long x 2.09 m wide
+      OLD  a circle on the long axis      7.82 m of hit window across its flank
+      NEW  the car's own box              4.89 m
+      **a bolt scored a hit out to 3.91 m from the centreline, where the metal ends at 1.05 --
+      so up to 2.86 m of CLEAR AIR read as a hit**, which is most of a lane.
+  **THIS FILE ALREADY HAD THE NOTE, ONE SYSTEM OVER.** *Cars are oriented boxes, not the AABB of
+  a rotated one -- that is the phantom hit, where the box touches you and the mesh plainly does
+  not.* `carHit` and `resolveBoxes` have both tested in the car's own frame since c50-something;
+  **the bolt was the one thing left using a radius**, and a circle is worse than the AABB that
+  note was written about. Same frame, same `hl`/`hw` half extents, so the three cannot drift.
+- **AND HE CAN SEE THE COLLIDERS NOW (c161, `BOXES`, badge mode 12).** *"Is there a debug code for
+  the collider? I wanna see them."* He should be able to, and the fact that he was RIGHT is the
+  argument: no amount of describing a hit test is worth one look at it. `/nan map`'s rule applied
+  to geometry instead of to a framebuffer -- measure the buffer, do not reason about it.
+  **CARS ARE DRAWN IN THEIR OWN FRAME**, yawed, because an axis-aligned wire box round a car at 45
+  degrees would show the phantom rather than the collider and answer the wrong question. Three
+  families in three colours: cars pink, the static grid green, the police amber -- the police
+  being separate because they are a box handed to the player's resolver every frame rather than a
+  member of the static grid, so a wrong one is wrong THERE and nowhere else.
+  It rebuilds only while it is on, and the static grid is taken from `gridQuery` around HIM
+  rather than drawn whole -- thirty thousand boxes is not a thing to put in a buffer. `BOXES.on`,
+  or the Show colliders row in settings, or tap the badge to 12.
+- **A SHOT CAR TAKES THE HIT (c161, `WRECK.kick`).** *"When you shoot the cars they should kind of
+  get a little kickback."* Integrated into `c.x/c.z` in `stepTraffic`, not drawn as an offset on
+  the group -- so the collider, the traffic grid and the picture move together and there is no
+  second position to keep in step. A shot car has `speed = 0` and `zap = 1e9` since c147, so
+  nothing else is driving it and the nudge is all there is.
+  **`Math.exp(-k*dt)`, never a bare `*= k`**, and the distance is `kick / kickDrag` -- about 1.6 m
+  in TOTAL however long it is on screen. That arithmetic is the one c146 paid for with debris that
+  left the postcode: **a launch speed means nothing without the clock beside it.** The jolt is a
+  ROLL on its springs rather than a hop, because a car that takes off from a plasma bolt reads as
+  a bug and not as recoil. It takes its direction from `hx,hz`, the bolt's OWN velocity, which is
+  the direction already stored -- `copFly`'s rule about not deriving one from the geometry of an
+  impact where the two things are on top of each other.
+- **THE BLASTER HUMS WHILE IT CHARGES (c161, `CHARGE`), AND IT IS `WHEELS` ONE WEAPON ALONG.**
+  *"I need a charge noise for the laser -- when you're holding it, it hums."* A charge is not a
+  `play()`: it is ON for as long as the thumb is up, it RISES, and it stops when the shot leaves.
+  A one-shot sample can do none of that -- it ends early on a long hold and runs past a short one
+  -- which is exactly why the rolling wheels are a looping source and not an effect.
+  **TWO PATHS AND THE REAL ONE WINS**, the skateboard's rule: the synth is a capacitor whine (two
+  detuned saws under a lowpass that opens, where the DETUNE is what makes it read as electrical
+  rather than as a note) and it stands itself down the moment a recording decodes. Drop one at
+  `CHARGE.file`, run `npm run bump`, and nothing in the code changes.
+  **`robits/audio/powerup_01.mp3` IS THE WRONG SHAPE** even though it is the right idea -- it is a
+  one-shot RISE, and a hold wants a few seconds that LOOP.
+  It is driven off `p.chg`, the same number `stepChargeFx` draws the ball from, so the sound and
+  the picture can never disagree about how full the shot is.
+- **YES, WEBP DOES TRANSPARENCY -- AND IT IS THE RIGHT DEFAULT FOR ANYTHING DRAWN (c161).**
+  *"Does WebP do transparency? I did them as PNGs but I'm wondering if in future I should do WebP
+  for things with transparency."* It does, lossily, and it is a big win. Measured on his own art
+  with `sharp` at quality 82 / alphaQuality 90:
+      shredworld_title_02   2129x739   2042 KB  ->  348 KB   5.9x
+      shredworld_title_01   2172x724   1762 KB  ->  249 KB   7.1x
+      the three name cards   256 wide   37-50 KB -> 10-12 KB  4x
+  **The wordmark is the one that pays** -- 1.7 MB off the screen that loads FIRST, which is the
+  same argument the splash's 2.65 MB -> 270 KB was made on at c106. It ships as WebP now with the
+  PNG under it on an `onerror`, `BOOT.png`'s rule: a phone that cannot decode WebP would show
+  nothing where the title is, and blank is indistinguishable from a bug.
+  **The name cards stay PNG.** 100 KB is not worth a second path, and they already degrade to
+  text by design if they fail. **Export drawn art as WebP from here on; keep PNG only where the
+  file is small enough not to matter.**
 - **THE SLASH MARK LIES IN THE WORLD, FLAT -- AND FOR FOUR BUILDS I WAS ARGUING ABOUT THE WRONG
   AXIS (c160, `SLASH.lay`, `slashOrient`).** *"They're always parallel to the camera where they
   should be perpendicular. If you were looking at a top-down view of the top of the character's
