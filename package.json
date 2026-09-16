@@ -30,7 +30,8 @@
     "gun": "node tools/gun.mjs",
     "gait": "node tools/gait.mjs",
     "sheet": "node tools/sheet.mjs",
-    "jam": "node tools/jam.mjs"
+    "jam": "node tools/jam.mjs",
+    "aim": "node tools/aim.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

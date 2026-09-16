@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c127</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c128</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c127';
+const BUILD = 'c128';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -700,7 +700,15 @@ const WEAP = {
   // SPINE1 AND SPINE2 ONLY, never the hips: the legs belong to the board and must not come
   // round with the gun. `max` is how far he will twist before the shot simply goes where he is
   // not looking -- a man does not turn 180 degrees at the waist.
-  twist: { on: 1, max: 1.15, ease: .10, bones: [/spine2$/i, /spine1$/i] },
+  // `fix` CLOSES THE LOOP ON THE BARREL ITSELF, which is the only thing that actually matters:
+  // see `aimTwist`. `fixMax` IS SIZED TO THE POSE BIAS AND NO MORE (measured at 21-23 deg, so
+  // .45 rad = 26 covers it with margin). It has to be bounded, and tightly: an integrator with
+  // a long leash does not respect `max` at all -- it just keeps winding until the barrel is on
+  // the mark, and at .9 it twisted him ONE HUNDRED AND TEN DEGREES at the waist to make a
+  // ninety-degree shot line up. Past the clamp the barrel is meant to lag the reticle, because
+  // a man cannot turn that far; the SHOT still leaves on `p.aimH` either way (c119), so what is
+  // lost there is the look of it and never the accuracy.
+  twist: { on: 1, max: 1.15, ease: .10, fix: 6.0, fixMax: .45, bones: [/spine2$/i, /spine1$/i] },
   // HIS OWN BLASTER, AND IT CARRIES THE JOINTS. Measured through gltf-transform: geometry
   // -65.6..7.4 on X (so the barrel runs along -X, 0.73 m long at its armature's 0.01), with
   // `weapon_root` at the origin and `weapon_tip` 56.2 units down the barrel -- the same pair
@@ -2141,22 +2149,6 @@ function attachGear(gl, kind) {
   gear[kind] = { g, model, tip, fix, jets };
   return g;
 }
-// WHICH BONE, FOUND BY PATTERN RATHER THAN BY NAME. Every skin in here is a Mixamo rig but
-// they do not all spell the spine the same way, and a name that is merely absent gives a
-// silent no-jetpack rather than an error.
-function gearBone(root, pats) {
-  let bone = null, best = -1;
-  root.traverse(o => {
-    if (!o.isBone) return;
-    const nm = o.name.toLowerCase();
-    for (let i = 0; i < pats.length; i++) {
-      if (!pats[i].test(nm)) continue;
-      if (best < 0 || i < best) { best = i; bone = o; }   // earlier patterns win: the list is preference order
-      break;
-    }
-  });
-  return bone;
-}
 // SIZED AGAINST THE BONE'S OWN SCALE, NEVER THE WORLD'S. A joint in these exports carries a
 // hundredth-scale of its own and a child of it inherits that, so a metre in world space is a
 // hundred units here. Measured off the geometry and divided, the skateboard's rule -- a
@@ -2238,6 +2230,23 @@ function weapFit() {
   return { mount: gear.mount ? 'weapon_root (as authored)' : 'hand + WEAP.fit (no weapon joint on this rig yet)',
            hand: !!gear.hand, spine: gear.spine ? gear.spine.name : null, fit: WEAP.fit, at: JET.at };
 }
+/* TWIST:START */
+// WHICH BONE, FOUND BY PATTERN RATHER THAN BY NAME. Every skin in here is a Mixamo rig but
+// they do not all spell the spine the same way, and a name that is merely absent gives a
+// silent no-jetpack rather than an error.
+function gearBone(root, pats) {
+  let bone = null, best = -1;
+  root.traverse(o => {
+    if (!o.isBone) return;
+    const nm = o.name.toLowerCase();
+    for (let i = 0; i < pats.length; i++) {
+      if (!pats[i].test(nm)) continue;
+      if (best < 0 || i < best) { best = i; bone = o; }   // earlier patterns win: the list is preference order
+      break;
+    }
+  });
+  return bone;
+}
 // THE GUN FOLLOWS THE RETICLE WHILE HE RIDES. `p.aimH` is where the shot goes (c119) and
 // `p.faceH` is where the board is pointed; the gap between them is exactly what the spine has
 // to take up, and it only exists on the board -- on foot `stepAim` already turns his whole body.
@@ -2246,7 +2255,7 @@ function weapFit() {
 // different answer on every rig and is the class of assumption `HIPFIX` exists to pay for.
 // The parent chain is re-read per bone as we go down it, because each twist moves the next
 // one's frame -- applying all three against one stale P is a shear rather than a turn.
-const _twQ = new THREE.Quaternion(), _twP = new THREE.Quaternion(), _twT = new THREE.Quaternion();
+const _twQ = new THREE.Quaternion(), _twP = new THREE.Quaternion(), _twT = new THREE.Quaternion(), _twU = new THREE.Quaternion();
 const _twY = new THREE.Vector3(0, 1, 0);
 function aimTwist(dt) {
   const p = player, T = WEAP.twist;
@@ -2256,21 +2265,88 @@ function aimTwist(dt) {
     skin.twistB = [];
     for (const pat of T.bones) { const b = gearBone(colin.model, [pat]); if (b) skin.twistB.push(b); }
   }
+  // THE BARREL AND THE CHEST ARE NOT THE SAME DIRECTION, AND THAT IS THE WHOLE COMPLAINT.
+  // *"The tip of his gun is kind of to the right."* Measured with `npm run aim`, which poses the
+  // real rig in the real riding-and-aiming pose and reads the world bearing of
+  // `weapon_root` -> `weapon_tip`:
+  //     the twist TRACKS PERFECTLY -- 1.00 degrees of barrel per degree asked, on both rigs
+  //     but the aim POSE holds the rifle across his body: colin -20.5 deg, moussa_toon -22.8
+  // So turning the chest to the mark points the CHEST at the mark and leaves the gun twenty
+  // degrees off it, for ever, on every character. Not a Moussa bug -- the two agree within 2.
+  // AND THE BIAS IS NOT TYPED, BECAUSE IT IS A PROPERTY OF THE ANIMATION. It differs per
+  // character, it would differ again on a re-export, and it moves during the recoil. So the
+  // loop is CLOSED on the thing being aimed: read where the barrel actually ended up last
+  // frame, and fold the residual back in. It converges on "the barrel is on the mark" whatever
+  // the pose is doing, and it needs no calibration step and nothing measured by hand.
   const live = T.on && p.board && !p.hit && KIT.out.blaster && (p.aim || p.turning) && p.aimH !== undefined;
-  const want = live ? clamp(wrapAngle(p.aimH - p.faceH), -T.max, T.max) : 0;
+  const resid = live && p.aimBar !== undefined ? wrapAngle(p.aimH - p.aimBar) : 0;
+  p.aimErr = clamp(damp(p.aimErr || 0, (p.aimErr || 0) + resid, 1 / Math.max(.001, T.fix), dt), -T.fixMax, T.fixMax);
+  if (!live) p.aimErr = 0;
+  // THE CLAMP GOES ON THE REQUEST, NOT ON THE TOTAL. `max` is "how far a man turns at the
+  // waist", and it is measured from the gun pointing down the deck -- not from the pose's own
+  // twenty-degree bias, which has his shoulders already turned. Clamping the sum spent a third
+  // of the budget undoing the pose and left him unable to aim past 45 degrees at all.
+  const want = live ? clamp(wrapAngle(p.aimH - p.faceH), -T.max, T.max) + p.aimErr : 0;
   p.twist = damp(p.twist || 0, want, T.ease, dt);
-  if (!skin.twistB.length || Math.abs(p.twist) < .002) return;
+  // MEASURED EVEN WHEN NOTHING IS APPLIED, because the correction loop's input is the barrel
+  // and an early return here means it is never read -- so at a dead-ahead aim the loop never
+  // started and the pose's bias stood uncorrected. The one case that has to work.
+  if (!skin.twistB.length || Math.abs(p.twist) < .002) { aimBarrel(skin, p); return; }
   const per = p.twist / skin.twistB.length;
-  for (const b of skin.twistB) {
+  for (let i = 0; i < skin.twistB.length; i++) {
+    const b = skin.twistB[i];
     if (!b.parent) continue;
     b.parent.updateWorldMatrix(true, false);
     b.parent.getWorldQuaternion(_twP);
     _twQ.setFromAxisAngle(_twY, per);
     _twT.copy(_twP).invert().multiply(_twQ).multiply(_twP);
     b.quaternion.premultiply(_twT);
+    // KEEP THE DELTA SO IT CAN BE TAKEN BACK OFF -- see `aimUntwist`, and read that before
+    // touching any of this.
+    (skin.twistD || (skin.twistD = []))[i] = _twT.clone();
     b.updateMatrixWorld(true);
   }
+  aimBarrel(skin, p);
 }
+// WHERE THE BARREL ENDED UP, off the joint pair rather than off anything assumed. `weapon_root`
+// and `weapon_tip` are in the file precisely so this is readable (`npm run joints`), so the
+// direction they make IS where the gun points -- through the clip, through the twist, through
+// the recoil, with nothing derived.
+const _abA = new THREE.Vector3(), _abB = new THREE.Vector3();
+function aimBarrel(skin, p) {
+  if (skin.wr === undefined) {
+    skin.wr = null; skin.wt = null;
+    colin.model.traverse(o => { if (o.name === 'weapon_root') skin.wr = o; if (o.name === 'weapon_tip') skin.wt = o; });
+  }
+  if (!skin.wr || !skin.wt) { p.aimBar = undefined; return; }
+  skin.wr.updateWorldMatrix(true, false); skin.wt.updateWorldMatrix(true, false);
+  skin.wr.getWorldPosition(_abA); skin.wt.getWorldPosition(_abB);
+  _abB.sub(_abA);
+  if (_abB.lengthSq() < 1e-8) { p.aimBar = undefined; return; }
+  p.aimBar = Math.atan2(_abB.x, _abB.z);
+}
+// ...AND IT HAS TO BE TAKEN BACK OFF BEFORE THE MIXER RUNS, OR IT COMPOUNDS FOR EVER.
+// *"He like unravelled -- the spine just started rotating."* That is this, exactly.
+// `premultiply` is a RELATIVE edit, and it is only safe if something rewrites the bone from
+// scratch every frame. The mixer does that ONLY for bones the playing clips actually have
+// tracks for -- and riding with the blaster out, the clips are c115's `__legs` clones, **which
+// have every spine-up track REMOVED by construction**. So on precisely the state this feature
+// exists for, nothing drives Spine1/Spine2, last frame's twist is still sitting on them, and
+// the next one stacks on top: a few degrees a frame at 60 Hz, which is a bone spinning.
+// Undoing it BEFORE the mixer is correct in both cases and needs to know neither: if the mixer
+// does own the bone it overwrites this and nothing is lost, and if it does not, the bone is
+// back at the pose the twist started from.
+function aimUntwist() {
+  const skin = CHARS.skins[CHARS.cur];
+  if (!skin || !skin.twistD) return;
+  for (let i = 0; i < skin.twistD.length; i++) {
+    const d = skin.twistD[i], b = skin.twistB && skin.twistB[i];
+    if (!d || !b) continue;
+    b.quaternion.premultiply(_twU.copy(d).invert());
+  }
+  skin.twistD.length = 0;
+}
+/* TWIST:END */
 // PARKED, HOVERING, AND SOLID. A prop you walk straight through is scenery; the box goes to
 // the PLAYER'S OWN resolver every frame the way a car's and an officer's do -- same code, no
 // second physics path, and its roof is a floor on its real footprint so he can stand on it.
@@ -5221,6 +5297,7 @@ function buildColin(gltf, extra) {
 // ON THE CLIP OBJECTS, before any skin clones them, so every skin inherits the cut -- and on
 // whatever pool it is handed, because a character that brings his OWN clips needs the same cut
 // taken on his (his `back_flip` opens with the same standing crouch Colin's does).
+/* DERIVE:START */
 function trimClips(list) {
   for (const nm in TRIM) {
     const c = list.find(x => x.name === nm), t = TRIM[nm];
@@ -5283,6 +5360,7 @@ function deriveClips(list) {
   }
   return list;
 }
+/* DERIVE:END */
 // EVERY CLIP IS A WEIGHT, and the weights are eased rather than crossfaded. A state
 // machine of crossFadeFrom calls has to know what it is coming FROM, which is exactly the
 // bookkeeping that breaks the first time two transitions overlap. Asking for a set of
@@ -7825,6 +7903,7 @@ function frame() {
   stepShip(dt);
   jamScan(dt);
   drawMap(dt);
+  aimUntwist();                       // BEFORE: take last frame's edit off, or it compounds
   if (colin.mixer) colin.mixer.update(dt);
   aimTwist(dt);                       // AFTER the mixer: it is an edit on top of the pose
   renderPost();

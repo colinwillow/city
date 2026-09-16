@@ -2063,6 +2063,54 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   applying both against one stale `P` is a shear rather than a turn.
   **APPLIED AFTER `colin.mixer.update`**, so it is an edit on top of the pose — and the mixer
   rewrites the bones from the clips every frame, which is what stops it accumulating.
+- **THE SPINE TWIST UNRAVELLED, AND `premultiply` IS WHY (c128).** *"He like unravelled -- the
+  spine just started rotating."* A relative edit on a bone is only safe if something rewrites
+  that bone from scratch every frame. The mixer does that ONLY for bones the playing clips have
+  TRACKS for -- and riding with the blaster out, the clips are c115's `__legs` clones, **which
+  have every spine-up track REMOVED by construction**. So on precisely the state this feature
+  exists for, nothing drives Spine1/Spine2, last frame's twist is still sitting on them, and the
+  next one stacks: a few degrees a frame at 60 Hz, which is a bone spinning.
+  **THE FIX IS TO TAKE IT OFF BEFORE THE MIXER, NOT AFTER.** `aimUntwist()` runs first and is
+  correct without having to know which case it is in: if the mixer owns the bone it overwrites
+  this and nothing is lost, and if it does not, the bone is back at the pose the twist started
+  from. Anything that premultiplies a bone in this file needs the same pairing.
+- **`npm run aim` MEASURES WHERE THE BARREL ACTUALLY POINTS, AND IT ENDED A GUESS I WAS ABOUT TO
+  SHIP (c128).** *"The tip of his gun is kind of to the right -- you might need to measure it
+  yourself."* He was right to say so. It poses the real rig in the real riding-and-aiming pose
+  (c115's upper-body override), runs the SHIPPED `aimTwist` between the `TWIST:` markers, and
+  reads the world bearing of `weapon_root` -> `weapon_tip`, which IS where the gun points and is
+  in the file for exactly that.
+      the twist TRACKED PERFECTLY -- 1.00 degrees of barrel per degree asked, on both rigs
+      but the aim POSE holds the rifle across his body:  colin -20.5 deg, moussa_toon -22.8
+  **NOT A MOUSSA BUG** — the two agree within two degrees. Turning the chest to the mark points
+  the CHEST at the mark and leaves the gun twenty degrees off it, for ever, on everybody. Every
+  hypothesis I had before running this (the hand offset, the clamp, a sign error) was wrong.
+  **SO THE LOOP IS CLOSED ON THE BARREL AND NOTHING IS TYPED.** The bias is a property of the
+  ANIMATION: it differs per character, it would differ again on a re-export, and it moves during
+  the recoil. Reading where the barrel ended up last frame and folding the residual back in
+  converges on "the gun is on the mark" whatever the pose does — no calibration step, no
+  measured constant, and it keeps working when he redraws the clip.
+  **TWO THINGS ABOUT THAT LOOP WERE WRONG FIRST TIME, AND THE HARNESS CAUGHT BOTH:**
+  1. **The early return skipped the measurement.** `if (|twist| < .002) return` meant the
+     barrel was never read at a dead-ahead aim, so the loop never started in the one case that
+     has to work.
+  2. **The clamp went on the total.** `max` means "how far a man turns at the waist" and it is
+     measured from the gun pointing down the deck, not from the pose's own bias — clamping the
+     sum spent a third of the budget undoing the pose and left him unable to aim past 45
+     degrees at all. It clamps the REQUEST and adds the correction after.
+  **AND `fixMax` IS SIZED TO THE BIAS AND NO MORE.** An integrator with a long leash does not
+  respect `max` at all: at .9 rad it wound him **110 degrees at the waist** to line up a
+  90-degree shot. At .45 the barrel is exact to 60 degrees and lags past that, which is honest —
+  and the SHOT still leaves on `p.aimH` (c119) either way, so what is lost out there is the look
+  of it and never the accuracy.
+  **THE HARNESS HAD TO RUN THE LOOP, NOT POKE IT ONCE**, and had to use the real `damp` rather
+  than snapping to target — a controller measured for one frame, or with its rate removed, is a
+  controller the game does not have.
+  **AND ITS FIRST RUN MEASURED THE WRONG POSE.** `ownClips` calls `trimClips`/`deriveClips`
+  through a `typeof` guard, and those live outside the `SKIN:` markers — so the harness built
+  Moussa with no `rifle_aim__up` in his pool at all and reported a 103-degree bias that was
+  really "there is no aim pose in here". **Sixth time** this exact mistake has been made in this
+  repo. They are behind `DERIVE:` markers now and both tools lift them.
 - **A PLASMA MUZZLE FLASH IS NOT A SMOKE CARD (c126, `muzzleFlash`, `tipAt`).** *"When you shoot
   the blaster it shows the jetpack particle cards and it kind of just lays over the blast and
   you can't really see the blast itself."* `fxPop('flash')` is the JETPACK'S ignition bank — a
