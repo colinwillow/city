@@ -314,7 +314,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c171</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c173</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -328,7 +328,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c171';
+const BUILD = 'c173';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1440,7 +1440,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/colin_name_256.png":"d6a1be53","images/hdr_toon_03.png":"129d2760","images/moussa_name_256.png":"e8d784eb","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/shredworld_title_02.webp":"8e192e8b","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","images/zorp_name_256.png":"4aab0ca5","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"99d38b7d","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"0db65872","models/police_officer.glb":"0c10098b","models/police_officer_toon.glb":"724965ac","models/senagal_flag.glb":"5ff5a849","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/colin.glb":"99d38b7d","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/colin_name_256.png":"d6a1be53","images/hdr_toon_03.png":"129d2760","images/moussa_name_256.png":"e8d784eb","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/shredworld_title_02.webp":"8e192e8b","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","images/zorp_name_256.png":"4aab0ca5","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"99d38b7d","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"0db65872","models/police_officer.glb":"0c10098b","models/police_officer_toon.glb":"724965ac","models/senagal_flag.glb":"5ff5a849","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/colin.glb":"99d38b7d","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb","audio/jetpack_sound/jetpack_combust.mp3":"4610ab14","audio/jetpack_sound/jetpack_ongoing.mp3":"41d7a2c7","audio/jetpack_sound/jetpack_release.mp3":"9e091c0d"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1459,6 +1459,14 @@ const SND_FILES = {
   ollie: ['skateboarding_sound_effects/skateboarding_ollie'],
   deck:  ['skateboarding_sound_effects/skateboarding_landing.mp4'],
   push:  ['skateboarding_sound_effects/skateboarding_start'],
+  // HIS JETPACK, RECORDED (c172) -- three files, and they are three different KINDS of sound.
+  // The combust and the release are events and play once; the ongoing is ON for as long as the
+  // motor burns, so it is a looping source and not a `play()`, which is `WHEELS`' own rule and
+  // `CHARGE`'s. It still goes through the same fetch and the same `edge` so there is no second
+  // loading path -- the loop just never reaches `SFX.play`.
+  jetUp:   ['jetpack_sound/jetpack_combust'],
+  jetDown: ['jetpack_sound/jetpack_release'],
+  jetRun:  ['jetpack_sound/jetpack_ongoing'],
   // THE ROLL, WHICH IS THE ONE THIS FILE HAS BEEN WAITING FOR. It goes through the same fetch,
   // decode and `edge` as every other sound so there is no second loading path -- but it is
   // never `play()`ed: `WHEELS` holds one looping source and rides it, below.
@@ -1506,6 +1514,7 @@ const SFX = {
       });
     }
   },
+  /* EDGE:START */
   edge(buf) {
     if (buf._lead !== undefined) return buf;
     const n = buf.length, sr = buf.sampleRate, TH = .005, B = 128;
@@ -1529,6 +1538,7 @@ const SFX = {
     buf._end = Math.min(buf.duration, b / sr + .04);
     return buf;
   },
+  /* EDGE:END */
   decode() {
     if (!this.ctx) return;
     for (const k in this.raw) {
@@ -1697,6 +1707,49 @@ const WHEELS = {
     this.f.frequency.setTargetAtTime(grind ? 2200 : 200 + 1000 * k, t, .06);
   },
 };
+// ---------- THE JETPACK (c172, `JETSND`), AND IT IS `WHEELS` ONE MOTOR ALONG ----------
+// *"added jetpack sounds"* -- combust, ongoing, release, which is the right three: a motor is an
+// IGNITION, a burn that lasts exactly as long as the thumb is down, and a shutdown. A one-shot can
+// do none of the middle one: it ends early on a long flight and runs past a short one, which is
+// the same argument that made the rolling wheels and the charge hum looping sources.
+// THE EDGES COME OFF `want`, NOT OFF `jetK`. `jetK` is damped over `JET.ease`, so a release read
+// off it lands about half a second after the thumb left -- the sound of a thing that already
+// happened. `want` is the decision, and the gain rides `jetK` so it still spools up and down.
+// IT IS CALLED FROM BOTH OF `stepJet`'s PATHS, beside `jetFlameStep`, and for the same reason
+// that one is: a motor that stops being told is a motor still running. Stowing the pack mid-flight
+// has to shut it up, and that is the early return.
+const JETSND = {
+  src: null, g: null, lit: 0,
+  vol: .85, rate0: .94, rateSpan: .16,     // it rises a little as the thrust comes up
+  loop() {
+    if (this.src) return this.src;
+    if (!SFX.ctx) return null;
+    const b = SFX.buf.jetRun && SFX.buf.jetRun[0];
+    if (!b || b === 0) return null;                 // 0 means claimed and still decoding
+    const ctx = SFX.ctx, s = ctx.createBufferSource();
+    s.buffer = b; s.loop = true;
+    // the same zero-crossing walk the wheels use -- a loop point that is not one ticks, once
+    // every time round, for ever. One copy of that, on WHEELS, called from here.
+    s.loopStart = WHEELS.zc(b, b._lead || 0, 1);
+    s.loopEnd = Math.max(s.loopStart + .2, WHEELS.zc(b, b._end || b.duration, -1));
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(g); g.connect(SFX.bus); s.start(0, s.loopStart);
+    this.src = s; this.g = g;
+    return s;
+  },
+  // TRIED ON EVERY CALL, NOT ONCE AT LOAD -- the buffer decodes asynchronously, so the first
+  // seconds of a session legitimately have no recording and must not leave a dead motor behind.
+  set(want, k, dt) {
+    if (!SFX.ctx) { this.lit = want ? 1 : 0; return; }
+    if (want && !this.lit) snd.jetUp();
+    else if (!want && this.lit) snd.jetDown();
+    this.lit = want ? 1 : 0;
+    const s = this.loop(); if (!s) return;
+    const t = SFX.ctx.currentTime;
+    this.g.gain.setTargetAtTime(clamp(k, 0, 1) * this.vol * (SFX.on ? 1 : 0), t, .08);
+    s.playbackRate.setTargetAtTime(this.rate0 + this.rateSpan * clamp(k, 0, 1), t, .12);
+  },
+};
 // ---------- THE BLASTER'S CHARGE HUM (c161, `CHARGE`) ----------
 // *"I need a charge noise for the laser or the blaster -- when you're holding it, it hums. I
 // think I have one from robits but I can also just go find another one."*
@@ -1846,6 +1899,10 @@ const snd = {
   // TRUE when it REFUSES a sound (voice cap or per-key gap) and false when it has nothing, so
   // this chain falls through on a missing file and stops on a deliberate refusal -- which is
   // exactly why that return value is the way round it is.
+  // THE JETPACK'S IGNITION AND ITS SHUTDOWN. The burn between them is `JETSND`, a looping
+  // source -- see there for why a motor cannot be a `play()`.
+  jetUp: () => SFX.play('jetUp', .70, rnd(.96, 1.04)),
+  jetDown: () => SFX.play('jetDown', .55, rnd(.96, 1.04)),
   ollie: () => SFX.play('ollie', .62, rnd(.94, 1.06)) || SFX.play('swoosh', .30, rnd(1.18, 1.38)) || SFX.noise(.10, .10, 2400),
   // THE KICK OFF THE ROAD, which had no sound of its own at all -- the push was silent and the
   // speedo just went up. It is a stroke over `SK8.shoveDur`, so this fires on the shove.
@@ -4031,7 +4088,7 @@ function stepJet(dt) {
   // THE FLAME GOES OUT WITH THE PACK, which is why it is stepped on this path too -- a
   // visual that stops being updated keeps whatever it was last given, `isRunning()`'s lesson
   // in another shape.
-  if (!on) { p.jetK = 0; jetFlameStep(0, dt); p.fuel = Math.min(1, p.fuel + JET.fill * dt); return; }
+  if (!on) { p.jetK = 0; jetFlameStep(0, dt); JETSND.set(0, 0, dt); p.fuel = Math.min(1, p.fuel + JET.fill * dt); return; }
   // THE FIRST TAP IS THE JUMP, THE SECOND TAP HELD IS THE PACK.
   // It used to be any hold at all, wherever the thumb was -- which was fine while the pack was
   // the only thing on that pad. c113 took the aim test out of `p.rHold` (rightly: it was
@@ -4063,6 +4120,8 @@ function stepJet(dt) {
   if (want) p.jetFlew = 1;
   p.jetK = damp(p.jetK || 0, want, JET.ease, dt);
   jetFlameStep(p.jetK, dt);
+  // the motor, on the DECISION rather than on the eased thrust -- see `JETSND`
+  JETSND.set(want, p.jetK, dt);
   // The puffs come out of the nozzle, which is the pack on his back, and are thrown DOWN and
   // BEHIND him -- a puff that hangs where it was born reads as a sticker rather than as
   // exhaust. `gear.jet` knows where the pack actually is, so nothing about that is typed.
@@ -11061,7 +11120,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

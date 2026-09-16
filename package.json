@@ -38,6 +38,7 @@
     "wreck": "node tools/wreck.mjs",
     "cars": "node tools/cars.mjs",
     "glsl": "node tools/glsl.mjs",
+    "sfx": "node tools/sfx.mjs",
     "push": "node tools/push.mjs",
     "bar": "node tools/bar.mjs",
     "slash": "node tools/slash.mjs"
@@ -49,6 +50,7 @@
     "@napi-rs/canvas": "^1.0.9",
     "draco3dgltf": "^1.5.7",
     "meshoptimizer": "^0.22.0",
-    "sharp": "^0.33.5"
+    "sharp": "^0.33.5",
+    "mpg123-decoder": "^1.0.5"
   }
 }

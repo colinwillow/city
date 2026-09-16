@@ -1198,6 +1198,33 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **HIS JETPACK, RECORDED (c173, `JETSND`), AND IT IS `WHEELS` ONE MOTOR ALONG.** *"added jetpack
+  sounds"* -- `audio/jetpack_sound/`: combust (0.97 s), ongoing (6.69 s) and release (0.99 s),
+  which is exactly the right three, because a motor is an IGNITION, a burn that lasts as long as
+  the thumb is down, and a SHUTDOWN. **A one-shot can do none of the middle one** -- it ends early
+  on a long flight and runs past a short one -- which is the same argument that made the rolling
+  wheels and the blaster's charge hum looping sources rather than `play()` calls.
+  **THE EDGES COME OFF `want`, NOT OFF `p.jetK`.** `jetK` is damped over `JET.ease`, so a release
+  read off it lands about half a second after the thumb left: the sound of a thing that already
+  happened. `want` is the DECISION; the gain and the playback rate ride `jetK`, so it still spools
+  up and down. Same split as the charge ball reading `p.chg` while the trigger reads `p.aim`.
+  **IT IS CALLED FROM BOTH OF `stepJet`'s PATHS, beside `jetFlameStep`**, and for the same reason
+  that one is: a motor that stops being told is a motor still running. Stowing the pack mid-flight
+  has to shut it up, and that is the early return.
+  **AND `WHEELS.zc` IS CALLED, NOT COPIED.** A loop point that is not a zero crossing ticks, once
+  every time round, for ever -- and there is one walk that finds one, on WHEELS, called from here.
+  **`audio/jetpack_sound` HAD TO GO INTO `bump.mjs`'s `DIRS`**, which is the standing tax on a new
+  folder: `readdirSync` is not recursive, so the first bump after his push read 60 files and said
+  "none changed" while three new ones sat there unhashed. 63 and 3 CHANGED once it was added.
+- **`npm run sfx` SAYS WHETHER A RECORDING STARTS ON ITS OWN EVENT (c172).** It runs the SHIPPED
+  `SFX.edge`, lifted between the `EDGE:` markers, with the shipped `hit`/`pre` beside it -- a tool
+  with its own copy of the rule is this repo's oldest mistake and it has been made eight times.
+  It prints, per file, the window `edge` will play, where the event actually is, and the DEAD AIR
+  between them; past about 60 ms that is audible as a delay, and it is invisible from a phone.
+  **A LOOP IS NAMED RATHER THAN FLAGGED**: "half the peak" is an onset test and a continuous roll
+  or burn has no onset, so `skateboarding_riding` reads 1910 ms of "dead air" and means nothing.
+  A report that cries wolf on a file that is fine is a report nobody reads.
+  Needs `npm i -D mpg123-decoder` and says so rather than throwing.
 - **THE PUSH SOUND LANDED HALF A CYCLE BEFORE THE PUSH, AND `SK8.pushPlant` WAS NEVER READ BY
   ANYTHING (c171, `npm run push`, `JAM_PROBE=tools/probe-push.mjs`).** *"The push sound is offset
   from the push. It's like it goes in between where it needs to go -- if he's pushing every second
