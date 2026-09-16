@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c128</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c129</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c128';
+const BUILD = 'c129';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -880,7 +880,22 @@ const JET = {
 // what turns it on. `rush0`/`rushSpan` are the curve, exposed so it can be dialled: it now
 // has to cover a 17.6 m/s sprint on foot as well as 24 on the board.
 const CAM = { dist: 6.4, distV: .11, el: .17, look: 1.3, yawRate: 2.4, follow: 1.8, idle: .55, half: .07,
-  fov: 52, fovRush: 9, rush0: 7, rushSpan: 14, rushK: .6 };
+  fov: 52, fovRush: 9, rush0: 7, rushSpan: 14, rushK: .6,
+  // IT COMES IN WHEN SOMETHING IS IN THE WAY, RATHER THAN CLIMBING OVER IT (c129). *"When you
+  // come up against a wall the camera zooms in on the player."* That is the standard answer and
+  // it is the right one: shortening the boom keeps the SHOT -- a level, three-quarter view of
+  // him -- while lifting the camera changes it into a completely different and much worse one.
+  probe: .6,        // how coarsely the boom is walked. Deliberately coarse, `copSees`' rule:
+  pad: .35,         // it runs once a frame and a lens that clips a lamp post for an instant is
+  min: 1.7,         // not the failure a lens inside a building is.
+  outHL: .55,       // SNAP IN, EASE OUT. Easing IN is time spent inside the wall.
+  // AND THE FLOOR CLAMP MAY NEVER LIFT IT ABOVE HIM. This is what pinned the camera on the
+  // bridge: the old clamp used `hmAt`, the HEIGHTMAP, which has no idea there is anything
+  // underneath anything -- so stepping off a bridge left the lens clamped to the DECK he had
+  // just left, looking down at him from six metres up, with nothing able to bring it back.
+  // `groundAt` is the real collider and knows what is below; `rise` is the belt and braces.
+  clear: .55,       // how far the lens stays off whatever is under it
+  rise: 1.25 };     // and the most it may ever sit above his look point
 // THE TITLE CARD'S SHOT. The scene is the game's own, so all that is here is a camera.
 const TITLE = {
   on: true, t: 0,
@@ -1592,8 +1607,17 @@ function toonPatch(sh) {
 // inside a circle around him on screen.
 // It lives in the shared material shader rather than per object, because the city is merged
 // into a few dozen big meshes on ONE material -- there is no object to fade.
-const HOLE = { on: 1, near: .30, far: .20, at: 6, to: 13, cut: .92 };
-const holeUni = { uHoleC: { value: new THREE.Vector2(-1e5, -1e5) }, uHoleR: { value: 0 }, uHoleZ: { value: 0 }, uHoleLo: { value: -1e5 } };
+// THE HOLE IS A CONE, NOT A PORTHOLE (c129). *"Sometimes I'll be under a bridge and I just get
+// this small peephole into what should otherwise be an entire section of transparency."*
+// The radius was a fixed fraction of screen height, and that is exactly wrong for the case that
+// matters: a fixed screen circle cut through a wall RIGHT IN FRONT OF THE LENS reveals almost
+// nothing, because the wall fills the frame. What is needed is a cone from the camera to him --
+// so the radius GROWS with how much nearer the occluding fragment is than he is. A railing just
+// in front of him still gets a small hole; a bridge deck the lens is under gets a large one.
+// It works in Plutopia because Plutopia has nothing tall to stand under. This city is all
+// bridges and buildings, so the same constant reads as a peephole.
+const HOLE = { on: 1, near: .38, far: .27, at: 6, to: 13, cut: .92, grow: 1.7 };
+const holeUni = { uHoleC: { value: new THREE.Vector2(-1e5, -1e5) }, uHoleR: { value: 0 }, uHoleZ: { value: 0 }, uHoleLo: { value: -1e5 }, uHoleGrow: { value: 1.7 } };
 const _holeP = new THREE.Vector3(), _holeF = new THREE.Vector3(), _holeV = new THREE.Vector3();
 // Pulled out of the prototype hook so a material with an onBeforeCompile of its OWN can still
 // take the hole: assigning one to an instance shadows the prototype's completely. In Plutopia
@@ -1601,8 +1625,9 @@ const _holeP = new THREE.Vector3(), _holeF = new THREE.Vector3(), _holeV = new T
 function holePatch(sh) {
   sh.uniforms.uHoleC = holeUni.uHoleC; sh.uniforms.uHoleR = holeUni.uHoleR;
   sh.uniforms.uHoleZ = holeUni.uHoleZ; sh.uniforms.uHoleLo = holeUni.uHoleLo;
+  sh.uniforms.uHoleGrow = holeUni.uHoleGrow;
   sh.fragmentShader = `
-    uniform vec2 uHoleC; uniform float uHoleR, uHoleZ, uHoleLo;
+    uniform vec2 uHoleC; uniform float uHoleR, uHoleZ, uHoleLo, uHoleGrow;
     float holeHash(vec2 p){ return fract(sin(dot(floor(p), vec2(12.9898, 78.233))) * 43758.5453); }
     // A 4x4 ordered matrix with a per-pixel random in place of its fixed half step. On its own
     // the matrix has sixteen levels, so a soft edge steps four or five times and then stops --
@@ -1621,7 +1646,9 @@ function holePatch(sh) {
       // he is standing on the far edge of is closer to the lens than he is, so the floor under
       // his feet would dither away and he would stand on a hole. Nothing BELOW his feet can be
       // hiding him, so the hole only opens above uHoleLo.
-      float k = smoothstep(1.0, 0.45, hd / uHoleR);
+      // HOW FAR IN FRONT OF HIM THIS FRAGMENT IS, 0 at his own depth and 1 at the lens.
+      float hnear = clamp((uHoleZ - vViewPosition.z) / max(1.0, uHoleZ), 0.0, 1.0);
+      float k = smoothstep(1.0, 0.45, hd / (uHoleR * (1.0 + uHoleGrow * hnear)));
       k *= smoothstep(uHoleLo, uHoleLo + 0.06 * uHoleR, gl_FragCoord.y);
       k *= smoothstep(uHoleZ - 0.6, uHoleZ - 2.8, vViewPosition.z);
       if (k > 0.004 && holeDither(gl_FragCoord.xy) < k * 0.92) discard;
@@ -3166,6 +3193,7 @@ function stepHole() {
   const d = Math.hypot(cam.pos.x - p.pos.x, cam.pos.y - p.pos.y, cam.pos.z - p.pos.z);
   holeUni.uHoleR.value = rtScene.height * lerp(HOLE.near, HOLE.far, clamp((d - HOLE.at) / (HOLE.to - HOLE.at), 0, 1));
   compMat.uniforms.uHoleRU.value = holeUni.uHoleR.value / Math.max(1, rtScene.height);
+  holeUni.uHoleGrow.value = HOLE.grow; compMat.uniforms.uHoleGrowU.value = HOLE.grow;
   holeUni.uHoleZ.value = -vz; compMat.uniforms.uHoleZC.value = -vz;
   _holeF.set(p.pos.x, p.pos.y + .05, p.pos.z).project(camera);
   holeUni.uHoleLo.value = (_holeF.y * .5 + .5) * rtScene.height - rtScene.height * .02;
@@ -3426,9 +3454,10 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
     uOutC: { value: new THREE.Color(.09, .10, .14) }, uOutLo: { value: .0045 }, uOutHi: { value: .034 }, uMap: { value: 0 },
     // the see-through hole, rebuilt here in UV space so the outline can be kept off it
     uHoleUV: { value: new THREE.Vector2(-9, -9) }, uHoleRU: { value: 0 }, uHoleZC: { value: 0 }, uHoleLoU: { value: -9 },
+    uHoleGrowU: { value: 1.7 },
   }, vertexShader: VS, fragmentShader: `
   uniform sampler2D tD,tB,tZ; uniform float uStr,uVig,uExp,uAA,uRush,uOut,uOutW,uNear,uFar,uOutLo,uOutHi,uMap;
-  uniform vec2 uHoleUV; uniform float uHoleRU,uHoleZC,uHoleLoU;
+  uniform vec2 uHoleUV; uniform float uHoleRU,uHoleZC,uHoleLoU,uHoleGrowU;
   uniform vec3 uOutC; uniform vec2 uPx; varying vec2 vUv;
   float lz(vec2 uv){ float d = texture2D(tZ,uv).x; return (2.0*uNear*uFar)/(uFar+uNear-(2.0*d-1.0)*(uFar-uNear)); }
   // TONE-MAPPED LUMINANCE, AND THIS IS THE WHOLE BUG. FXAA is a DISPLAY-SPACE algorithm.
@@ -3504,9 +3533,15 @@ const compMat = new THREE.ShaderMaterial({ uniforms: {
       // belongs to the far side and testing only the centre keeps half the checkerboard.
       if (uHoleRU > 0.0) {
         vec2 hv = (vUv - uHoleUV) * vec2(uPx.y / uPx.x, 1.0);
-        float hk = smoothstep(1.0, 0.45, length(hv) / uHoleRU);
+        // THE SAME GROWTH LAW AS THE MATERIAL'S, off the NEAREST of the five depth samples --
+        // at a discarded pixel the centre belongs to the far side, and the outline has to be
+        // masked off exactly what the hole cut or it starts drawing the dither instead of the
+        // building. Diverge these two and that comes straight back.
+        float hz = min(min(z0, min(zl, zr)), min(zd, zu));
+        float hnear = clamp((uHoleZC - hz) / max(1.0, uHoleZC), 0.0, 1.0);
+        float hk = smoothstep(1.0, 0.45, length(hv) / (uHoleRU * (1.0 + uHoleGrowU * hnear)));
         hk *= smoothstep(uHoleLoU, uHoleLoU + 0.06 * uHoleRU, vUv.y);
-        hk *= smoothstep(uHoleZC - 0.6, uHoleZC - 2.8, min(min(z0, min(zl, zr)), min(zd, zu)));
+        hk *= smoothstep(uHoleZC - 0.6, uHoleZC - 2.8, hz);
         e *= 1.0 - hk;
       }
       c *= mix(vec3(1.0), uOutC, e * uOut);
@@ -6626,6 +6661,14 @@ const OPT_ROWS = [
   ['num', 'Bloom thresh', () => POST.bloomTh, v => { POST.bloomTh = v; }, 0, 3, .05],
   ['num', 'Outline', () => POST.outline0, v => { POST.outline0 = v; applyDbg(); }, 0, 2, .05],
   ['tog', 'See-through hole', () => HOLE.on, v => { HOLE.on = v; }],
+  ['num', 'Hole size', () => HOLE.near, v => { HOLE.near = v; HOLE.far = v * .71; }, .15, .8, .02],
+  ['num', 'Hole cone', () => HOLE.grow, v => { HOLE.grow = v; }, 0, 4, .1],
+  ['h', 'Camera'],
+  ['num', 'Boom length', () => CAM.dist, v => { CAM.dist = v; }, 3, 12, .2],
+  ['num', 'Closest in', () => CAM.min, v => { CAM.min = v; }, .8, 5, .1],
+  ['num', 'Ease back out', () => CAM.outHL, v => { CAM.outHL = v; }, .05, 2, .05],
+  ['num', 'Max above him', () => CAM.rise, v => { CAM.rise = v; }, 0, 5, .1],
+  ['num', 'Pitch', () => CAM.el, v => { CAM.el = v; }, -.1, .6, .01],
   ['h', 'World'],
   ['tog', 'Map', () => MAP.on, v => { MAP.on = v; }],
   ['tog', 'Police', () => COP.on, v => { COP.on = v; }],
@@ -7780,6 +7823,26 @@ document.getElementById('startB').addEventListener('click', startGame);
   }
 }
 
+// HOW MUCH BOOM HE ACTUALLY HAS. Walked out from the look point rather than raycast, because
+// the city is thirty thousand boxes in a grid and a dozen grid lookups is cheaper than any ray
+// structure -- and coarse ON PURPOSE, which is `copSees`' own argument: this runs once a frame,
+// and a lens that clips the corner of a lamp post for an instant is not the failure a lens
+// inside a building is.
+const _cbx = [];
+function camFree(tx, ty, tz, dx, dy, dz, want) {
+  const step = CAM.probe, n = Math.ceil(want / step), pad = CAM.pad;
+  for (let i = 1; i <= n; i++) {
+    const d = Math.min(want, i * step);
+    const x = tx + dx * d, y = ty + dy * d, z = tz + dz * d;
+    _cbx.length = 0; gridQuery(x, z, 1, _cbx);
+    for (const b of _cbx) {
+      if (x < b.minx - pad || x > b.maxx + pad || z < b.minz - pad || z > b.maxz + pad
+        || y < b.miny - pad || y > b.maxy + pad) continue;
+      return Math.max(CAM.min, d - step);
+    }
+  }
+  return want;
+}
 function stepCam(dt) {
   // in the air on the board that pad is spending its travel on tricks, not on the lens
   const rx = (player.board && !player.grounded) ? 0 : stick.R.x;
@@ -7807,13 +7870,23 @@ function stepCam(dt) {
     cam.az += wrapAngle(want - cam.az) * Math.min(1, CAM.follow * dt * clamp(sp / 5, .3, 1.4));
   }
   cam.el = CAM.el;
-  const dist = CAM.dist + sp * CAM.distV;
   cam.tgt.set(player.pos.x, player.pos.y + CAM.look, player.pos.z);
   const ce = Math.cos(cam.el);
-  const wx = cam.tgt.x - Math.sin(cam.az) * ce * dist, wy = cam.tgt.y + Math.sin(cam.el) * dist, wz = cam.tgt.z - Math.cos(cam.az) * ce * dist;
+  // the direction the boom points, so the distance along it is the only thing collision moves
+  const bx = -Math.sin(cam.az) * ce, by = Math.sin(cam.el), bz = -Math.cos(cam.az) * ce;
+  const want = CAM.dist + sp * CAM.distV;
+  const free = camFree(cam.tgt.x, cam.tgt.y, cam.tgt.z, bx, by, bz, want);
+  // SNAP IN, EASE OUT. Coming in has to be immediate or the lens spends those frames inside
+  // the wall; going back out is eased, or every doorway and lamp post makes the shot lurch.
+  cam.dist = free < (cam.dist || want) ? free : damp(cam.dist || want, free, CAM.outHL, dt);
+  const wx = cam.tgt.x + bx * cam.dist, wy = cam.tgt.y + by * cam.dist, wz = cam.tgt.z + bz * cam.dist;
   if (cam.pos.lengthSq() === 0) cam.pos.set(wx, wy, wz);
   cam.pos.x = damp(cam.pos.x, wx, CAM.half, dt); cam.pos.y = damp(cam.pos.y, wy, CAM.half, dt); cam.pos.z = damp(cam.pos.z, wz, CAM.half, dt);
-  const floor = hmAt(cam.pos.x, cam.pos.z) + .6; if (cam.pos.y < floor) cam.pos.y = floor;
+  // THE REAL COLLIDER, AND CAPPED AT HIS OWN HEIGHT. `groundAt` knows what is BELOW something;
+  // `hmAt` does not, and that is the whole of "the camera stays up on the bridge".
+  const cg = groundAt(cam.pos.x, cam.pos.z, cam.pos.y, .6);
+  const floor = (cg.hit ? cg.floor : hmAt(cam.pos.x, cam.pos.z)) + CAM.clear;
+  if (cam.pos.y < floor) cam.pos.y = Math.min(floor, cam.tgt.y + CAM.rise);
   camera.position.copy(cam.pos); camera.lookAt(cam.tgt);
   cam.rush = damp(cam.rush, clamp((sp - CAM.rush0) / CAM.rushSpan, 0, 1), .25, dt);
   camera.fov = CAM.fov + cam.rush * CAM.fovRush; camera.updateProjectionMatrix();

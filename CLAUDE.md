@@ -2368,6 +2368,44 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   **AND IT IS SOLID.** A prop you walk through is scenery — the box goes to the PLAYER'S OWN
   resolver every frame the way a car's and an officer's do, so there is no second physics path
   and its roof is a floor he can stand on. There is no ride mechanic yet; that is its own build.
+- **THE CAMERA CAME IN, IT DID NOT CLIMB (c129) — AND `hmAt` IS WHY IT SAT ON THE BRIDGE.**
+  *"I drop down below and the camera stays up on the bridge, so you're looking down at the
+  character... there's plenty of room for it down here."* The cause is one line:
+  `const floor = hmAt(cam.pos.x, cam.pos.z) + .6;`
+  **THE HEIGHTMAP HAS NO CONCEPT OF BELOW.** `hmAt` is a single height per 1 m cell — the note
+  three hundred lines up says it survives only as a FALLBACK because the real ground is the
+  triangle collider — so under a bridge it returns the DECK. Step off one and the lens is
+  clamped to the surface he just left, six metres up, with nothing in the loop able to bring it
+  back down. It was not a follow bug or a damping bug; the camera was being held there.
+  Two changes, and the second is belt and braces for the first: it clamps against `groundAt`,
+  which knows what is underneath something, and it may never lift the lens more than `CAM.rise`
+  above his look point whatever the ground says.
+  **AND COLLISION SHORTENS THE BOOM RATHER THAN MOVING IT.** *"Sometimes when you come up
+  against a wall the camera zooms in on the player."* That is the right answer and it is the one
+  that preserves the SHOT: `camFree` walks out from the look point along the boom and stops at
+  the first solid, so the lens keeps its level three-quarter view and just gets closer. Lifting
+  it over the obstacle instead is what turns the shot into the top-down one he is complaining
+  about — the fix and the bug were the same mechanism.
+  **SNAP IN, EASE OUT.** Easing IN is time spent inside the wall. Easing out is what stops every
+  lamp post making the shot lurch.
+  **WALKED, NOT RAYCAST, AND COARSE ON PURPOSE** — the city is thirty thousand boxes in a grid,
+  so a dozen grid lookups beats any ray structure, and this is `copSees`' own argument: it runs
+  once a frame and a lens clipping a lamp post for an instant is not the failure a lens inside a
+  building is.
+- **THE HOLE IS A CONE NOW, NOT A PORTHOLE (`HOLE.grow`, c129).** *"I get this small peephole
+  into what should otherwise be an entire section of transparency."* The radius was a fixed
+  fraction of screen height, and that is exactly wrong for the case that matters: **a fixed
+  screen circle cut through a wall right in front of the lens reveals almost nothing, because
+  the wall fills the frame.** What the geometry wants is a cone from the camera to him, so the
+  radius grows with how much NEARER the occluding fragment is than he is — a railing beside him
+  still gets a small hole, a bridge deck the lens is under gets a large one.
+  **IT WORKS IN PLUTOPIA BECAUSE PLUTOPIA HAS NOTHING TALL TO STAND UNDER.** A constant that is
+  right for an open island is a peephole in a city of bridges and towers. A ported number is
+  only as good as the shape of the world it was tuned in.
+  **AND THE COMPOSITE HAD TO GROW BY THE SAME LAW.** The outline mask rebuilds the hole's tests
+  in UV space, off the MINIMUM of its five depth samples; diverge the two radii and the depth
+  outline goes straight back to drawing the dither instead of the building, which is the
+  landmine four bullets down.
 - **THE SEE-THROUGH HOLE (`holePatch`, `stepHole`), ported from Plutopia.** A dithered
   `discard` through anything that is BOTH closer to the lens than Colin AND inside a circle
   around him on screen. It lives in the shared material shader, not per object, because the
