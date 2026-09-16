@@ -1198,6 +1198,23 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE CATCH RAN AFTER THE COLLIDER, WHICH IS THE ONE THING IT MUST NOT DO (c150).** *"How do
+  I initiate a swing? I'm trying to swing around a light pole."* He could not, and it was not
+  aim: `barCatch` sat BELOW `stepSkate`/`stepFoot` in `stepPlayer`, so `resolveBoxes` had already
+  bounced him off the lamp post before the catch was tested -- it then measured a man travelling
+  backwards away from the bar. **That bounce is the exact thing this feature exists to replace**,
+  and it was still winning every time.
+  **THE COMMENT ABOVE IT SAID "runs BEFORE the collider" THE WHOLE TIME.** Third time in this
+  file, after `stepAim`'s ordering claim and `KIT.on`'s "exactly one owner": **writing a
+  protection down is not implementing it, and the two are indistinguishable when you are reading
+  rather than running.** When a feature does nothing, check WHERE it is called before checking
+  what it does.
+- **AND 67 BARS IN A CITY OF LAMP POSTS IS A FINDING PROBLEM (c150).** Nothing on screen told him
+  which pole was catchable, and most are not. The map draws them (the ramps' own argument -- it
+  exists because he could not find those either) and the chip carries `BAR 34m@-78,-44 h5.9`,
+  which is `JAM n@x,z`'s idiom: a count and a coordinate `npm run spots` prints in the same frame,
+  so it is walkable to. On the bar it reads `BAR w2.3` instead, which is the swing rate -- so
+  "am I near one", "which way do I go" and "is my pumping working" are all one glance.
 - **NOTHING IS PARENTED TO THE BAR, AND NOTHING NEEDS TO BE (c149).** *"I don't know how you
   rotate all of the joints around that point considering they're not a child of that joint --
   maybe I should've used the root."* **He should not, and his first instinct was the right one.**

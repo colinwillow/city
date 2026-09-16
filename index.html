@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c149</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c150</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c149';
+const BUILD = 'c150';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -4183,6 +4183,16 @@ function missing() {
   if (!colin.ready) m += ' · NO COLIN GLB';
   // A HOLE IN THE WORLD, WHICH IS WHAT c141 SHIPPED AND COULD NOT SAY.
   if (CITY.lost) m += ' · LOST ' + CITY.lost + ' CHUNKS';
+  // WHERE THE NEAREST BAR IS. *"How do I initiate a swing? I'm trying to swing around a light
+  // pole."* Most poles are not bars -- 67 in the whole city -- so "am I even near one" is a real
+  // question with no answer on screen. `JAM n@x,z`'s own idiom: the number, and a coordinate
+  // `npm run spots` prints in the same frame, so it is walkable to.
+  if (BAR.on && bars.length && !player.bar) {
+    let bd = 1e9, b = null;
+    for (const r of bars) { const d = Math.hypot(r.x - player.pos.x, r.z - player.pos.z); if (d < bd) { bd = d; b = r; } }
+    if (b) m += ' · BAR ' + bd.toFixed(0) + 'm@' + b.x.toFixed(0) + ',' + b.z.toFixed(0) + ' h' + b.y.toFixed(1);
+  }
+  if (player.bar) m += ' · BAR w' + player.barW.toFixed(1);
   // WHAT THE WRECKS ARE DOING, because "the pieces did not move" is three different bugs
   // wearing one face from a phone: the damage never registered, it registered and nothing
   // acted on it, or it acted and was too small to see. `h3x9` is three hits left and nine
@@ -5875,6 +5885,15 @@ function buildMap() {
   c.fillStyle = 'rgba(158,178,204,.55)';
   for (const t of tiles) c.fillRect(MAP.o + (t.minx - MAP.x0) * MAP.k, MAP.o + (t.minz - MAP.z0) * MAP.k,
     Math.max(1, (t.maxx - t.minx) * MAP.k), Math.max(1, (t.maxz - t.minz) * MAP.k));
+  // THE BARS. Same argument as the ramps below: 67 of them in the whole city and no way to tell
+  // a catchable lamp arm from an ordinary one by looking, so *"I'm trying to swing around a
+  // light pole"* is a question the map should answer rather than the player guessing.
+  c.strokeStyle = 'rgba(255,215,106,.85)'; c.lineWidth = Math.max(1.5, 2 * dpr);
+  for (const r of bars) {
+    const X = MAP.o + (r.x - MAP.x0) * MAP.k, Y = MAP.o + (r.z - MAP.z0) * MAP.k;
+    const ex = r.ax * r.half * MAP.k, ez = r.az * r.half * MAP.k;
+    c.beginPath(); c.moveTo(X - ex, Y - ez); c.lineTo(X + ex, Y + ez); c.stroke();
+  }
   // the ramps, which are the thing he cannot find
   for (const s of PARK.spots) {
     const X = MAP.o + (s.x - MAP.x0) * MAP.k, Y = MAP.o + (s.z - MAP.z0) * MAP.k;
@@ -9031,15 +9050,23 @@ function stepPlayer(dt) {
   if (player.melWin <= 0 && !player.mel) player.melStep = 0;
   player.airT = player.grounded ? 0 : player.airT + dt;
   if (player.hit) { player.hang = 0; player.climbT = 0; player.lad = 0; stepHit(dt); return; }
+  // THE BAR OWNS THE BODY, BOARD OR NOT, so it is tested above the branch rather than inside one
+  // of them -- the same place `p.rHold` had to move to at c117, and for the same reason.
+  // **AND IT HAS TO RUN BEFORE THE MOVEMENT STEP, WHICH c148 CLAIMED AND DID NOT DO (c150).**
+  // It sat below `stepSkate`/`stepFoot`, so `resolveBoxes` had ALREADY bounced him off the lamp
+  // post by the time the catch was tested -- it then measured a man travelling backwards away
+  // from the bar, which is the "reject me and bank-shot me backwards" this whole feature exists
+  // to replace. The comment above it said "runs BEFORE the collider" the entire time.
+  // **THAT IS THE THIRD TIME IN THIS FILE A PROTECTION HAS BEEN ASSERTED ONLY IN A COMMENT** --
+  // after `stepAim`'s ordering claim and `KIT.on`'s "exactly one owner". Writing it down is not
+  // implementing it, and the two look identical when you are reading rather than running.
+  if (player.barCool > 0) player.barCool -= dt;
+  if (player.bar) { stepBar(dt); poseColin(dt); return; }
+  if (!player.grounded && barCatch()) { stepBar(dt); poseColin(dt); return; }
   if (player.board) stepSkate(dt); else stepFoot(dt);
   // A STRIKE THROWN WHILE RIDING, after the skate step so his position is the one the mark and
   // the punch cone are measured from. `stepFoot` already hands over to `stepMelee` itself; the
   // board cannot, because the board still has to be driving.
-  // THE BAR OWNS THE BODY, BOARD OR NOT, so it is tested above the branch rather than inside
-  // one of them -- the same place `p.rHold` had to move to at c117, and for the same reason.
-  if (player.barCool > 0) player.barCool -= dt;
-  if (player.bar) { stepBar(dt); poseColin(dt); return; }
-  if (!player.grounded && !player.hit && barCatch()) { stepBar(dt); poseColin(dt); return; }
   if (player.board && player.mel) stepMelee(dt, 1);
   if (colin.ready) colinAnim(dt);
   // fell in the water / off the world
