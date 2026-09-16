@@ -64,8 +64,14 @@ for (const b of tall) {
   const rot = Math.atan2(f.nx, f.nz);                          // the way the ladder FACES (out of the wall)
   out.push({ nm: b.nm, x: +(f.x + f.nx * .35).toFixed(1), z: +(f.z + f.nz * .35).toFixed(1),
              y: +pick.y.toFixed(2), top: +b.mxy.toFixed(1), rot: +rot.toFixed(3), face: f.n });
+  // AND WHERE THE ROOF ACTUALLY IS. A ladder is only half the answer to "put something up
+  // there" -- the other half is the middle of the deck it arrives on, measured off the same
+  // bounds, because placing a prop by eye off a screenshot is how you get one hanging over an
+  // edge or buried in a parapet. Same reason `npm run spots` exists for the ground.
   console.log('  ' + b.nm.slice(0,22).padEnd(22) + ' h ' + b.h.toFixed(1).padStart(5) +
-              '   face ' + f.n + '   foot (' + out[out.length-1].x + ', ' + out[out.length-1].y + ', ' + out[out.length-1].z + ')  top ' + out[out.length-1].top);
+              '   face ' + f.n + '   foot (' + out[out.length-1].x + ', ' + out[out.length-1].y + ', ' + out[out.length-1].z + ')  top ' + out[out.length-1].top +
+              '   ROOF centre (' + ((b.mnx + b.mxx) / 2).toFixed(1) + ', ' + b.mxy.toFixed(1) + ', ' + ((b.mnz + b.mxz) / 2).toFixed(1) +
+              ')  deck ' + (b.mxx - b.mnx).toFixed(1) + ' x ' + (b.mxz - b.mnz).toFixed(1));
 }
 console.log('\nLADDERS.spots:');
 for (const o of out) console.log('  { x: ' + o.x + ', y: ' + o.y + ', z: ' + o.z + ', top: ' + o.top + ', rot: ' + o.rot + ' },   // ' + o.nm + ', ' + o.face);

@@ -2272,6 +2272,54 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   not the locomotion. Suspect the camera before re-tuning movement.
 - **`Colin_Head_MIX` rides at weight 1.** It is the blend shape that turns the generic
   base head into his; the other 41 targets are visemes and stay at zero.
+- **THE PAINT PASS (`PAINT`, `paintPatch`) — PROCEDURAL, ZERO BYTES, AND IT IS NOT "ADD NOISE"
+  (c127).** *"Is there a way you could take a colour and procedurally generate that same colour
+  with slight variation, so it looks splotchy and painterly, without a rendered texture map?"*
+  Yes, and Plutopia already proved it — its `groundPatch` is exactly this, on its terrain.
+  **THE WHOLE TRICK IS THE THRESHOLD, NOT THE NOISE.** Smooth mottle added to a colour reads as
+  DIRT. A painted surface is areas of ONE FLAT COLOUR with a drawn line where two of them meet
+  — so the broad noise is thresholded into patches (smoothstep across a narrow band, which is
+  nearly a step) **and the band itself is darkened**. That seam is the ink, and it is the single
+  thing that makes this read as paint. Drop it and you are back to a dirty wall.
+  **VALUE NOISE LIVES ON AN INTEGER LATTICE, AND A THRESHOLD ACROSS IT DRAWS THAT LATTICE.**
+  Every patch edge comes out along a grid line and the mottle comes out as graph paper. So the
+  broad pattern is DOMAIN-WARPED before it is thresholded (one extra sample pushed along a
+  diagonal, and no edge is axis-aligned any more) and the mottle is two lattices at different
+  angles and scales whose overlap is an irregular mosaic. Plutopia paid for both; they came over
+  as written.
+  **DOMINANT-AXIS PLANAR, NOT TRIPLANAR.** This is a box city — its surfaces are within a few
+  degrees of an axis nearly everywhere — so blending three samples triples the cost to hide a
+  seam that only exists at 45 degrees. Where the axis does flip it is a 90-degree corner, a wall
+  meeting a roof, and those two wanting different patterns is correct rather than a fault.
+  **THE HUE DRIFTS, NOT ONLY THE VALUE.** A patch that is merely lighter reads as LIGHTING; one
+  that is lighter and a touch warmer reads as a different mix of paint. `PAINT.warm`.
+  **IT LANDS ON EVERYTHING FOR FREE** because `MeshStandardMaterial.prototype.onBeforeCompile`
+  is already the global hook — the city, the ramps, the cars, the props, one patch, no per-asset
+  work. `userData.noPaint` opts a material out.
+  **AND COLIN IS NOT PAINTED, WHICH IS THE MIXED-MEDIA READ HE IS AFTER** — a flat painted world
+  with a shaded character in it. He gets that for nothing: his materials set their own
+  `onBeforeCompile`, which shadows the prototype's entirely (the see-through hole's own rule,
+  working in our favour for once).
+  **THE COST IS ABOUT A DOZEN `sin()` A FRAGMENT AND NO MEMORY AT ALL.** For comparison, one
+  1024² map per material is ~1.4 MB on the GPU with mips; thirty of them is 40 MB on top of
+  fifteen of GLB, plus the authoring. **The middle path, when hand control is wanted, is ONE
+  small tiling greyscale applied the same way — not one map per asset.**
+  **THE SCREEN-SPACE PAPER GRAIN IS DELIBERATELY NOT IN THIS BUILD.** It is the next biggest
+  lever and it belongs in the composite, but shipping it alongside the paint would move two
+  variables at once and neither could then be judged — which is this file's own rule about the
+  badge toggles.
+- **PLUTOPIA'S SHIP IS PARKED ON HOTEL_A'S ROOF (`SHIP`, c127), AND THAT IS NOT AN ARBITRARY
+  ROOF.** `npm run ladders` had already put a LADDER up that building, and it topped out on a
+  bare 14 x 14 m deck with nothing on it. A climb that leads somewhere is worth more than a ship
+  on a roof you cannot reach.
+  **THE DECK CENTRE IS MEASURED** — (298.2, 17.1, -13.1) — because `npm run ladders` now prints
+  the roof centre and its size beside the ladder foot. Placing a prop by eye off a screenshot is
+  how you get one hanging over a parapet, the same reason `npm run spots` exists for the ground.
+  **ITS SIZE IS MEASURED TOO**, the skateboard's rule: it arrives about a unit across, so the
+  scale comes from its own long horizontal axis and a re-export at any size lands right.
+  **AND IT IS SOLID.** A prop you walk through is scenery — the box goes to the PLAYER'S OWN
+  resolver every frame the way a car's and an officer's do, so there is no second physics path
+  and its roof is a floor he can stand on. There is no ride mechanic yet; that is its own build.
 - **THE SEE-THROUGH HOLE (`holePatch`, `stepHole`), ported from Plutopia.** A dithered
   `discard` through anything that is BOTH closer to the lens than Colin AND inside a circle
   around him on screen. It lives in the shared material shader, not per object, because the

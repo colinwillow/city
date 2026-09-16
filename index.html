@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c126</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c127</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c126';
+const BUILD = 'c127';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -506,6 +506,22 @@ const TRICK = {
 // (8.04 m of apex plus 2.15 of grab window = 10.2), with a wall face that has FLAT OPEN GROUND
 // in front of it, sampled off the same land and road meshes the collider is built from. A
 // ladder whose foot is in the water or up the inside of a wall is what placing by eye gets you.
+// PLUTOPIA'S SHIP, PARKED ON A ROOF (c127). *"Maybe it's on a roof somewhere."*
+// ON HOTEL_A, AND THAT IS NOT AN ARBITRARY ROOF: `npm run ladders` already put a LADDER up that
+// building, and until now it topped out on a bare 14 x 14 m deck with nothing on it. A climb
+// that leads somewhere is worth more than a ship on a roof you cannot reach -- and the deck
+// centre is MEASURED (298.2, 17.1, -13.1), not picked off a screenshot, for the same reason
+// `npm run spots` exists.
+// ITS SIZE IS MEASURED TOO, the skateboard's rule: it arrives about a unit across, so the scale
+// comes from its own long horizontal axis and a re-export at any size lands right with no edit.
+const SHIP = {
+  url: 'models/alien_ship_orange.glb',
+  at: [298.2, 17.1, -13.1], yaw: -.85,
+  len: 4.4,                       // how long it should BE, in metres
+  lift: .35,                      // how far it hovers over the deck
+  bob: .16, bobT: 4.2, roll: .035,
+  g: null, box: null, size: 0,
+};
 const LAD = {
   // The tool also found the three 51 m skyscrapers and they are deliberately left out: a
   // ladder up one is a thirteen-second climb with nothing happening, and they want a lift or
@@ -1008,7 +1024,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1389,6 +1405,91 @@ const hemi = new THREE.HemisphereLight(0x9bc5ee, 0x4b5a48, LIGHT.hemi); scene.ad
 const fill = new THREE.DirectionalLight(0x9fd4e8, LIGHT.fill); fill.position.set(-1, .4, -.6); scene.add(fill);
 
 // ---------- the toon ramp (Plutopia's, on r180 chunk names) ----------
+// ---------- THE PAINT PASS ----------
+// *"Is there a way where you could take a colour and procedurally generate that same colour but
+// with slight variation, so it looks kind of splotchy and painterly, without a rendered texture
+// map?"* Yes, and Plutopia already proved it -- `groundPatch` there is this, on its terrain.
+// IT IS NOT NOISE ADDED TO A COLOUR. That reads as dirt. **A painted surface is areas of ONE
+// FLAT COLOUR with a drawn line where two of them meet**, so the broad noise is THRESHOLDED
+// into patches -- smoothstep across a narrow band, which is nearly a step -- AND THE BAND
+// ITSELF IS DARKENED. That dark seam is the ink, and it is the single thing that makes this
+// read as paint rather than as a dirty wall.
+// VALUE NOISE LIVES ON AN INTEGER LATTICE, AND A THRESHOLD ACROSS IT DRAWS THAT LATTICE. Every
+// patch edge came out along a grid line and the cell mottle was literally graph paper -- so the
+// broad pattern is DOMAIN-WARPED before it is thresholded (one extra sample, pushed along a
+// diagonal, and no edge is axis-aligned any more) and the mottle is two lattices at different
+// angles and scales whose overlap is an irregular mosaic rather than a grid. Plutopia paid for
+// both of those; they come over as written.
+// ZERO BYTES AND ZERO DOWNLOAD -- about a dozen sin() a fragment, no texture, no authoring, and
+// it lands on EVERY surface in the city at once because the material hook is already global.
+// COLIN IS NOT PAINTED, and that is the mixed-media read he is after: a flat painted world with
+// a shaded character in it. He gets it for free -- his materials set their own
+// `onBeforeCompile`, which shadows the prototype's entirely (see the see-through hole).
+const PAINT = {
+  on: 1, k: 1,
+  scale: .055,      // how big a patch is, in world units^-1 -- LOWER is broader
+  patch: .30,       // how far the two sides of a threshold drift apart in value
+  ink: .20,         // and how dark the seam between them is. THIS is the painted read.
+  cell: .13,        // the flagstone mottle inside a patch
+  cellS: .85,
+  warm: .035,       // a patch drifts in HUE as well as value: warm one side, cool the other
+  grain: .05,       // fine tooth, so a big flat wall is not perfectly smooth
+};
+const PAINT_UNI = { uPaintK: { value: 1 }, uPaintS: { value: .055 }, uPaintP: { value: .30 },
+  uPaintI: { value: .20 }, uPaintC: { value: .13 }, uPaintCS: { value: .85 },
+  uPaintW: { value: .035 }, uPaintG: { value: .05 } };
+function paintSync() {
+  PAINT_UNI.uPaintK.value = PAINT.on ? PAINT.k : 0;
+  PAINT_UNI.uPaintS.value = PAINT.scale; PAINT_UNI.uPaintP.value = PAINT.patch;
+  PAINT_UNI.uPaintI.value = PAINT.ink;   PAINT_UNI.uPaintC.value = PAINT.cell;
+  PAINT_UNI.uPaintCS.value = PAINT.cellS; PAINT_UNI.uPaintW.value = PAINT.warm;
+  PAINT_UNI.uPaintG.value = PAINT.grain;
+}
+function paintPatch(sh) {
+  for (const k in PAINT_UNI) sh.uniforms[k] = PAINT_UNI[k];
+  sh.vertexShader = 'varying vec3 vPW; varying vec3 vPN;\n' + sh.vertexShader
+    .replace('#include <project_vertex>', `#include <project_vertex>
+      vPW = (modelMatrix * vec4(transformed, 1.0)).xyz;
+      vPN = mat3(modelMatrix) * objectNormal;`);
+  sh.fragmentShader = `uniform float uPaintK, uPaintS, uPaintP, uPaintI, uPaintC, uPaintCS, uPaintW, uPaintG;
+    varying vec3 vPW; varying vec3 vPN;
+    float ph(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    float pn(vec2 p){
+      vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(ph(i), ph(i + vec2(1,0)), f.x), mix(ph(i + vec2(0,1)), ph(i + vec2(1,1)), f.x), f.y);
+    }
+  ` + sh.fragmentShader
+    .replace('#include <color_fragment>', `#include <color_fragment>
+      if (uPaintK > 0.002) {
+        // DOMINANT-AXIS PLANAR PROJECTION, not triplanar. This city is a box city: its
+        // surfaces are within a few degrees of an axis nearly everywhere, so blending three
+        // samples would triple the cost to hide a seam that only exists at 45 degrees. Where
+        // the axis DOES flip it is a 90-degree corner -- a wall meeting a roof -- and those
+        // two wanting different patterns is correct rather than a fault.
+        vec3 an = abs(normalize(vPN));
+        vec2 P = (an.y > an.x && an.y > an.z) ? vPW.xz : (an.x > an.z ? vPW.zy : vPW.xy);
+        P *= uPaintS;
+        float w = pn(P * 2.1 + vec2(17.0, 53.0));
+        P += (w - 0.5) * vec2(0.52, 0.36);                       // the warp: no straight edges
+        float gp = pn(vec2(P.x * 0.866 - P.y * 0.5, P.x * 0.5 + P.y * 0.866));
+        vec2 q = ((an.y > an.x && an.y > an.z) ? vPW.xz : (an.x > an.z ? vPW.zy : vPW.xy)) * uPaintCS;
+        vec2 qa = vec2(q.x * 0.906 - q.y * 0.423, q.x * 0.423 + q.y * 0.906);
+        vec2 qb = vec2(q.x * 0.766 + q.y * 0.643, -q.x * 0.643 + q.y * 0.766) * 1.31;
+        float cell = 0.5 * (ph(floor(qa)) + ph(floor(qb)));
+        float band = smoothstep(0.44, 0.56, gp) - 0.5;
+        diffuseColor.rgb *= 1.0 + uPaintK * (band * uPaintP + (cell - 0.5) * uPaintC);
+        // THE HUE DRIFTS TOO, not just the value. A patch that is only lighter reads as
+        // lighting; one that is lighter AND a touch warmer reads as a different mix of paint.
+        diffuseColor.rgb += uPaintK * uPaintW * band * vec3(1.0, 0.25, -0.7);
+        // THE INK: the seam between two patches, darkened. Without this the whole thing is
+        // mottling and mottling is not painting.
+        float ink = 1.0 - smoothstep(0.0, 0.055, abs(gp - 0.5));
+        diffuseColor.rgb *= 1.0 - uPaintK * ink * uPaintI;
+        // and a fine tooth over all of it, so a big flat wall has some surface
+        diffuseColor.rgb *= 1.0 + uPaintK * uPaintG * (pn(P * 26.0) - 0.5);
+        diffuseColor.rgb = max(diffuseColor.rgb, vec3(0.0));
+      }`);
+}
 const TOON_UNI = { uToonK: { value: 1 }, uToonN: { value: 2 }, uToonSoft: { value: .055 }, uToonFloor: { value: .34 }, uRim: { value: .26 }, uRimP: { value: 3.4 }, uRimCol: { value: TOON.rimCol }, uSpec: { value: 1 }, uSpecG: { value: .06 }, uRimTint: { value: 1 } };
 function toonSync() {
   TOON_UNI.uToonK.value = TOON.k; TOON_UNI.uToonN.value = Math.max(1, TOON.bands); TOON_UNI.uToonSoft.value = Math.max(.001, TOON.soft);
@@ -2169,6 +2270,41 @@ function aimTwist(dt) {
     b.quaternion.premultiply(_twT);
     b.updateMatrixWorld(true);
   }
+}
+// PARKED, HOVERING, AND SOLID. A prop you walk straight through is scenery; the box goes to
+// the PLAYER'S OWN resolver every frame the way a car's and an officer's do -- same code, no
+// second physics path, and its roof is a floor on its real footprint so he can stand on it.
+const _shb = new THREE.Box3(), _shv = new THREE.Vector3();
+function buildShip(gl) {
+  if (!gl) return;
+  const m = gl.scene;
+  m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  m.updateMatrixWorld(true);
+  _shb.setFromObject(m); _shb.getSize(_shv);
+  const long = Math.max(_shv.x, _shv.z);
+  const k = SHIP.len / Math.max(1e-6, long);
+  const g = new THREE.Group();
+  // re-centred on its own footprint and sat on its own underside, so `at` means the deck
+  m.position.set(-(_shb.min.x + _shb.max.x) / 2 * k, -_shb.min.y * k, -(_shb.min.z + _shb.max.z) / 2 * k);
+  m.scale.setScalar(k);
+  g.add(m);
+  g.position.set(SHIP.at[0], SHIP.at[1] + SHIP.lift, SHIP.at[2]);
+  g.rotation.y = SHIP.yaw;
+  scene.add(g);
+  SHIP.g = g; SHIP.size = long * k;
+  const hx = _shv.x * k * .5, hz = _shv.z * k * .5, hy = _shv.y * k;
+  SHIP.box = { minx: 0, maxx: 0, minz: 0, maxz: 0, miny: 0, maxy: 0, hl: Math.max(hx, hz), hw: Math.min(hx, hz), hh: hy };
+  console.log('[ship] ' + (long).toFixed(2) + ' in file units -> x' + k.toFixed(2) + ' = ' + SHIP.size.toFixed(2) + ' m, on the roof at ' + SHIP.at.join(', '));
+}
+function stepShip(dt) {
+  const g = SHIP.g; if (!g) return;
+  const t = FX.t;
+  g.position.y = SHIP.at[1] + SHIP.lift + Math.sin(t / SHIP.bobT * Math.PI * 2) * SHIP.bob;
+  g.rotation.z = Math.sin(t / (SHIP.bobT * 1.7) * Math.PI * 2) * SHIP.roll;
+  const b = SHIP.box, hx = b.hl, hz = b.hw;
+  b.minx = g.position.x - hx; b.maxx = g.position.x + hx;
+  b.minz = g.position.z - hz; b.maxz = g.position.z + hz;
+  b.miny = g.position.y; b.maxy = g.position.y + b.hh;
 }
 function gearShow() {
   if (gear.blaster) gear.blaster.g.visible = !!kitOut('blaster');
@@ -2961,6 +3097,9 @@ function stepHole() {
 }
 THREE.MeshStandardMaterial.prototype.onBeforeCompile = function (sh) {
   toonPatch(sh);
+  // THE PAINT GOES ON EVERYTHING THE HOOK REACHES, which is the whole city, the ramps, the
+  // cars and the props -- one patch, no per-asset work. `userData.noPaint` opts a material out.
+  if (!this.userData.noPaint) paintPatch(sh);
   // userData.noHole opts a material out: the board under his feet, and the clouds, which are
   // half a kilometre past him and would only ever be cut by the depth test being generous.
   if (!this.userData.noHole) holePatch(sh);
@@ -6412,6 +6551,16 @@ const OPT_ROWS = [
   ['h', 'World'],
   ['tog', 'Map', () => MAP.on, v => { MAP.on = v; }],
   ['tog', 'Police', () => COP.on, v => { COP.on = v; }],
+  ['h', 'Paint'],
+  ['tog', 'Painted surfaces', () => PAINT.on, v => { PAINT.on = v; }],
+  ['num', 'Paint amount', () => PAINT.k, v => { PAINT.k = v; }, 0, 2, .05],
+  ['num', 'Patch size', () => PAINT.scale, v => { PAINT.scale = v; }, .01, .2, .005],
+  ['num', 'Patch value', () => PAINT.patch, v => { PAINT.patch = v; }, 0, .8, .02],
+  ['num', 'Ink seam', () => PAINT.ink, v => { PAINT.ink = v; }, 0, .6, .02],
+  ['num', 'Hue drift', () => PAINT.warm, v => { PAINT.warm = v; }, 0, .12, .005],
+  ['num', 'Mottle', () => PAINT.cell, v => { PAINT.cell = v; }, 0, .4, .01],
+  ['num', 'Tooth', () => PAINT.grain, v => { PAINT.grain = v; }, 0, .2, .005],
+  ['h', 'World'],
   ['tog', 'Card effects', () => FX.on, v => { FX.on = v; }],
   // THE LOOK IS A LOOK-AT-IT DECISION, which is the half of the tuning this panel exists for.
   ['seg', 'Effect style', () => FX.style, v => { FX.style = v; }, [['cards', 'Cards'], ['glow', 'Glow'], ['both', 'Both']]],
@@ -6544,6 +6693,7 @@ function groundUnder(p, step, vel, fromY, bounce) {
   // walk -- so without this you stood inside them. There are eight, so a flat scan is cheaper
   // than a second spatial grid would be to keep.
   for (const c of cops) if (c.box && Math.abs(c.x - p.x) < 4 && Math.abs(c.z - p.z) < 4) _boxes.push(c.box);
+  if (SHIP.box && Math.abs(SHIP.box.minx - p.x) < 14 && Math.abs(SHIP.box.minz - p.z) < 14) _boxes.push(SHIP.box);
   const r = resolveBoxes(p, .38, 1.7, step, _boxes, vel, bounce);
   // The real triangle where there is one, and only then the heightmap. They are not
   // combined: taking the max of an exact surface and a smeared one just puts the smear
@@ -7644,7 +7794,7 @@ function frame() {
   // so every card spawned during the frame was born a sixtieth of a second in the FUTURE --
   // `vAge < 0.0` discards, and the frame that got dropped was the first one: the spark.
   FX.t += dt;
-  toonSync();
+  toonSync(); paintSync();
   // The card runs the WHOLE scene -- traffic, clouds, his mixer, the post chain. Only the
   // player is suspended, and only because he is being posed rather than driven.
   // BEFORE `stepPlayer`, so a thumb holding a charge is not also read as a sprint.
@@ -7672,6 +7822,7 @@ function frame() {
     const k = player.aim ? (WEAP.min + (1 - WEAP.min) * player.chg) : 0;
     if (el) { el.style.opacity = player.aim ? '1' : (out ? '.34' : '0'); el.style.setProperty('--c', (k || 1).toFixed(3)); }
   }
+  stepShip(dt);
   jamScan(dt);
   drawMap(dt);
   if (colin.mixer) colin.mixer.update(dt);
@@ -7691,6 +7842,8 @@ frame();
     setBoot('building the streets', 1);
     await new Promise(r => setTimeout(r, 30));
     let ramps = null;
+    try { buildShip(await loadGLB(SHIP.url, 'parking the ship')); }
+    catch (e) { console.warn('no ship', e); }
     try { ramps = await loadGLB(PARK.url, 'building the park'); }
     catch (e) { console.warn('no ramps', e); }
     try { buildBoard(await loadGLB(BOARD.url, 'shaping the board')); }
