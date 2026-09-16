@@ -30,7 +30,13 @@ async function prep(f) {
   await gio.write(out, doc); return out;
 }
 const loader = new GLTFLoader();
-const load = f => new Promise((res, rej) => loader.parse(readFileSync(f).buffer.slice(0), '', res, rej));
+// **`readFileSync(f).buffer` IS THE SHARED POOL FOR A SMALL FILE, NOT THE FILE.** Node allocates
+// anything under ~4 KB out of an 8 KB pool, so `.buffer.slice(0)` starts at the beginning of the
+// POOL and hands the loader whatever was sitting in it -- which parses as garbage. Every
+// character GLB is megabytes and gets its own ArrayBuffer, so this was invisible until a 3 KB
+// garment went through it. Slice by the buffer's OWN view.
+const load = f => { const b = readFileSync(f); return new Promise((res, rej) =>
+  loader.parse(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), '', res, rej)); };
 const cop = await load(await prep('models/police_officer.glb'));
 const gun = await load(await prep('models/pistol.glb'));
 

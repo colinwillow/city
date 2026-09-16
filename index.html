@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c156</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c157</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c156';
+const BUILD = 'c157';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1243,7 +1243,14 @@ const CHARS = {
     // instead of five is the cheapest memory there is on a phone that is being killed for it.
     // Nothing about them was deleted: `models/chars/robot.glb` and `moussa_robit.glb` are still
     // in the repo and still measured by `npm run wear`, so a line here brings either back.
-    { key: 'moussat', name: 'Moussa', url: 'models/chars/moussa_toon.glb' },
+    // **AND WHAT HE WEARS RIDES HIS OWN JOINTS (c157).** *"I added a Senegal flag model. It's
+    // just a simple plane, I rigged it to the same spine joint that it would go on on Moussa --
+    // it goes along the back of his shirt, but it should be placed so all you have to do is rig
+    // it to the same joint that makes up his body."* Exactly so, and the FILE already says all
+    // of it: `senagal_flag.glb` is a SKINNED mesh whose whole skeleton is one joint called
+    // `mixamorig_Spine2`, with the inverse bind matrix that puts it on his back. Nothing about
+    // where it sits is typed here. See `wearFit`.
+    { key: 'moussat', name: 'Moussa', url: 'models/chars/moussa_toon.glb', wear: 'models/senagal_flag.glb' },
     { key: 'colin',  name: 'Colin',  url: 'models/colin.glb' },            // the clips come from him
     // THE TOON MOUSSA IS THE BEST-CASE RIG IN HERE (c122). Measured before anything was built:
     // 65/65 of the bones Colin's clips drive, rest-pose offset mean 0.0 deg / worst 0 deg, so
@@ -1253,7 +1260,7 @@ const CHARS = {
     // `weapon_root` on `mixamorig_RightHand`, so the blaster parents with identity.
     { key: 'alien',  name: 'Alien',  url: 'models/chars/alien_orange.glb' },
   ],
-  cur: 'colin', want: 'colin', skins: {}, loading: {},
+  cur: 'colin', want: 'colin', skins: {}, loading: {}, worn: {},
   h: { robot: 1.0, moussa: 1.0, moussat: 1.0, alien: 1.0 },   // height as a multiple of Colin's. Everyone is
                                                 // Colin-sized until told otherwise: the collider,
                                                 // the camera and the deck are all tuned to him.
@@ -4274,6 +4281,14 @@ function missing() {
   if (SFX.miss.length) m += ' · NO SND ' + SFX.miss.length;
   if (CHARS.cur !== 'colin') m += ' · ' + CHARS.cur;
   if (CHARS.miss) m += ' · NO SKIN ' + CHARS.miss;
+  // "HIS FLAG ISN'T THERE" IS FOUR BUGS WEARING ONE FACE, and they are identical from a phone:
+  // the file never arrived, it arrived unrigged, it is rigged to a joint this character has not
+  // got, or it is on and you are looking at his front. `gun93cm`'s rule -- put the word that
+  // tells them apart where he can see it. Silent when it is on and right, like every other line.
+  { const w = CHARS.worn[CHARS.cur];
+    if (w === 'nofile') m += ' · NO WEAR GLB';
+    else if (w === 'nomesh') m += ' · WEAR NO MESH';
+    else if (w === 'nobone') m += ' · WEAR NO JOINT'; }
   // He cannot get here without Colin any more -- the boot waits for him -- so this is a net
   // rather than a report, which is what the cloud and sky lines are too.
   if (!colin.ready) m += ' · NO COLIN GLB';
@@ -5255,7 +5270,7 @@ function bootHold() {
 // So: clamp, and spend each file inside ONE SLOT of a whole-boot bar. `total` is the number of
 // `loadGLB` calls `init()` makes; if that count ever drifts the bar is still monotone and still
 // clamped, and the `setBoot(..., 1)` at the end forces it home.
-const PROG = { done: 0, total: 10 + CLOUDS.urls.length, at: 0 };
+const PROG = { done: 0, total: 10 + CLOUDS.urls.length + CHARS.list.filter(c => c.wear).length, at: 0 };
 const setBoot = (t, p) => {
   bootMsg.textContent = t;
   if (p == null) return;
@@ -6116,6 +6131,83 @@ function measureSkin(model, key) {
   const names = new Set(); model.traverse(o => { if (o.name) names.add(o.name); });
   return { key, model, hand, armQ, restQ, names, mixer: null, actions: null, cw: {} };
 }
+// ---------- WHAT A CHARACTER WEARS (c157, `CHARS.list[].wear`, `wearFit`) ----------
+// *"I rigged it to the same spine joint that it would go on on Moussa. It goes along the back of
+// his shirt, but it should be placed so all you have to do is rig it to the same joint that makes
+// up his body."* Exactly so, and the FILE carries all of it: `senagal_flag.glb` is one plane, one
+// material, and an armature holding a single joint called `mixamorig_Spine2`. The roster gains
+// one `wear:` field and that is the whole configuration -- nothing about WHERE it sits is typed.
+// **THE MESH IS NOT SKINNED, AND THE `skins` BLOCK IN THE FILE SAYS OTHERWISE.** It has a
+// `skins[0]` naming that joint -- which I read as "it is a skinned mesh" and it is not: the
+// primitive carries POSITION, NORMAL and TEXCOORD_0 and no `JOINTS_0`/`WEIGHTS_0`, and the
+// `graphic` node has no `skin` reference at all. **The mesh's own `skin` reference is the fact;
+// a `skins` array is Blender writing the armature out beside it.** That is the same class of
+// mistake as reading a name instead of a structure -- `stripPoses` keys on whether a mesh is
+// SKINNED for precisely this reason, and the field to ask is the one on the mesh.
+// So it is placed RIGIDLY on the joint, which is the blaster's rule and needs no weights: the
+// file's own chain above `mixamorig_Spine2` comes off, and what is left is exactly where he drew
+// the plane relative to that bone. Parented, so it follows every clip for free.
+// **AND A GARMENT THAT IS SKINNED STILL WORKS**, because that is the general case and costs six
+// lines: its bones are re-looked-up BY NAME on the wearer and only the SKELETON is swapped. A
+// cape weight-painted across three spine bones drops in with no code change -- `weapFit`'s rule
+// with the last typed thing removed.
+// **`bind()` IS NEVER CALLED ON THAT PATH, AND IT IS THE TRAP.** Without a bindMatrix it runs
+// `skeleton.calculateInverses()`, which REPLACES the file's inverse binds with ones measured off
+// wherever the wearer's bones are standing at that instant -- every bit of the authored
+// placement gone, silently, looking like a garment in the wrong place rather than like a throw.
+// It goes under `skin.model` BEFORE `dressSkin` runs, so it is toon shaded, unpainted and
+// shadowed by the same pass his own meshes are, with no second path to keep in step.
+/* WEAR:START */
+const WEARS = {};                    // url -> the loaded scene, once
+const _wearM = new THREE.Matrix4();
+function wearFit(skin, key) {
+  const ent = CHARS.list.find(c => c.key === key);
+  const url = ent && ent.wear;
+  if (!url || !skin || !skin.model) return '';
+  const src = WEARS[url];
+  if (!src) return 'nofile';         // not down the wire yet, or not in the repo
+  if (skin.wear && skin.wear.parent) skin.wear.parent.remove(skin.wear);
+  skin.wear = null;
+  const g = skelClone(src);
+  g.updateMatrixWorld(true);
+  let mesh = null, skinned = null;
+  g.traverse(o => { if (o.isSkinnedMesh && !skinned) skinned = o; else if (o.isMesh && !mesh) mesh = o; });
+  if (skinned) {
+    // WEIGHT-PAINTED: swap the skeleton, keep the file's own inverse binds.
+    const bones = []; let hit = 0;
+    for (const b of skinned.skeleton.bones) {
+      const w = skin.model.getObjectByName(b.name);
+      if (w) { bones.push(w); hit++; } else bones.push(b);
+    }
+    if (!hit) return 'nobone';
+    skinned.skeleton = new THREE.Skeleton(bones, skinned.skeleton.boneInverses.map(m => m.clone()));
+    skinned.frustumCulled = false;
+    skin.model.add(skinned);
+    skin.wear = skinned;
+    if (skin.dressed) dressSkin(skinned, key);
+    return 'skin';
+  }
+  if (!mesh) return 'nomesh';
+  // RIGID: find the joint the file was authored against, and hand the mesh to the WEARER's one
+  // in the same place. `inverse(fileJoint.matrixWorld) * mesh.matrixWorld` is the whole of it --
+  // measured off the file rather than typed, so a re-export that moves the plane lands right.
+  let fileJoint = null, wearBone = null;
+  g.traverse(o => {
+    if (fileJoint || !o.isBone) return;
+    const w = skin.model.getObjectByName(o.name);
+    if (w) { fileJoint = o; wearBone = w; }
+  });
+  if (!fileJoint) return 'nobone';   // rigged to a joint this character has not got
+  _wearM.copy(fileJoint.matrixWorld).invert().multiply(mesh.matrixWorld);
+  mesh.matrix.copy(_wearM);
+  mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
+  mesh.frustumCulled = false;
+  wearBone.add(mesh);
+  skin.wear = mesh;
+  if (skin.dressed) dressSkin(mesh, key);
+  return 'bone';
+}
+/* WEAR:END */
 function dressSkin(model, key) {
   const isColin = key === 'colin';
   // He is authored for the kitchen: every material carries an emissive map at .1-.4 (his
@@ -6232,7 +6324,11 @@ function buildSkin(gltf, key) {
   // clip name, so a partial custom set works too -- name the ones you have redone and the rest
   // keep falling back to Colin's. Nothing is configured and nothing is per-character.
   ownClips(skin, gltf);
+  // BEFORE `dressSkin`, so the garment goes through the same material pass his own meshes do
+  // rather than needing one of its own.
+  CHARS.worn[key] = wearFit(skin, key);
   dressSkin(skin.model, key);
+  skin.dressed = 1;
   // HIS OWN ROOT, ALWAYS IN THE SCENE. One shared root can only ever hold one character, and
   // the title card's swap needs two of them walking at once. `colin.root` becomes an alias for
   // whichever root is current, so `poseColin` never learns any of this happened.
@@ -10090,6 +10186,17 @@ frame();
     catch (e) { console.warn('[kit] no blaster', e); }
     try { attachGear(await loadGLB(JET.url, 'fuelling the jetpack'), 'jet'); }
     catch (e) { console.warn('[kit] no jetpack', e); }
+    // WHAT THEY WEAR, LOADED BEFORE ANY SKIN IS BUILT. A garment is kilobytes and the skins come
+    // down behind the card one at a time, so getting it on the wire here means `buildSkin` can
+    // hand it straight to `dressSkin` rather than dressing it as a special case later.
+    // **AND IT IS STILL APPLIED LATE IF IT ARRIVES LATE** -- a slow fetch must not cost him the
+    // flag for the session, which is `CHARS.failed`'s own argument one asset along.
+    for (const c of CHARS.list) {
+      if (!c.wear || WEARS[c.wear]) continue;
+      try { WEARS[c.wear] = (await loadGLB(c.wear, 'sewing on the colours')).scene; }
+      catch (e) { console.warn('[wear] no ' + c.wear, e); }
+      for (const k in CHARS.skins) if (CHARS.skins[k]) CHARS.worn[k] = wearFit(CHARS.skins[k], k);
+    }
     // NOT `weapFit()` HERE. Colin has not loaded yet at this point -- he is three awaits
     // further down -- so there is no hand to hang anything on. `wear` calls `gearRehome` for
     // the first skin and for every change after it, which is the one place that knows.
@@ -10148,7 +10255,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, stepCam, camFree, stepJet, stepPlayer, AIR, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

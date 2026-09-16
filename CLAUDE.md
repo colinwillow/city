@@ -1198,6 +1198,60 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **WHAT A CHARACTER WEARS RIDES HIS OWN JOINTS (c157, `CHARS.list[].wear`, `wearFit`).**
+  *"I added a Senegal flag model. It's just a simple plane. I rigged it to the same spine joint
+  that it would go on on Moussa -- it goes along the back of his shirt, but it should be placed
+  so all you have to do is rig it to the same joint that makes up his body."*
+  He did all of it in the export. The roster gains one `wear:` field and **nothing about where it
+  sits is typed in the game**: the file names the joint and carries the placement.
+  **A `skins` BLOCK IS NOT A SKINNED MESH, AND I READ THE WRONG FIELD FIRST.** The file has
+  `skins[0]` naming `mixamorig_Spine2`, which I took as "a skinned mesh on one joint" and wrote a
+  skeleton swap for. It is not: the primitive carries POSITION, NORMAL and TEXCOORD_0 with **no
+  `JOINTS_0`/`WEIGHTS_0`**, and the `graphic` node has **no `skin` reference at all** -- Blender
+  writes the armature out beside a mesh that is merely parented to it. **The reference ON THE
+  MESH is the fact.** That is `stripPoses`' own rule (the structural property, not the name or
+  the neighbouring block) applied one field over, and the probe is what caught it: it reported
+  `not rigged -- it cannot follow him` on a file I had just described as rigged.
+  **SO IT IS PLACED RIGIDLY ON THE JOINT, WHICH IS THE BLASTER'S RULE AND NEEDS NO WEIGHTS.**
+  `inverse(fileJoint.matrixWorld) * mesh.matrixWorld` is the whole computation -- the file's own
+  chain above `mixamorig_Spine2` comes off and what is left is exactly where he drew the plane
+  relative to that bone. Parented, so it follows every clip for free.
+      as AUTHORED 0.130 x 0.088 m  ->  as WORN 0.158 x 0.112, x1.217 against his own x1.178
+  **The mount applies no scale of its own**, so it is the size he drew and a re-export at any
+  size lands right with no edit -- the skateboard's rule. (13 x 9 cm is a shirt PATCH; if he
+  wants it across the whole back, that is a bigger plane in Blender and no code change.)
+  **AND A GARMENT THAT IS WEIGHT-PAINTED STILL WORKS**, because that is the general case and cost
+  six lines: its bones are re-looked-up BY NAME on the wearer and only the SKELETON is swapped, so
+  a cape across three spine bones drops in unchanged. **`bind()` is never called on that path** --
+  without a bindMatrix it runs `calculateInverses()`, which REPLACES the file's inverse binds with
+  ones measured off wherever the wearer's bones are standing at that instant, and the authored
+  placement is silently gone.
+  It goes under `skin.model` BEFORE `dressSkin` runs, so it is toon shaded, unpainted and shadowed
+  by the same pass his own meshes are, with no second path to keep in step. The chip carries
+  `NO WEAR GLB` / `WEAR NO MESH` / `WEAR NO JOINT` and is silent when it is on, because from a
+  phone all of those look like "his flag isn't there" and so does standing in front of him.
+  **THE TEST THAT MATTERS IS THE LAST ONE**: a garment mounted to the wrong thing renders in
+  exactly the right place standing still, so `npm run wear` **turns his Spine2 by 57 degrees and
+  reads the flag again** -- 0.093 m of travel is it following the bone.
+- **`npm run jam` CANNOT BUILD A CHARACTER SKIN, AND THE SKIN HARNESS IS `npm run wear` (c157).**
+  The first garment probe was written as a `JAM_PROBE` and every character load failed with
+  `Worker is not defined` -- `jam.mjs` decompresses ONLY `city.glb` offline, and every character
+  GLB is draco too, so `DRACOLoader` reaches for a Worker that a headless node has not got. That
+  is also why `probe-jump.mjs` reports the flip as *"no clip headless"*: `airStart` returns early
+  with no `colin.actions`, and the jump numbers beside it are real.
+  **So: anything about the CITY goes through `npm run jam`, anything about a SKIN goes through
+  `npm run wear`**, which already decompresses per file into `tools/.wear-tmp/`. `wearFit` is
+  lifted between the `WEAR:` markers there, and **its `WEARS` table is handed back rather than
+  shadowed** -- a second table in the harness is one the shipped function never reads, so every
+  character would report `nofile` and the tool would look like it was working.
+- **`readFileSync(f).buffer` IS THE SHARED POOL FOR A SMALL FILE, NOT THE FILE (c157).** Five
+  tools opened their GLBs with `readFileSync(f).buffer.slice(0)`. Node allocates anything under
+  about 4 KB out of an 8 KB pool, so `.buffer` is the POOL and the file sits at some `byteOffset`
+  -- slicing from 0 hands the loader whatever was in the pool before it, which came back as
+  `Unexpected token '/', "/ex"... is not valid JSON`. **Every character GLB is megabytes and gets
+  its own ArrayBuffer, so this was invisible for a year and only a 3 KB garment exposed it.**
+  Fixed in `aim.mjs`, `cop.mjs`, `gun.mjs`, `wear.mjs` and `wearfit.mjs`: slice by the buffer's
+  own `byteOffset`/`byteLength`. Worth knowing before the next small asset is measured.
 - **THE DOUBLE JUMP COMES BACK WITH THE PACK OUT, AND A TAP IS NOT A HOLD (c156, `p.jetFlew`).**
   *"I want a tap to always -- first tap jump, second tap if it's a tap it's a flip, a double jump,
   but if the second one is a press and hold then it does the jetpack. That way you can do first
