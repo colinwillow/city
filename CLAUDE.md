@@ -1198,6 +1198,20 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **HE RE-EXPORTS `models/chars/colin.glb` AND THE GAME LOADS `models/colin.glb` (c155).**
+  His "fixed colin" commit -- the arm on the bar clips he said he would redo -- landed on
+  `models/chars/colin.glb` alone, and `init()` loads `models/colin.glb`. The two were made
+  identical at c151 and had silently diverged again, so the fix would have been in the repo and
+  not in the game: **exactly the shape of bug the asset hashes exist to prevent, one directory
+  over.** Copied across, and checked through the real loader rather than assumed:
+      51 clips, all three bar clips present   back_flip still 53 frames -> TRIM.back_flip STAYS
+      weapon_root still on mixamorig_RightHand, barrel along -X, 0.647 long -- the GUN, not a
+      bar grip, so c151's separation holds (0.096 from the blaster against a 0.571 barrel; the
+      tolerance calls that "no" and the shape of it plainly says otherwise -- worth a nudge in a
+      future export, not a blocker)
+  **TWO FILES FOR ONE CHARACTER IS THE STANDING HAZARD.** `npm run wear` reads `CHARS.list` and
+  measures the `chars/` copy; the game loads the other. Until one of them goes, **check they
+  match after every export of his** -- `md5sum models/colin.glb models/chars/colin.glb`.
 - **THE BAR HAS ITS OWN CAMERA, AND THE CATCH STOPPED SPINNING HIM ROUND (c154).** *"I found
   swing pole! Problem now is the camera gets all messed up... when I jumped onto the pole he
   flipped direction so that he was facing towards me, where he should be able to enter from
