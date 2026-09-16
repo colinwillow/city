@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c166</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c167</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c166';
+const BUILD = 'c167';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -730,9 +730,12 @@ const BAR = {
   // you alternated in time with him, which is a thing to learn rather than a thing to do.
   // Holding builds on every half now -- from rest in the direction he FACES, after that always
   // with the swing -- which is *"I want him to start gaining speed quite a bit quicker."*
-  pump: 7.5,        // rad/s^2 added for as long as the right pad is held
+  pump: 11,         // rad/s^2 added for as long as the right pad is held
   drag: .22,        // and what bleeds off, so a bad rhythm does not accumulate for ever
-  wMax: 7.0,        // ceiling on angular speed
+  wMax: 11.0,       // ceiling on angular speed -- 1.75 turns a second. *"He needs to spin quite
+                    // a bit faster."* 7.0 was 1.1 turns a second, which reads as a swing rather
+                    // than a giant; the tangential speed at the hands goes 7.6 -> 12 m/s.
+                    // On a slider (Bar top speed), with `pump` beside it.
   kick: .6,         // AT REST THE STICK PICKS THE DIRECTION. Without this the swing can never
                     // START: "add energy only while the stick agrees with the swing" multiplied
                     // by a swing of exactly zero is zero, so a bar caught from a dead hang hangs
@@ -8544,7 +8547,7 @@ const OPT_ROWS = [
   ['tog', 'Show bars', () => BAR.show, v => { BAR.show = v; barDraw(); }],
   ['num', 'Bar pump', () => BAR.pump, v => { BAR.pump = v; }, 1, 20, .5],
   ['num', 'Bar drag', () => BAR.drag, v => { BAR.drag = v; }, 0, 1, .02],
-  ['num', 'Bar top speed', () => BAR.wMax, v => { BAR.wMax = v; }, 3, 14, .5],
+  ["num", "Bar top speed", () => BAR.wMax, v => { BAR.wMax = v; }, 3, 20, .5],
   ['tog', 'Money', () => CASH.on, v => { CASH.on = v; if (cashMesh) cashMesh.visible = !!v; }],
   ['tog', 'Cars break up', () => WRECK.on, v => { WRECK.on = v; }],
   ['num', 'Shots to destroy', () => WRECK.hp, v => { WRECK.hp = v; }, 1, 8, 1],
@@ -10003,8 +10006,24 @@ function stepPlayer(dt) {
   // after `stepAim`'s ordering claim and `KIT.on`'s "exactly one owner". Writing it down is not
   // implementing it, and the two look identical when you are reading rather than running.
   if (player.barCool > 0) player.barCool -= dt;
-  if (player.bar) { stepBar(dt); poseColin(dt); return; }
-  if (!player.grounded && barCatch()) { stepBar(dt); poseColin(dt); return; }
+  // **AND `colinAnim` HAS TO RUN, WHICH IT DID NOT -- THIS IS WHY NO BAR CLIP EVER PLAYED (c167).**
+  // *"None of the animations ever play for when he's swinging around the pole. He's just in what
+  // looks like a regular idle pose, and since he's an idle pose his hands are right at his hips,
+  // so therefore he's spinning around his hips."* Every word of that is the symptom of this:
+  // both of these lines called `poseColin` and RETURNED, so the one function that sets clip
+  // weights was skipped for the entire time he was on a bar. The mixer keeps whatever weights it
+  // last had -- `idle_neutral` at 1 -- so he hangs in the idle pose for ever, `bar_hang_idle`
+  // and `bar_pump` never reach weight at all, and `BAR.mark`'s hand pair is therefore measured
+  // AT HIS HIPS, which is exactly the pivot he is describing. The placement was never wrong.
+  // **FOURTH TIME: WHEN A FEATURE DOES NOTHING, CHECK WHERE IT IS CALLED BEFORE WHAT IT DOES** --
+  // and this is c150's own lesson, in the very branch whose comment records it.
+  // **AND `npm run bar` COULD NOT SEE IT, BECAUSE THE HARNESS PLAYS THE CLIP ITSELF.** It poses
+  // `bar_hang_idle` and then runs `barPlace`, so it measured a path the game never takes and
+  // reported a grip on the bar to four decimals while the game had him by the hips. That is the
+  // `normals.mjs` mistake in its purest form -- the tool was right about the arithmetic and the
+  // arithmetic was never the question.
+  if (player.bar) { stepBar(dt); if (colin.ready) colinAnim(dt); poseColin(dt); return; }
+  if (!player.grounded && barCatch()) { stepBar(dt); if (colin.ready) colinAnim(dt); poseColin(dt); return; }
   player.barPX = player.pos.x; player.barPY = player.pos.y; player.barPZ = player.pos.z;
   if (player.board) stepSkate(dt); else stepFoot(dt);
   // A STRIKE THROWN WHILE RIDING, after the skate step so his position is the one the mark and

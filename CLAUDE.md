@@ -1198,6 +1198,39 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **NO BAR CLIP EVER PLAYED, AND IT WAS NEVER THE CLIPS (c167).** *"None of the animations ever
+  play for when he's swinging around the pole. I explicitly told you I have two animations for
+  that -- pole idle and pole pump -- neither of those play. He's just in what looks like a regular
+  idle pose, and since he's an idle pose his hands are right at his hips, so therefore he's
+  spinning around his hips."*
+  **EVERY WORD OF THAT IS THE SYMPTOM OF ONE LINE.** `stepPlayer`'s two bar branches read
+      if (player.bar) { stepBar(dt); poseColin(dt); return; }
+  -- they pose him and RETURN, so **`colinAnim` was skipped for the entire time he was on a
+  bar**. That is the only function that sets clip weights, so the mixer kept whatever it last
+  had, which is `idle_neutral` at 1. He hangs in the idle pose for ever; `bar_hang_idle` and
+  `bar_pump` never reach weight at all; and `BAR.mark`'s hand pair is therefore measured **at his
+  hips**, which is the pivot he described. **The placement was never wrong and the export was
+  never wrong.** One `colinAnim(dt)` in each branch.
+  **FOURTH TIME: WHEN A FEATURE DOES NOTHING, CHECK WHERE IT IS CALLED BEFORE WHAT IT DOES** --
+  and it is c150's own lesson, in the very branch whose comment records learning it.
+  **AND `npm run bar` COULD NOT SEE IT, WHICH IS THE PART WORTH KEEPING.** That harness poses
+  `bar_hang_idle` ITSELF and then runs `barPlace`, so it measured a path the game never takes and
+  reported `grip off bar 0.0000` to four decimals while the game had him by the hips. **The tool
+  was right about the arithmetic and the arithmetic was never the question** -- the
+  `normals.mjs` / `normGeo` mistake in its purest form, and the eighth time this repo has paid
+  for it. Three builds of bar fixes (c154's facing, c164's swing sign) were real and none of them
+  could ever have shown, because nothing was animating underneath them.
+  **SO THE GATE CHECKS THE SHAPE NOW.** `tools/syntax.mjs` fails any line that calls `poseColin`
+  and returns without `colinAnim` or `colinSet` beside it. It is crude, it is a source-shape
+  test rather than a behavioural one, and it costs nothing and always runs -- which is the whole
+  argument, because no offline harness in this repo can build a skin (`npm run jam` has no Worker
+  for DRACO) and so none of them can ever test this by playing it. Verified by reverting the fix
+  in a copy: `line 10025: poses and returns without setting clip weights`.
+  **AND THE SPIN IS FASTER** (`wMax` 7 -> 11, `pump` 7.5 -> 11): 1.75 turns a second against 1.1,
+  and 12 m/s at the hands against 7.6. Through the shipped `stepBar`, from a dead hang:
+      level with the bar 1.55s -> 0.78s      over the top 2.20s -> 1.92s      peak w 11.00
+  Both are sliders (Bar pump / Bar top speed / Bar drag), because how fast a giant should go is
+  a look-at-it decision and those belong on the phone.
 - **THE NEW OFFICER AND THE NEW PISTOL (c166).** *"I updated a new version of the pistol that
   goes with a new version of the cop. It's a different animation style. He should have all the
   same animations. I just stole them from the other one and kinda adjusted them, but he's a new
