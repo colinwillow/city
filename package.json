@@ -33,7 +33,9 @@
     "jam": "node tools/jam.mjs",
     "aim": "node tools/aim.mjs",
     "title": "node tools/title.mjs",
-    "palette": "node tools/palette.mjs"
+    "palette": "node tools/palette.mjs",
+    "wreck": "node tools/wreck.mjs",
+    "cars": "node tools/cars.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

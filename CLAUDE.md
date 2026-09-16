@@ -2808,6 +2808,67 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   lever and it belongs in the composite, but shipping it alongside the paint would move two
   variables at once and neither could then be judged — which is this file's own rule about the
   badge toggles.
+- **THE CARS ARE ALREADY BROKEN UP, AND `npm run cars` IS HOW WE KNOW (c145, `WRECK`).**
+  *"Shoot it once and it stops, shoot it again and the pieces of the mesh slightly skew, two or
+  three and it starts on fire, shoot again and the car actually explodes. Do you think that's
+  possible or do I need to break up the geometry on a computer first?"* **No.** Read straight out
+  of the shipped `models/city.glb`: 30 distinct car meshes, ONE primitive each -- so there is no
+  material split to exploit -- and every one of them made of **47 to 64 SEPARATE CONNECTED
+  ISLANDS**:
+      car_c.001   1415 tris   47 islands   biggest 309 / 102 / 100 / 100 / 98 / 44
+      car_f.001   1360 tris   64 islands   biggest 326 / 100 / 100 /  96 / 92 / 88
+      tractor_a    968 tris   19 islands   biggest 144 / 134 / 130 / 114 / 108 / 52
+  The big island is the body shell and the rest are wheels, glass, lights, bumpers and mirrors --
+  exactly what a car would come apart INTO. Nothing needs authoring.
+  **THE WELD IS WHAT MAKES THAT TRUE, AND WITHOUT IT THE ANSWER IS THE OPPOSITE.** These meshes
+  are flat-shaded, so every face owns its vertices and raw index-sharing says every triangle is
+  its own island -- a fact about the EXPORT, not about the shape. Positions weld to a tenth of a
+  millimetre first.
+- **A SHATTER IS A VERTEX SHADER, NOT FIFTY MESHES (c145, `shatterTag`, `wreckPatch`).** Fifty
+  pieces is fifty draw calls per wreck against a phone already at 24 fps. So each vertex carries
+  its PIECE'S centroid and one per-piece random vector, the car stays ONE mesh and ONE draw call,
+  and a uniform moves every piece about its own centre. **The same three lines give the dent and
+  the explosion** -- `uBreak` is the whole difference, which is why four damage stages cost one
+  mechanism.
+  **ONE RANDOM PER ISLAND, NEVER PER VERTEX.** Per-vertex tears each piece into loose triangles,
+  which is the difference between debris and confetti.
+  **AND THE VECTOR POINTS AWAY FROM THE CAR'S OWN MIDDLE.** A purely random direction sends half
+  the pieces INWARD and the car reads as imploding.
+  **IT WORKS ALONG `uUp`, NOT ALONG Y, AND THAT IS NOT A DETAIL.** A vertex shader runs in MODEL
+  space, and a car in this pack has its LENGTH on Y and its UP on -Z (the `CAR_FWD` note). Against
+  `.y` the debris would have flown out along the bonnet and clamped against the nose. The axis is
+  a uniform derived from `CAR_FWD` where that is already known, rather than a sign guessed in
+  GLSL -- this file's handedness rule, which comes out backwards half the time when argued.
+  **THE NORMAL TURNS WITH THE PIECE** or a tumbling panel is lit as if it never moved, which is
+  flat cardboard rather than metal. `beginnormal_vertex` runs before `begin_vertex`, so
+  `objectNormal` is there to be rotated by the same Rodrigues.
+  **RIGID BODY IS THE ONE THING THIS IS NOT, DELIBERATELY.** Shipped debris is ballistic with a
+  floor stop and a spin, not a solver; the pieces are on screen for two seconds. A real solver
+  would mean a physics engine for one effect.
+  **A WRECK IS A MATERIAL, WHICH IS WHY THERE IS A POOL.** Damage lives in uniforms, uniforms
+  belong to a material, and a new material is a new shader PROGRAM -- a compile mid-game is a
+  visible hitch on a phone. `WRECK.max` are built at load, a damaged car borrows one, the oldest
+  finished wreck gives its slot back. **And the instance hook calls the prototype's first**, or a
+  wreck is the one object in the city with no toon ramp, no palette and no see-through hole (the
+  hole's own landmine, working against us for once).
+  **A BLOWN CAR IS REMOVED BY BEING LEFT OUT OF `carGridBuild`**, one guard. Everything that can
+  see a car asks that grid -- traffic, the player's resolver, the bolts, the aim assist -- so one
+  line takes it out of all of them, and the debris keeps drawing because that is a Group in the
+  scene and nothing to do with `cars`. **Splicing `cars` is the obvious move and it is wrong**:
+  `crossGive` holds references across frames (`c.led`) and a list that renumbers under them is a
+  live bug.
+  **A CAR THAT GIVES ITS SLOT BACK GOES BACK TO INTACT, `hp` AND ALL** -- one that looks brand new
+  while still one shot from death is `KIT.on`'s three-owners bug in a pool.
+  **`npm run wreck` RUNS THE SHIPPED `shatterTag`** (lifted between `WRECK:` markers) on the real
+  car geometry and asserts every mesh splits into a sane number of pieces -- not 1 (the weld
+  swallowed the car and it will SCALE rather than shatter) and not one per few vertices (it never
+  welded, and it is confetti). It agrees with `npm run cars`' independent gltf-transform reading
+  to the piece: 52 / 64 / 47 / 52 / 64. **The asset measurement and the pipeline measurement are
+  two different tools here on purpose**, which is the lesson this repo has paid for six times.
+  **AND THE BACKTICK LANDMINE CLAIMED THIS BUILD TOO.** A comment inside the shader template
+  literal, mentioning a chunk name in backticks, closed the string -- c136's exact fault, walked
+  into while writing the line that fixes the normals. `npm run check:syntax` caught it. There are
+  no backticks inside that block now and there must never be.
 - **MONEY YOU PICK UP (c144, `CASH`, `buildCash`, `stepCash`).** *"Money that you collect -- a
   stack of hundred dollar bills with a little [band] to signal that it's like $10,000. Put it
   around town, just a little bit here and there."*

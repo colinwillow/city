@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c144</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c145</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c144';
+const BUILD = 'c145';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1172,7 +1172,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -1200,6 +1200,11 @@ const SND_FILES = {
   // is for borrowing it rather than inventing one. He may drop his own over the top: same path,
   // same filename, and `npm run bump` re-hashes it so the phone actually asks again.
   cash: ['jewel_noise_01'],
+  // A CAR COMING APART (c145). Plutopia's and robits' own, borrowed the way everything else in
+  // this table was. Two sizes, because a panel falling off and the tank going up are not the
+  // same event and one file played at two volumes says they are.
+  boom: ['explosion_medium', 'explosion_small'],
+  burn: ['fire_burn_01'],
 };
 const rnd = (a, b) => a + Math.random() * (b - a);
 const SFX = {
@@ -1497,6 +1502,10 @@ const snd = {
     ? (SFX.play('deck', .44 + .46 * k, rnd(.92, 1.06)) || SFX.play('wood', .30 + .50 * k, rnd(.80, 1.05)) || SFX.noise(.09, .16, 900))
     : (SFX.noise(.10, .08 + .16 * k, 520), SFX.blip(96, .07, 'sine', .05 + .10 * k, 54)),
   bail: () => SFX.play('crack', .55, rnd(.80, 1.00)) || SFX.noise(.22, .22, 700),
+  // THE DAMAGE TIERS SOUND DIFFERENT OR THEY ARE ONE SOUND FOUR TIMES. A panel going is the
+  // small file high and quiet; the car going up is the big one low and loud.
+  crunch: (x, z) => SFX.play('boom', .28, rnd(1.25, 1.45), x, z) || SFX.play('crack', .40, rnd(.9, 1.1), x, z) || SFX.noise(.16, .16, 600),
+  boom: (x, z) => { SFX.play('boom', .85, rnd(.80, .92), x, z) || SFX.noise(.45, .40, 260); SFX.play('crack', .45, rnd(.7, .85), x, z); },
   // A LITTLE HIGHER EACH TIME, RESET BY A PAUSE -- the oldest trick in a pickup, and it is what
   // turns twenty-six identical chimes into a run you want to keep going. It is a per-key state
   // rather than a counter on the caller, so the RUN belongs to the sound and not to the money.
@@ -2981,7 +2990,7 @@ function pickTarget(h) {
   // actually pointing at, and a priority order would pull the mark off the car in front of him
   // onto an officer forty metres away and twenty degrees off.
   for (const c of cops) { if (c === held || !ok(c)) continue; const sc = targetScore(c, hx, hz, L.cone); if (sc >= 0 && sc < bs) { bs = sc; best = c; } }
-  for (const c of cars) { if (c === held) continue; const sc = targetScore(c, hx, hz, L.cone); if (sc >= 0 && sc < bs) { bs = sc; best = c; } }
+  for (const c of cars) { if (c === held || c.dead) continue; const sc = targetScore(c, hx, hz, L.cone); if (sc >= 0 && sc < bs) { bs = sc; best = c; } }
   return best;
 }
 // THE RETICLE. A wanted level you cannot see is one you cannot play around, and an aim assist
@@ -3309,8 +3318,10 @@ class PBolt {
     for (const o of carsNear(this.x, this.z, 8, _cn)) {
       if (Math.hypot(o.x - this.x, o.z - this.z) > R + o.hl) continue;
       if (this.y > o.box.maxy + 1) continue;
-      o.zap = B.stun; o.speed = 0; heatAdd(HEAT.zap);
-      fxPop(o.x, o.y + o.hh * .9, o.z, 'zap', 2.4 * FX.impact);
+      // FOUR SHOTS, AND EACH ONE LOOKS DIFFERENT (c145). The first still just stops it, which
+      // is what `BOLT.stun` always did; after that the panels wander, it catches light, and the
+      // fourth takes it apart. `carHurt` owns all of that and raises the heat itself.
+      carHurt(o, this.vx, this.vz);
       this.pop('#bfe8ff', 7, .8); return true;
     }
     // anything solid, the same box test the police rounds use
@@ -4144,7 +4155,7 @@ function jamScan(dt) {
   JAM.t += dt; if (JAM.t < JAM.every) return; JAM.t = 0;
   _jamC.clear(); let best = null, bn = 0;
   for (const c of cars) {
-    if (c.stop < JAM.at) continue;
+    if (c.dead || c.stop < JAM.at) continue;
     const k = Math.floor(c.x / JAM.cell) + ',' + Math.floor(c.z / JAM.cell);
     let e = _jamC.get(k); if (!e) _jamC.set(k, e = { n: 0, x: 0, z: 0 });
     e.n++; e.x += c.x; e.z += c.z;
@@ -4159,7 +4170,7 @@ function jamScan(dt) {
   // cannot be anything else: two cars each queued behind the OTHER, which no timer releases.
   JAM.f = JAM.x2 = JAM.b = JAM.m = 0;
   for (const c of cars) {
-    if (c.stop < JAM.at) continue;
+    if (c.dead || c.stop < JAM.at) continue;
     if (c.why === 'follow') { JAM.f++; if (c.led && c.led.led === c) JAM.m++; }
     else if (c.why === 'cross') JAM.x2++;
     else if (c.why === 'blocked') JAM.b++;
@@ -4580,7 +4591,13 @@ const carGrid = new Map();
 const CARCELL = 16;
 function carGridBuild() {
   carGrid.clear();
-  for (const c of cars) { const key = gkey(Math.floor(c.x / CARCELL), Math.floor(c.z / CARCELL)); let l = carGrid.get(key); if (!l) carGrid.set(key, l = []); l.push(c); }
+  // A BLOWN CAR IS IN NO CELL, AND THAT IS THE WHOLE REMOVAL (c145). Everything that can see a
+  // car asks this grid -- the traffic rules, the player's own resolver, the bolts, the aim
+  // assist -- so one guard here takes it out of all of them at once, and the debris goes on
+  // being drawn because that is a Group in the scene and nothing to do with `cars`.
+  // SPLICING `cars` WOULD BE THE OBVIOUS MOVE AND IT IS THE WRONG ONE: `crossGive` holds
+  // references across frames (`c.led`), and a list that renumbers under them is a live bug.
+  for (const c of cars) { if (c.dead) continue; const key = gkey(Math.floor(c.x / CARCELL), Math.floor(c.z / CARCELL)); let l = carGrid.get(key); if (!l) carGrid.set(key, l = []); l.push(c); }
 }
 function carsNear(x, z, r, out) {
   out.length = 0;
@@ -4865,6 +4882,7 @@ function stepHit(dt) {
 function stepTraffic(dt) {
   carGridBuild();
   for (const c of cars) {
+    if (c.dead) continue;      // it is debris now, not a driver
     const l = segTarget(c, 0, _tg).len;
     // carrot ahead on the lane; steer toward it
     const look = clamp(c.speed * .6, 3, 9);
@@ -5157,6 +5175,265 @@ function rasterMesh(mesh, cap, water, precise) {
     if (precise) triAdd(_a.x, _a.y, _a.z, _b.x, _b.y, _b.z, _c.x, _c.y, _c.z);
   }
 }
+// ---------- CARS COME APART (c145, `WRECK`, `shatterTag`, `wreckPatch`, `carHurt`) ----------
+// *"Shoot it once and it stops, shoot it again and the pieces of the mesh kind of slightly skew,
+// two or three and it starts on fire and smoking, shoot again and the car actually explodes and
+// the pieces go everywhere. Do you think that's possible, or do I need to break up the geometry
+// on a computer first?"*
+//
+// **NO -- THE CARS ARE ALREADY BROKEN UP, AND `npm run cars` IS HOW WE KNOW.** Read straight out
+// of the shipped `models/city.glb`: 30 distinct car meshes, ONE primitive each (so there is no
+// material split to exploit), and each one made of **47 to 64 SEPARATE CONNECTED ISLANDS**:
+//     car_c.001   1415 tris   47 islands   biggest 309 / 102 / 100 / 100 / 98 / 44
+//     car_f.001   1360 tris   64 islands   biggest 326 / 100 / 100 /  96 / 92 / 88
+//     tractor_a    968 tris   19 islands   biggest 144 / 134 / 130 / 114 / 108 / 52
+// The big island is the body shell and the rest are the wheels, glass, lights, bumpers and
+// mirrors -- exactly the pieces a car would come apart INTO. Nothing needs authoring.
+// **THE WELD IS WHAT MAKES THAT TRUE, AND WITHOUT IT THE ANSWER IS THE OPPOSITE.** These meshes
+// are flat-shaded, so every face has its OWN vertices and raw index-sharing says every triangle
+// is its own island -- which is a fact about the EXPORT, not about the shape. Positions are
+// welded to a tenth of a millimetre first; the islands above are what falls out.
+//
+// **IT IS A VERTEX SHADER, NOT FIFTY MESHES.** Fifty pieces is fifty draw calls per wreck and he
+// is already at 24 fps. So each vertex carries its PIECE'S CENTROID and a per-piece random
+// vector, the geometry stays ONE mesh and ONE draw call, and a uniform moves every piece about
+// its own centre. The same three lines give the small skew of a dented panel and the whole thing
+// coming apart -- one mechanism, and `uBreak` is the difference.
+// **RIGID BODY IS THE ONE THING THIS IS NOT, AND THAT IS DELIBERATE.** Debris in shipped games
+// is ballistic with a floor stop and a spin, not a solver -- the pieces are on screen for two
+// seconds and nobody can tell. A real solver here would mean a physics engine for one effect.
+const WRECK = {
+  on: 1,
+  hp: 4,            // shots to destroy: stop, skew, burn, gone
+  max: 5,           // how many wrecks may exist at once -- this is a MATERIAL count, see below
+  skew: [0, .022, .065, .13],   // how far the panels wander at each damage stage
+  spread: 7.0,      // how hard the pieces leave on the blast, m/s
+  lift: 4.6,        // and how much of that is straight up
+  spin: 5.0,        // rad/s of tumble
+  g: 14,            // debris gravity -- UNDER the world's 20, because light panels float
+  life: 6.0,        // seconds before the debris fades out and the slot is recycled
+  fade: 1.2,
+  smokeEvery: .34,  // while it burns
+  burnH: .55,       // where the flames sit, as a fraction of the car's height
+};
+// ONE PASS PER DISTINCT CAR GEOMETRY, CACHED. There are thirty of them and several hundred cars,
+// so this is thirty welds at load and nothing per car. The attributes ride on the SHARED
+// geometry, which is safe because the material every undamaged car uses never declares them --
+// they cost memory and no fragment.
+// WRECK:START -- lifted verbatim by `npm run wreck`. A tool that measures the asset is not a
+// tool that measures the pipeline, and this is the pipeline.
+const _shat = new WeakSet();
+function shatterTag(geo) {
+  if (!geo || _shat.has(geo) || geo.attributes.aCen) return geo;
+  _shat.add(geo);
+  const pos = geo.attributes.position, n = pos.count;
+  const idx = geo.index;
+  // weld by position -- see above, this is the whole reason the islands exist
+  const key = new Map(), rep = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const k = (Math.round(pos.getX(i) * 2000)) + ',' + (Math.round(pos.getY(i) * 2000)) + ',' + (Math.round(pos.getZ(i) * 2000));
+    let r = key.get(k); if (r === undefined) { r = i; key.set(k, i); }
+    rep[i] = r;
+  }
+  const par = new Int32Array(n); for (let i = 0; i < n; i++) par[i] = i;
+  const find = a => { while (par[a] !== a) { par[a] = par[par[a]]; a = par[a]; } return a; };
+  const uni = (a, b) => { a = find(a); b = find(b); if (a !== b) par[b] = a; };
+  const cnt = idx ? idx.count : n;
+  for (let i = 0; i + 2 < cnt; i += 3) {
+    const a = rep[idx ? idx.getX(i) : i], b = rep[idx ? idx.getX(i + 1) : i + 1], c = rep[idx ? idx.getX(i + 2) : i + 2];
+    uni(a, b); uni(b, c);
+  }
+  // centroid per island
+  const sum = new Map();
+  for (let i = 0; i < n; i++) {
+    const r = find(rep[i]); let e = sum.get(r);
+    if (!e) sum.set(r, e = [0, 0, 0, 0]);
+    e[0] += pos.getX(i); e[1] += pos.getY(i); e[2] += pos.getZ(i); e[3]++;
+  }
+  const cen = new Float32Array(n * 3), rnd = new Float32Array(n * 3);
+  // ONE RANDOM VECTOR PER ISLAND, NOT PER VERTEX -- a per-vertex one tears the piece apart into
+  // loose triangles, which is the difference between debris and a mesh exploding into confetti.
+  const seed = new Map();
+  for (const [r, e] of sum) {
+    const cx = e[0] / e[3], cy = e[1] / e[3], cz = e[2] / e[3];
+    // AWAY FROM THE CAR'S OWN MIDDLE, plus scatter. A purely random direction sends half the
+    // pieces INTO the car and they come out looking like they imploded.
+    let vx = cx + (Math.random() - .5) * .9, vy = Math.abs(cy) * .4 + Math.random() * .7, vz = cz + (Math.random() - .5) * .9;
+    const l = Math.hypot(vx, vy, vz) || 1; vx /= l; vy /= l; vz /= l;
+    seed.set(r, [cx, cy, cz, vx, vy, vz, Math.random() * 6.283]);
+  }
+  for (let i = 0; i < n; i++) {
+    const e = seed.get(find(rep[i]));
+    cen[i * 3] = e[0]; cen[i * 3 + 1] = e[1]; cen[i * 3 + 2] = e[2];
+    rnd[i * 3] = e[3]; rnd[i * 3 + 1] = e[4]; rnd[i * 3 + 2] = e[5];
+  }
+  geo.setAttribute('aCen', new THREE.BufferAttribute(cen, 3));
+  geo.setAttribute('aRnd', new THREE.BufferAttribute(rnd, 3));
+  geo.userData.pieces = sum.size;
+  return geo;
+}
+// WRECK:END
+// THE SHADER. `uBreak` alone is the dent; `uT` running is the blast. Everything is about the
+// piece's OWN centroid, which is why a small value reads as panels sitting wrong rather than as
+// the whole car scaling.
+//
+// **IT WORKS ALONG `uUp`, NOT ALONG Y, AND THAT IS NOT A DETAIL.** This is a vertex shader, so
+// it runs in the MODEL'S OWN SPACE -- and in that space a car in this pack has its LENGTH on Y
+// and its UP on -Z (see the `CAR_FWD` note above: `fix` is what stands them up). Writing the
+// gravity and the floor against `.y` would have thrown every panel out along the bonnet and
+// clamped the debris against the car's nose. The axis is handed down as a uniform, derived from
+// `CAR_FWD` at the one place that already knows it, rather than being a sign guessed here --
+// this file's handedness rule, which comes out backwards half the time when it is argued.
+// `uScl` is 1/the car's own scale: the launch speeds are METRES and this space is not metres.
+function wreckPatch(sh, uni) {
+  for (const k in uni) sh.uniforms[k] = uni[k];
+  sh.vertexShader = 'attribute vec3 aCen; attribute vec3 aRnd;\n'
+    + 'uniform float uBreak, uT, uFloor, uSpin, uScl; uniform vec3 uUp;\n' + sh.vertexShader
+    .replace('#include <begin_vertex>', `#include <begin_vertex>
+      {
+        vec3 cen = aCen;
+        vec3 rel = transformed - cen;
+        // ONE AXIS PER PIECE, derived from the same vector that throws it, so a piece tumbles
+        // about the way it is going rather than about a second unrelated random.
+        vec3 ax = normalize(aRnd + vec3(0.13, 0.41, 0.27));
+        float ang = uBreak * 9.0 + uT * uSpin * (0.6 + fract(aRnd.x * 43.75) * 0.9);
+        float c = cos(ang), si = sin(ang);
+        rel = rel * c + cross(ax, rel) * si + ax * dot(ax, rel) * (1.0 - c);   // Rodrigues
+        // THE NORMAL TURNS WITH THE PIECE. Without this a tumbling panel is lit as though it
+        // never moved, which reads as flat cardboard spinning rather than as metal -- and
+        // beginnormal_vertex runs BEFORE this chunk, so objectNormal is here to be turned.
+        // (NO BACKTICKS IN HERE. The whole block is a template literal and one in a COMMENT
+        // closes it -- c136's landmine, walked into again while writing this very line.)
+        objectNormal = objectNormal * c + cross(ax, objectNormal) * si + ax * dot(ax, objectNormal) * (1.0 - c);
+        #ifdef USE_TANGENT
+          objectTangent = objectTangent * c + cross(ax, objectTangent) * si + ax * dot(ax, objectTangent) * (1.0 - c);
+        #endif
+        vec3 off = aRnd * uBreak;
+        if (uT > 0.0) {
+          // BALLISTIC, WITH A FLOOR -- not a solver. See the note above the constant.
+          off += (aRnd * (` + WRECK.spread.toFixed(2) + `) * uT
+                + uUp * (` + WRECK.lift.toFixed(2) + ` * uT - 0.5 * (` + WRECK.g.toFixed(2) + `) * uT * uT)) * uScl;
+        }
+        vec3 wp = cen + rel + off;
+        float h = dot(wp, uUp);
+        if (h < uFloor) wp += uUp * (uFloor - h);
+        transformed = wp;
+      }`);
+}
+const WRECKS = [];
+function wreckInit() {
+  if (!WRECK.on || WRECKS.length || !cityMat) return;
+  for (let i = 0; i < WRECK.max; i++) {
+    const uni = { uBreak: { value: 0 }, uT: { value: 0 }, uFloor: { value: -1e9 }, uSpin: { value: WRECK.spin },
+      uScl: { value: 1 }, uUp: { value: new THREE.Vector3(0, 0, -1) } };
+    const m = cityMat.clone();
+    m.userData = Object.assign({}, cityMat.userData);
+    // THE PROTOTYPE HOOK STILL HAS TO RUN, or a wreck loses the toon ramp, the palette and the
+    // see-through hole and comes out as the one object in the city shaded like stock three.
+    // An instance hook SHADOWS the prototype's completely -- that is the see-through hole's own
+    // landmine, working against us for once -- so it is called explicitly first.
+    m.onBeforeCompile = function (sh) {
+      THREE.MeshStandardMaterial.prototype.onBeforeCompile.call(this, sh);
+      wreckPatch(sh, uni);
+    };
+    m.needsUpdate = true;
+    WRECKS.push({ mat: m, uni, car: null, t: 0, blown: 0, at: 0 });
+  }
+}
+function wreckSlot() {
+  let free = WRECKS.find(w => !w.car);
+  if (!free) {
+    // the oldest one goes, which is what keeps this bounded without ever refusing a shot
+    free = WRECKS.slice().sort((a, b) => a.at - b.at)[0];
+    wreckRelease(free);
+  }
+  free.at = performance.now();
+  return free;
+}
+function wreckRelease(w) {
+  if (w.car) {
+    const c = w.car;
+    if (w.blown) { if (c.g) c.g.visible = false; c.dead = 1; }
+    else if (c.inner) {
+      // A CAR THAT GIVES ITS SLOT BACK GOES BACK TO INTACT, hp AND ALL. The damage lives in
+      // uniforms and the uniforms belong to the slot, so a car that keeps its dents on paper
+      // while looking brand new is a car that dies to one more shot for no visible reason --
+      // one fact, one place, which is `KIT.on`'s rule applied to a pool.
+      c.inner.material = cityMat; c.hp = undefined; c.burn = 0;
+    }
+    c.wreck = null;
+  }
+  w.car = null; w.t = 0; w.blown = 0; w.uni.uBreak.value = 0; w.uni.uT.value = 0;
+}
+// WHAT A SHOT DOES TO A CAR. Four stages, and every one of them is something you can SEE from a
+// phone -- a stage you cannot tell apart from the one before it is a stage that is not there.
+function carHurt(car, hx, hz) {
+  if (!WRECK.on || !car || car.dead) { car.zap = BOLT.stun; car.speed = 0; return 0; }
+  car.hp = (car.hp === undefined ? WRECK.hp : car.hp) - 1;
+  const stage = WRECK.hp - car.hp;                       // 1..WRECK.hp
+  car.zap = BOLT.stun; car.speed = 0;
+  if (!car.wreck) {
+    const w = wreckSlot(); w.car = car; car.wreck = w;
+    if (car.inner) { shatterTag(car.inner.geometry); car.inner.material = w.mat; }
+    // THE FLOOR, IN THE CAR'S OWN SPACE AND ALONG ITS OWN UP. `fix` stands these models up by
+    // mapping local -Z (times CAR_FWD) to world up, so "the road" here is the lowest point along
+    // THAT axis and not the bottom of the Y bounds. Measured off the geometry rather than
+    // derived through three transforms, which is where a sign would go missing.
+    const bb = car.inner && car.inner.geometry.boundingBox;
+    w.uni.uUp.value.set(0, 0, -CAR_FWD);
+    w.uni.uFloor.value = bb ? (CAR_FWD > 0 ? -bb.max.z : bb.min.z) : -1e9;
+    w.uni.uScl.value = 1 / (car.sx || 1);
+  }
+  const w = car.wreck;
+  if (stage >= WRECK.hp) {
+    // THE BLAST. The debris clock starts and the car leaves the traffic -- it is scenery now,
+    // and a stopped car that is still in `cars` is a permanent roadblock every other driver has
+    // to solve around.
+    w.blown = 1; w.t = 0; w.uni.uT.value = 0.0001;
+    car.dead = 1; car.speed = 0;
+    snd.boom(car.x, car.z);
+    fxPop(car.x, car.y + car.hh * .7, car.z, 'boom', 2.6 * FX.impact);
+    for (let i = 0; i < 5; i++) {
+      const a = Math.random() * 6.283, r = 1 + Math.random() * 2.2;
+      fxPop(car.x + Math.cos(a) * r, car.y + car.hh * (.3 + Math.random()), car.z + Math.sin(a) * r,
+        i & 1 ? 'hit' : 'puff', (1.6 + Math.random()) * FX.impact, Math.cos(a) * 3, 2 + Math.random() * 3, Math.sin(a) * 3);
+    }
+    heatAdd(HEAT.boom);
+  } else {
+    w.uni.uBreak.value = WRECK.skew[Math.min(stage, WRECK.skew.length - 1)];
+    if (stage >= 2) car.burn = 1;                        // smoking from the second hit, alight on the third
+    snd.crunch(car.x, car.z);
+    fxPop(car.x, car.y + car.hh * .8, car.z, stage >= 2 ? 'hit' : 'zap', 1.9 * FX.impact,
+      (hx || 0) * 1.5, 2.2, (hz || 0) * 1.5);
+    heatAdd(HEAT.zap);
+  }
+  return stage;
+}
+// THE BURN AND THE DEBRIS CLOCK. Both are per-frame and neither is per-car: only the wrecks in
+// the pool can be doing anything, which is what the pool is for.
+function stepWrecks(dt) {
+  if (!WRECKS.length) return;
+  for (const w of WRECKS) {
+    const c = w.car; if (!c) continue;
+    w.t += dt;
+    if (w.blown) {
+      w.uni.uT.value = w.t;
+      // the pieces fade out together rather than one at a time -- they are one mesh
+      const k = clamp((WRECK.life - w.t) / WRECK.fade, 0, 1);
+      if (c.g) c.g.visible = k > .02;
+      if (w.t > WRECK.life) wreckRelease(w);
+      continue;
+    }
+    if (!c.burn) continue;
+    c.burnT = (c.burnT || 0) - dt;
+    if (c.burnT > 0) continue;
+    c.burnT = WRECK.smokeEvery;
+    const a = Math.random() * 6.283, r = Math.random() * c.hw;
+    fxPop(c.x + Math.cos(a) * r, c.y + c.hh * WRECK.burnH, c.z + Math.sin(a) * r, 'puff',
+      (.9 + Math.random() * .5) * FX.impact, 0, 1.6 + Math.random(), 0);
+    if (Math.random() < .22) snd.burn(c.x, c.z);
+  }
+}
 let cityMat = null;
 // HOW MUCH OF THE WORLD ACTUALLY GOT DRAWN. A chunk that fails to merge is a hole with its
 // collider still in it, and a `console.warn` is invisible on a phone -- the cloud, sky and
@@ -5246,7 +5523,7 @@ function buildCity(gltf, ramps) {
     const lift = pc.pos.y - hmAt(pc.pos.x, pc.pos.z);
     pc.mesh.geometry.computeBoundingBox(); const bb = pc.mesh.geometry.boundingBox;
     const hy = (/^truck/.test(pc.name) ? 9 : 12) + (hmAt(tile.cx, tile.cz) > 4 ? 5 : 0);   // m/s; the highway is faster
-    const car = { g, id: cars.length, x: pc.pos.x, z: pc.pos.z, y: pc.pos.y, yaw, lift: Math.max(0, lift), from: tile, to, s: 0, lane: Math.random() < .5 ? 0 : 1,
+    const car = { g, inner, sx, id: cars.length, x: pc.pos.x, z: pc.pos.z, y: pc.pos.y, yaw, lift: Math.max(0, lift), from: tile, to, s: 0, lane: Math.random() < .5 ? 0 : 1,
       speed: 5 + Math.random() * 4, top: hy * (0.8 + Math.random() * .4), stop: 0, zap: 0,
       hw: (bb.max.x - bb.min.x) / 2 * sx, hl: (bb.max.y - bb.min.y) / 2 * sx, hh: (bb.max.z - bb.min.z) * sx, box: { minx: 0, maxx: 0, minz: 0, maxz: 0, miny: 0, maxy: 0 } };
     g.position.set(car.x, car.y, car.z); g.rotation.y = yaw; cityGroup.add(g); cars.push(car);
@@ -6391,6 +6668,7 @@ const HEAT = {
   chaseAt: 1, fireAt: 2, callAt: 3, callIn: 90,
   punch: .9,        // what each thing you do is worth
   down: 1.3, zap: .5, bolt: 1.7,
+  boom: 1.8,        // blowing a car up is the loudest thing in the game and is priced like it
   t: 0,             // time since anything happened
 };
 function heatAdd(k) {
@@ -7397,6 +7675,8 @@ const OPT_ROWS = [
   ['tog', 'Map', () => MAP.on, v => { MAP.on = v; }],
   ['tog', 'Police', () => COP.on, v => { COP.on = v; }],
   ['tog', 'Money', () => CASH.on, v => { CASH.on = v; if (cashMesh) cashMesh.visible = !!v; }],
+  ['tog', 'Cars break up', () => WRECK.on, v => { WRECK.on = v; }],
+  ['num', 'Shots to destroy', () => WRECK.hp, v => { WRECK.hp = v; }, 1, 8, 1],
   ['h', 'Palette'],
   ['tog', 'Palette grade', () => PAL.on, v => { PAL.on = v; }],
   ['num', 'Tint strength', () => PAL.pull, v => { PAL.pull = v; }, 0, 2, .05],
@@ -9145,6 +9425,7 @@ function frame() {
     if (el) { el.style.opacity = player.aim ? '1' : (out ? '.34' : '0'); el.style.setProperty('--c', (k || 1).toFixed(3)); }
   }
   stickWatch(dt);
+  stepWrecks(dt);
   stepCash(dt);
   stepShip(dt);
   jamScan(dt);
@@ -9194,6 +9475,7 @@ frame();
     // further down -- so there is no hand to hang anything on. `wear` calls `gearRehome` for
     // the first skin and for every change after it, which is the one place that knows.
     buildCity(city, ramps);
+    wreckInit();      // after buildCity: the pool clones `cityMat`, which does not exist before it
     buildLadders();
     buildCash();      // after the collider: every strap's height is read off the ground
     if (copGlb) buildCops(copGlb, gunGlb);
@@ -9240,7 +9522,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { WRECK, carHurt, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
