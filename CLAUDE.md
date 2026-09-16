@@ -1198,6 +1198,73 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **HE SKATED OUT OF EVERY TACKLE, AND `accFall` WAS GATING THE BRAKES (c159).** *"There's a
+  thing that happens when I melee -- if he slides it gives him a bit of velocity, and then when
+  I'm running he's sliding around like he's ice-skating afterwards. I don't mind him getting a
+  little velocity from a slide tackle, but on his feet he should still just run like normal."*
+  **THE NUMBER IS WORSE THAN IT SOUNDS.** `ramp` is `1 - accFall * smooth(0, 1, sp0/ceil)`, and
+  `rate` fed BOTH halves of the along-velocity change -- speeding up and slowing down. Coming out
+  of a tackle he carries ten or eleven metres a second while the thumb asks for a walk, so that
+  smooth saturates and `push` is at its floor (`stepMelee` had just set `goT = 0`):
+      MOVE.acc 24  x  (1 - accFall .93)  x  push0 .3  =  **0.50 m/s^2**
+      -> 11 m/s of tackle takes **21.8 SECONDS** to bleed off
+  Twenty-two seconds of a man on ice, which is exactly what he described and is far past what I
+  would have guessed from reading it. **`accFall` is about how fast he can SPEED UP, and slowing
+  down is not accelerating** -- one sign test, and the negative half takes the full rate:
+      down to a normal run in 0.05 s, travelling where the thumb points in 0.38 s
+  **AND `goT = 0` ON MELEE EXIT WAS THE OTHER HALF.** That is a standing start, handed to a man
+  still carrying the tackle's speed -- his legs are under him coming out of a strike, so it takes
+  `stepRoll`'s own cancel value instead. The fix that matters is the sign test; this is the beat
+  of sluggishness behind it.
+  **IT ALSO MAKES `turnBrake` MEAN WHAT IT SAYS.** A hard turn lowers `want`, which puts `along`
+  negative -- so it now costs him speed immediately rather than over the next four strides, which
+  is what "plants the feet" was always describing.
+- **A MELEE FLICK AT SOMEBODY LOCKS ON, AND THE LOCK HAS TO DELIVER HIM (c159, `meleeLock`).**
+  *"When you melee flick with the right stick, if you're generally trying to flick towards another
+  character like the cop, there will be a little bit of aim assist -- it basically locks onto him
+  and shoots you towards him so that you perfectly melee towards him."*
+  **BOTH HALVES, AND THE SECOND IS THE ONE THAT MAKES IT READ LIKE THE OTHER GAMES.** Aiming at
+  him is not enough: a punch thrown at exactly the right bearing from four metres still hits air.
+  So the lock also solves `melV` for the gap -- `carry` holds full speed for 45% and bleeds after,
+  so a move covers `melV * melDur * .725`, and that inverts.
+  **AND IT CANNOT GO GRABBY THE WAY `WEAP.lock` DID.** That one is a per-frame loop over four
+  hundred cars and eight officers, which is why it is off. This is ONE SHOT, taken on the frame of
+  the flick and never revisited, over the POLICE only -- there is nothing for it to flicker
+  between. Not on a dodge roll (that is a move AWAY from somebody) and not on the board (c118:
+  `stepSkate` owns the heading).
+  **`dot - d * k` IS NOT "STRAIGHTEST WINS, NEAREST BREAKS THE TIE", WHATEVER THE COMMENT SAYS.**
+  The harness put a cop 3 m away at 26 degrees against one 7 m away dead ahead and the NEAR one
+  won -- by four thousandths. The honest question is *how far off the line of the flick is he*,
+  which is `d * sin(angle)` **in metres**; `near` then says what a metre of distance is worth
+  against a metre of miss. Same units on both terms, and it behaves the way the sentence reads.
+  **AND THE ACQUIRE RANGE IS WHAT THE MOVE CAN COVER, NOT A TYPED NUMBER.** A flat 9.5 m locked a
+  JAB onto a man six metres off and then could not get him there -- `strike` is 0.58 s, so even at
+  `maxV` that is 5.5 m, and the probe read *gap at the CONTACT frame 3.40 m*. **A lock that turns
+  him toward somebody he cannot reach is worse than no lock**, which is `WEAP.lock`'s own rule
+  about a mark the gun does not keep. The range is `maxV * melDur * .725` clamped to `range`, so a
+  punch acquires inside 5.5 m and a tackle inside 9.5, and every lock is deliverable by
+  construction.
+  **AND WHEN HE IS LOCKED, THE CONTACT FRAME IS WHEN HE ARRIVES.** `MELEE.at` is where the fist
+  lands IN THE CLIP, about a third of the way in -- right for a jab thrown on the spot and wrong
+  for a lunge still closing four metres. The probe read it exactly: `melV` solved to put him ON
+  the man, and the blow fired with **a 1.81 m gap**, a swing at the air he was about to arrive
+  in. **The picture and its consequence have to be ONE event** -- the slash mark's own rule, and
+  the reason the blow was moved off the input frame in the first place. A locked strike swings
+  when he gets there, and swings anyway at `lockAt` if he never does. An unlocked strike is
+  untouched. Measured after, at every distance inside the range:
+      cop at 1.5 / 2.5 / 4.0 / 5.4 m  ->  gap at the contact frame 1.43 / 1.70 / 1.63 / 1.74 m
+      a punch reaches COP.reach + COP.r = 2.82 m, so every one of them connects
+  **AND THE PROBE'S OWN PASS MARK WAS WRONG BEFORE THAT.** It asserted `COP.r + 1.2` -- a number
+  I invented -- and called a clean hit short by nine centimetres. The threshold has to be the one
+  `copsPunched` actually uses, or the harness is measuring a rule the game does not have, which
+  is this repo's oldest mistake wearing its smallest hat.
+  `JAM_PROBE=tools/probe-melee.mjs` drives the shipped `meleeLock` and the shipped `stepMelee`
+  over the real collider: the cone, the two-target tiebreak, and the gap at the CONTACT frame.
+- **HIS DRAWN NAME PLATES ARE IN (c159).** c143 wrote the hook as `images/name_<key>.png` and he
+  exported `colin_name_256.png` / `moussa_name_256.png` / `zorp_name_256.png` -- so `CHARS.art`
+  is what that field is for, one line each and none of his files renamed. **And the alien is
+  called ZORP**, which his own artwork is what says: the plate IS the name, and the text under it
+  was only ever the stand-in for a plate nobody had drawn yet.
 - **"WHY ISN'T THE MODEL UPDATING?" -- IT DID, AND THE GUN STILL LOOKED WRONG (c158, `WEAP.grip`).**
   *"I don't understand why the model isn't updating. The blaster is not being held correctly, so
   I corrected all the joints -- I've done this like four times now and you're telling me they're

@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c158</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c159</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c158';
+const BUILD = 'c159';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -837,6 +837,32 @@ const MELEE = {
   air: 1, airV: 9.5, airDur: .70,
   slideV: 1.85,      // the tackle keeps this much of his speed, bled off across the clip
   lunge: 4.0,        // and a standing strike still steps INTO it rather than punching the air
+  // **A FLICK AT SOMEBODY IS A FLICK AT SOMEBODY (c159, `meleeLock`).** *"When you melee flick
+  // with the right stick, if you're generally trying to flick towards another character like
+  // the cop, there will be a little bit of aim assist -- it basically locks onto him and shoots
+  // you towards him so that you perfectly melee towards him."* Both halves matter and the second
+  // is the one that makes it feel like the other games: **aiming at him is not enough, he has to
+  // ARRIVE.** A punch thrown at exactly the right bearing from four metres away still hits air.
+  // **AND THIS CANNOT GO GRABBY THE WAY `WEAP.lock` DID.** That one was a per-frame loop over
+  // four hundred cars and eight officers, which is why it is off: at 44 m a 22-degree cone
+  // almost always contains SOMETHING and the mark snapped between two of them. This is a
+  // ONE-SHOT decision, taken on the frame of the flick and never revisited, over the POLICE
+  // only -- you do not slide tackle a parked car -- inside a range you could plausibly cover.
+  // Nothing is sticky, so there is nothing for it to flicker between.
+  lock: { on: 1, cone: .52, range: 9.5, near: .12, reach: 1.15, maxV: 13 },
+  lockAt: .92,       // and if he never reaches the man, the swing still happens near the end
+  //       cone   30 degrees either side of the flick. Wider is a punch that goes where it likes
+  //       range  the ceiling -- but the real limit is what THIS move can cover, see below
+  //       near   metres of score per metre of distance, against the lateral miss in metres
+  //       reach  aim a little PAST him, so the contact frame lands with him inside the arc
+  //       maxV   and a ceiling, because a lock must never turn a jab into a cannonball
+  // **THE RANGE IS WHAT THE MOVE CAN ACTUALLY COVER, NOT A TYPED NUMBER.** A flat 9.5 m locked
+  // a JAB onto a man six metres away and then could not get him there: `strike` is 0.58 s and
+  // even at `maxV` that is 5.5 m, so the harness read *gap at the CONTACT frame 3.40 m*. A lock
+  // that turns him toward somebody he cannot reach is worse than no lock -- it is the mark the
+  // gun does not keep, one weapon along. So the acquire range is `maxV * melDur * .725` clamped
+  // to `range`, which falls out of `MELEE.carry`'s own profile: a punch reaches 5.5 m and a
+  // tackle 9.5, and every lock is inside what the move will deliver BY CONSTRUCTION.
   // HE HOLDS HIS SPEED AND *THEN* SCRUBS IT. A flat linear bleed puts the average at half the
   // launch speed, so every metre of travel had to be bought with a speed spike at the front --
   // which reads as a rocket, not a tackle. Full speed for the first `carry` of the move and
@@ -1258,15 +1284,24 @@ const CHARS = {
     // of it: `senagal_flag.glb` is a SKINNED mesh whose whole skeleton is one joint called
     // `mixamorig_Spine2`, with the inverse bind matrix that puts it on his back. Nothing about
     // where it sits is typed here. See `wearFit`.
-    { key: 'moussat', name: 'Moussa', url: 'models/chars/moussa_toon.glb', wear: 'models/senagal_flag.glb' },
-    { key: 'colin',  name: 'Colin',  url: 'models/colin.glb' },            // the clips come from him
+    { key: 'moussat', name: 'Moussa', url: 'models/chars/moussa_toon.glb', wear: 'models/senagal_flag.glb',
+      art: 'images/moussa_name_256.png' },
+    // **HIS DRAWN NAME PLATES (c159).** c143 wrote the hook as `images/name_<key>.png` and he
+    // exported `<name>_name_256.png` -- so `art:` is what it is for, one line each and no
+    // renaming of his files. A plate that fails to load still reads as it did before, which is
+    // why the `lit` class only goes on after `onload`.
+    { key: 'colin',  name: 'Colin',  url: 'models/colin.glb',            // the clips come from him
+      art: 'images/colin_name_256.png' },
     // THE TOON MOUSSA IS THE BEST-CASE RIG IN HERE (c122). Measured before anything was built:
     // 65/65 of the bones Colin's clips drive, rest-pose offset mean 0.0 deg / worst 0 deg, so
     // he shares Colin's bind pose EXACTLY the way `alien_orange` does -- no `HIPFIX`, and the
     // rest-delta everyone reaches for first would be a no-op on him anyway. 2 skinned meshes,
     // ZERO loose donor meshes, so `stripPoses` has nothing to do. And he carries
     // `weapon_root` on `mixamorig_RightHand`, so the blaster parents with identity.
-    { key: 'alien',  name: 'Alien',  url: 'models/chars/alien_orange.glb' },
+    // AND THE ALIEN IS CALLED ZORP, which his own artwork is what says so -- the plate is the
+    // name and the text under it was only ever the stand-in for a plate that had not been drawn.
+    { key: 'alien',  name: 'Zorp',   url: 'models/chars/alien_orange.glb',
+      art: 'images/zorp_name_256.png' },
   ],
   cur: 'colin', want: 'colin', skins: {}, loading: {}, worn: {},
   h: { robot: 1.0, moussa: 1.0, moussat: 1.0, alien: 1.0 },   // height as a multiple of Colin's. Everyone is
@@ -1338,7 +1373,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"99d38b7d","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/senagal_flag.glb":"5ff5a849","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/colin.glb":"99d38b7d","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/colin_name_256.png":"d6a1be53","images/hdr_toon_03.png":"129d2760","images/moussa_name_256.png":"e8d784eb","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","images/zorp_name_256.png":"4aab0ca5","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"99d38b7d","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/senagal_flag.glb":"5ff5a849","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/colin.glb":"99d38b7d","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -8270,7 +8305,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -8857,6 +8892,34 @@ function airStart(kind) {
 }
 // START ONE. `kind` is 'hit' for the chain and 'roll' for the dodge; everything else about
 // them is the same, which is why they share a timer.
+// WHO THAT FLICK WAS AIMED AT. Scored on ANGLE first and distance second -- nearest-and-
+// straightest is what the thumb is actually pointing at, and a pure distance sort picks the man
+// behind him. Returns null when nothing is really in the way of the flick, which is most flicks:
+// the assist has to be invisible when he is swinging at air or it is a hand on the wheel.
+function meleeLock(h, range) {
+  if (!MELEE.lock.on || !cops.length) return null;
+  const p = player, L = MELEE.lock, fx = Math.sin(h), fz = Math.cos(h);
+  const cc = Math.cos(L.cone), R = range || L.range;
+  let best = null, bs = 1e9;
+  for (const c of cops) {
+    if (!c || c.y === undefined) continue;
+    const dx = c.x - p.pos.x, dz = c.z - p.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d < .5 || d > R) continue;
+    const dot = (dx / d) * fx + (dz / d) * fz;
+    if (dot < cc) continue;
+    // **SCORED ON THE LATERAL MISS, NOT ON THE ANGLE.** `dot - d * k` reads as "straightest
+    // wins, near breaks the tie" and does not behave like it: a man three metres away and
+    // twenty-six degrees off beat one dead ahead at seven, by four thousandths. The honest
+    // question is *how far off the line of the flick is he*, which is `d * sin(angle)` in
+    // METRES -- so a small miss far away still beats a big miss close, and `near` is the one
+    // dial that says how much a metre of distance is worth against a metre of miss.
+    const lat = d * Math.sqrt(Math.max(0, 1 - dot * dot));
+    const sc = lat + d * L.near;                    // smaller is better
+    if (sc < bs) { bs = sc; best = c; }
+  }
+  return best;
+}
 function meleeGo(kind, h) {
   const p = player;
   // RIDING COUNTS. On the board a strike is UPPER BODY ONLY -- he swings and keeps rolling,
@@ -8872,7 +8935,7 @@ function meleeGo(kind, h) {
     p.melStep++; p.melI = 0;
   }
   if (!colin.actions[nm]) return;
-  p.mel = nm;
+  p.mel = nm; p.melLock = null;
   p.melT = p.melDur = kind === 'roll' ? MELEE.rollDur : nm === MELEE.slide ? MELEE.slideDur : MELEE.strike;
   colinScale(nm, clipLen(nm, p.melDur) / p.melDur);
   p.melWin = 0;
@@ -8889,9 +8952,30 @@ function meleeGo(kind, h) {
   // heading there would carve the board sideways on every punch.
   p.melH = p.board ? p.faceH
     : h !== undefined ? h : (p.speed > .4 ? Math.atan2(p.vel.x, p.vel.z) : p.faceH);
-  if (!p.board) p.heading = p.faceH = p.melH;
   p.melV = kind === 'roll' ? MELEE.rollV
     : nm === MELEE.slide ? Math.max(p.speed * MELEE.slideV, MELEE.runAt) : MELEE.lunge;
+  // THE LOCK, ONCE, HERE. Not on a roll -- a dodge is a move AWAY from somebody and steering it
+  // into him is the opposite of what it is for -- and not on the board, where `stepSkate` owns
+  // the heading and a second writer would carve the deck sideways on every punch (c118).
+  if (kind !== 'roll' && !p.board) {
+    // `carry` holds full speed for the first 45% and bleeds linearly after, so a move covers
+    // `melV * melDur * .725`. That is the honest acquire range: never lock onto somebody this
+    // strike cannot get to.
+    const eff = p.melDur * (1 - (1 - MELEE.carry) * .5);
+    const t = meleeLock(p.melH, Math.min(MELEE.lock.range, MELEE.lock.maxV * eff));
+    if (t) {
+      p.melH = Math.atan2(t.x - p.pos.x, t.z - p.pos.z);
+      // AND THE SPEED THAT ACTUALLY GETS HIM THERE, which is the half that makes it read as the
+      // other games. `MELEE.carry` holds full speed for the first 45% and bleeds linearly after,
+      // so the distance covered is `melV * melDur * .725` -- solve that for the gap and he lands
+      // on him instead of near him. Floored at what the move was already worth, so a lock can
+      // only ever carry him FURTHER, and capped so a jab cannot become a cannonball.
+      const d = Math.hypot(t.x - p.pos.x, t.z - p.pos.z) * MELEE.lock.reach;
+      p.melV = clamp(Math.max(p.melV, d / Math.max(.01, eff)), 0, MELEE.lock.maxV);
+      p.melLock = t;
+    }
+  }
+  if (!p.board) p.heading = p.faceH = p.melH;
   p.pushing = false; p.goT = 0; p.melFx = p.melI ? 1 : 0;   // a dodge leaves no mark
   snd.jump();
 }
@@ -8920,7 +9004,7 @@ function meleeAir(h) {
   if (p.rollT > 0 || p.hang || p.lad || p.aim) return;
   const nm = MELEE.slide;
   if (!colin.actions[nm]) return;
-  p.airKick = 1; p.melAir = 1; p.mel = nm;
+  p.airKick = 1; p.melAir = 1; p.mel = nm; p.melLock = null;
   p.melT = p.melDur = MELEE.airDur;
   colinScale(nm, clipLen(nm, p.melDur) / p.melDur);
   p.melWin = 0; p.melI = 0; p.melStep = 0; p.melFx = 0;
@@ -8952,7 +9036,22 @@ function stepMelee(dt, ride) {
   }
   // THE MARK, ON THE CONTACT FRAME. See MELEE.at: the swing and its consequence have to be
   // one event, so this fires off the move's own progress rather than off the input.
-  if (!p.melFx && u >= (MELEE.at[p.mel] !== undefined ? MELEE.at[p.mel] : .38)) {
+  // **WHEN HE IS LOCKED ON, THE CONTACT FRAME IS WHEN HE GETS THERE (c159).** `MELEE.at` is
+  // where the fist lands IN THE CLIP -- about a third of the way in -- which is right for a jab
+  // thrown on the spot and wrong for a lunge that is still closing four metres. The probe read
+  // it exactly: melV solved to land him ON the man, and the blow fired with *gap at the CONTACT
+  // frame 1.81 m*, a swing at the air he was about to arrive in. **The picture and its
+  // consequence have to be ONE event** -- the slash mark's own rule, and the reason the blow was
+  // moved off the input frame in the first place. So a locked strike swings when he ARRIVES, and
+  // swings anyway near the end of the move if he never does (a man who is walked away from still
+  // throws the punch). An unlocked strike is untouched: it is the clip's own frame, as before.
+  let _at = MELEE.at[p.mel] !== undefined ? MELEE.at[p.mel] : .38;
+  let _hit = u >= _at;
+  if (p.melLock) {
+    const ld = Math.hypot(p.melLock.x - p.pos.x, p.melLock.z - p.pos.z);
+    _hit = ld < COP.r + MELEE.fxR * COLIN_HEIGHT || u >= MELEE.lockAt;
+  }
+  if (!p.melFx && _hit) {
     p.melFx = 1;
     const hx = Math.sin(p.melH), hz = Math.cos(p.melH), R = MELEE.fxR * COLIN_HEIGHT;
     const y = p.pos.y + COLIN_HEIGHT * (p.mel === MELEE.slide ? .26 : MELEE.fxY);
@@ -8980,7 +9079,10 @@ function stepMelee(dt, ride) {
     : ((!p.grounded && !ride) || p.melT <= 0 || (p.melT < p.melDur * (1 - MELEE.hold) && stickWorld().mag > .25));
   if (done) {
     p.melWin = p.melI ? 0 : MELEE.window;   // a dodge does not open the chain
-    p.mel = ''; p.melAir = 0; p.melT = 0; p.melI = 0; p.goT = 0;
+    // HIS LEGS ARE UNDER HIM COMING OUT OF A STRIKE, which is `stepRoll`'s own cancel value and
+    // not the standing start `goT = 0` gives. Zero here is a man rebuilding his gather from
+    // nothing while still carrying the tackle's speed, which is the other half of the skating.
+    p.mel = ''; p.melAir = 0; p.melT = 0; p.melI = 0; p.melLock = null; p.goT = MOVE.pushT * .5;
   }
 }
 function stepRoll(dt) {
@@ -9085,7 +9187,20 @@ function stepFoot(dt) {
     const ux = p.vel.x / sp0, uz = p.vel.z / sp0;
     const along = ax * ux + az * uz;
     const lx = ax - ux * along, lz = az - uz * along; const alat = Math.hypot(lx, lz);
-    const sA = Math.min(Math.abs(along), rate * dt) * Math.sign(along);
+    // **`accFall` AND `push` ARE ABOUT HOW FAST HE CAN SPEED UP. SLOWING DOWN IS NOT
+    // ACCELERATING, AND GATING IT IS THE ICE (c159).** *"When he slides it gives him a bit of
+    // velocity and then when I'm running he's sliding around like he's ice-skating afterwards."*
+    // A slide tackle hands him ten metres a second along `melH`, and `stepMelee` then sets
+    // `goT = 0` -- so on the very frame he gets the most speed to control, `push` is back at its
+    // floor. `ramp` is `1 - accFall * smooth(0, 1, sp0/ceil)`, which at a leftover well above a
+    // walking `want` saturates to `1 - .93 = .07`: his deceleration was **24 x .07 x push**,
+    // about one and a half metres a second squared, so twelve metres a second took the better
+    // part of ten seconds to bleed off while the thumb pointed somewhere else entirely. That is
+    // the skating, and it is one sign test -- the NEGATIVE half of `along` gets the full rate.
+    // It also makes `turnBrake` mean what it says: a hard turn costs him speed immediately
+    // instead of over the next four strides.
+    const rAlong = along < 0 ? (p.grounded ? MOVE.acc : MOVE.airAcc) : rate;
+    const sA = Math.min(Math.abs(along), rAlong * dt) * Math.sign(along);
     const tr = (p.grounded ? MOVE.turn : MOVE.airTurn) * dt;
     const sL = alat > 1e-4 ? Math.min(alat, tr) / alat : 0;
     p.vel.x += ux * sA + lx * sL; p.vel.z += uz * sA + lz * sL;
@@ -10302,7 +10417,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
