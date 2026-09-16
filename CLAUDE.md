@@ -1198,6 +1198,32 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE KIT KEYS RING THE RIGHT STICK (c168, `KIT.ring`, `KIT.slots[].at`).** *"Put the
+  skateboard directly above the right stick and the blaster directly to the left of it, and the
+  jetpack in the middle of those two -- if you were to draw a greater circle around the right
+  stick they all land on that circle. The blaster is at 9 o'clock and the skateboard is at 12."*
+  A clock position is an angle, so it is one number per slot: `at` 90 is twelve o'clock, 180 is
+  nine. **The jetpack is the BISECTOR at 135** -- half past ten -- rather than the 150 he called
+  it: *"in the middle of those two"* is the instruction and an even arc is what it draws.
+  `at: 150` is one number if he wants it tighter to the blaster.
+  **THE ROW IS A ZERO-SIZE ANCHOR ON THE STICK'S OWN CENTRE**, not a position of its own: 20 px
+  in plus half of 132, and 26 up plus the same, with the SAME `env(safe-area-inset-*)` terms the
+  pad uses -- so the keys cannot drift off the circle on a notched phone, which two independently
+  written positions would eventually do. `right` and `bottom` grow LEFT and UP from it, so the
+  angle maps onto them with no sign to get backwards, and the 29 is half a key because those
+  properties place an EDGE and what is being placed is a middle.
+  **AND THE RADIUS IS ARITHMETIC RATHER THAN TASTE**, which is the same argument that put the row
+  above the pads in the first place. Computed rather than eyeballed:
+      board    right  -29.0  bottom   81.0     centre  86 from the right edge, 202 from the bottom
+      jet      right   48.8  bottom   48.8     centre 164, 170
+      blaster  right   81.0  bottom  -29.0     centre 196,  92  -- level with the stick's centre
+      clearance from the right pad's rim  15 px
+      and on a 390 px phone held PORTRAIT, the nine o'clock key clears the LEFT pad by 13 px
+  That last line is the binding constraint and it is why `ring` is 110 rather than larger.
+  **`body.title #kitRow .key{pointer-events:none}` STILL HAS TO WIN**, and it still does --
+  `#kitRow .key` gained `position:absolute` but no change to specificity, so three invisible
+  buttons cannot take a thumb through the title card. That is the `#startB` landmine and it is
+  checked on every layout change here.
 - **NO BAR CLIP EVER PLAYED, AND IT WAS NEVER THE CLIPS (c167).** *"None of the animations ever
   play for when he's swinging around the pole. I explicitly told you I have two animations for
   that -- pole idle and pole pump -- neither of those play. He's just in what looks like a regular

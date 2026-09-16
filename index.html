@@ -161,9 +161,15 @@
      a tap. ABOVE the sticks, because they are 132 px wide and 20 px from each edge: on a phone
      that leaves about 110 px between them, which will not hold three keys at any size worth
      pressing. The band over them is empty and both thumbs reach it. */
-  #kitRow{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(178px + env(safe-area-inset-bottom));
-    z-index:4;display:flex;gap:13px;pointer-events:none}
-  #kitRow .key{position:static;width:58px;height:58px;flex-direction:column;gap:2px;pointer-events:auto}
+  /* A ZERO-SIZE ANCHOR ON THE RIGHT STICK'S OWN CENTRE (c168), so the keys ride the same
+     safe-area insets the pad does and cannot drift from it on a notched phone: 20 px in plus
+     half of 132, and 26 px up plus the same. Each key is then placed by `KIT.slots[].at` --
+     one `right`/`bottom` pair per key, written once in `kitBuild`. */
+  #kitRow{position:fixed;width:0;height:0;
+    right:calc(86px + env(safe-area-inset-right));
+    bottom:calc(92px + env(safe-area-inset-bottom));
+    z-index:4;pointer-events:none}
+  #kitRow .key{position:absolute;width:58px;height:58px;flex-direction:column;gap:2px;pointer-events:auto}
   #kitRow .key i{font-style:normal;font-size:20px;line-height:1}
   #kitRow .key u{text-decoration:none;font-size:9px;font-weight:700;letter-spacing:.06em;opacity:.8}
   #kitRow .key.on u{opacity:.95}
@@ -302,7 +308,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c167</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c168</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +322,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c167';
+const BUILD = 'c168';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -936,10 +942,24 @@ const MELEE = {
 // below) -- a variable that no longer exists cannot have three owners.
 const KIT = {
   out: { board: 0, blaster: 0, jet: 0 },
+  // ROUND THE RIGHT STICK, ON ITS OWN CIRCLE (c168). *"Put the skateboard directly above the
+  // right stick and the blaster directly to the left of it, and the jetpack in the middle of
+  // those two -- if you were to draw a greater circle around the right stick they all land on
+  // that circle. The blaster is at 9 o'clock and the skateboard is at 12."*
+  // `at` is that clock position as an ordinary angle: 90 is twelve o'clock, 180 is nine. The
+  // jetpack is the BISECTOR at 135 (half past ten) rather than the 150 he called it -- "in the
+  // middle of those two" is the instruction and an even arc is what it draws; `at: 150` is one
+  // number if he wants it tighter to the blaster.
+  // **THE RADIUS CLEARS BOTH PADS, AND THAT IS ARITHMETIC RATHER THAN TASTE.** The pads are
+  // 132 px wide and 20 px in, so the stick's centre is 86 px from the right edge and its rim is
+  // 66 px out; a 58 px key needs 29 more. At `ring` 110 the keys clear the right pad by 15 px,
+  // and the nine o'clock one lands 13 px clear of the LEFT pad on a 390 px phone held portrait,
+  // which is the tightest case this layout has.
+  ring: 110,
   slots: [
-    { k: 'board', label: 'Board', ico: '\u{1F6F9}' },
-    { k: 'blaster', label: 'Blaster', ico: '⚡' },
-    { k: 'jet', label: 'Jetpack', ico: '\u{1F680}' },
+    { k: 'board', label: 'Board', ico: '\u{1F6F9}', at: 90 },
+    { k: 'jet', label: 'Jetpack', ico: '\u{1F680}', at: 135 },
+    { k: 'blaster', label: 'Blaster', ico: '⚡', at: 180 },
   ],
   key: 'city.kit',
 };
@@ -8450,6 +8470,13 @@ function kitBuild() {
     const el = document.createElement('div');
     el.className = 'key'; el.dataset.k = s.k;
     el.innerHTML = '<i>' + s.ico + '</i><u>' + s.label + '</u>';
+    // ON THE CIRCLE. `right` and `bottom` grow LEFT and UP from the anchor, which is the stick's
+    // centre, so the angle maps straight onto them with no sign to get backwards: 90 deg is
+    // straight up (all `bottom`), 180 is straight left (all `right`). The 29 is half a key --
+    // these offsets position an EDGE, and what is being placed is the middle.
+    const a = (s.at === undefined ? 90 : s.at) * Math.PI / 180;
+    el.style.right = (Math.cos(a) * -KIT.ring - 29).toFixed(1) + 'px';
+    el.style.bottom = (Math.sin(a) * KIT.ring - 29).toFixed(1) + 'px';
     // `pointerdown` with the event stopped, not `click`: these sit over the play area and a
     // click would also reach whatever is behind them, which on a phone is a thumb pad.
     el.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); kitTap(s.k); });
