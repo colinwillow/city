@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c140</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c141</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c140';
+const BUILD = 'c141';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -613,6 +613,13 @@ const MELEE = {
   // different opening to it: above `runAt` the first strike becomes the tackle and the
   // punches follow from there, so running at somebody and hitting melee reads as one move.
   runAt: 4.6, slide: 'slide',
+  // AND THE SAME TACKLE THROWN IN THE AIR IS A FLYING KICK (c141). *"When you're not riding a
+  // skateboard and you jump in the air and you flick the right stick he should do the slide
+  // tackle forward, almost like a flying kick."* It is the SAME clip and the same contact
+  // frame -- legs out, leading with a boot -- so this is a launch profile and a gate, not a
+  // move. `airDur` is short because he is falling through it; `airV` is the drive down the
+  // flick, floored at whatever he was already carrying so a running leap keeps its speed.
+  air: 1, airV: 9.5, airDur: .70,
   slideV: 1.85,      // the tackle keeps this much of his speed, bled off across the clip
   lunge: 4.0,        // and a standing strike still steps INTO it rather than punching the air
   // HE HOLDS HIS SPEED AND *THEN* SCRUBS IT. A flat linear bleed puts the average at half the
@@ -716,6 +723,9 @@ const WEAP = {
   // `pistol.glb` is built round. So the MUZZLE is a node here, not a guess, and the day Colin
   // has a weapon joint the whole hand placement below stops being hand-nudged as well.
   url: 'models/blaster.glb',
+  // HOW FAST THE MARK FOLLOWS. Small enough that a real sweep of the thumb arrives inside a
+  // tenth of a second, big enough to swallow a kerb sampled a centimetre either way.
+  aimEase: .045,
   fireAt: .80, keepAt: .50, armT: .10, fireArc: 1.05,
   cool: .42,            // seconds between shots
   chargeT: .9,          // a full charge takes this long
@@ -1704,9 +1714,19 @@ const PAINT = {
   // the frequency a baked tile cannot hold without moire.
   grain: 0,
   tile: 34,         // how many world metres the baked tile covers
+  // THE ROADS GET THEIR OWN AMOUNT (c141). *"I don't know if it's the modelling or the spots
+  // on the roads -- I don't know if I like the effects on the roads, but everything else looks
+  // really nice."* A road is the one surface in this city you see from above, at a shallow
+  // angle, across a hundred metres of it at once -- so the same 34 m tile that reads as brush
+  // work on a wall reads as BLOTCHES on tarmac, and it is the only surface where that happens.
+  // A multiplier rather than an on/off, and rather than a second tile size: at 1 nothing has
+  // changed, at 0 the roads are flat colour under the same palette as everything else, and he
+  // decides on the phone which he wants instead of me deciding in a commit.
+  road: .45,
 };
 const PAINT_UNI = { uPaintK: { value: 1 }, uPaintTile: { value: 34 }, uPaintP: { value: .30 },
-  uPaintI: { value: .20 }, uPaintC: { value: .13 }, uPaintW: { value: .035 }, uPaintT: { value: null } };
+  uPaintI: { value: .20 }, uPaintC: { value: .13 }, uPaintW: { value: .035 }, uPaintT: { value: null },
+  uPaintRoad: { value: .45 } };
 let _paintWas = '';
 function paintSync() {
   const sig = PAINT.scale + '|' + PAINT.cellS + '|' + PAINT.tile;
@@ -1715,6 +1735,7 @@ function paintSync() {
   PAINT_UNI.uPaintTile.value = Math.max(1, PAINT.tile);
   PAINT_UNI.uPaintP.value = PAINT.patch; PAINT_UNI.uPaintI.value = PAINT.ink;
   PAINT_UNI.uPaintC.value = PAINT.cell; PAINT_UNI.uPaintW.value = PAINT.warm;
+  PAINT_UNI.uPaintRoad.value = PAINT.road;
 }
 // ...AND THE PATTERN IS BAKED INTO A TILE (c139). *"We're down to about 20 per second and it
 // seems like it was introduced when we started texture painting."* He is right, and the honest
@@ -1769,16 +1790,24 @@ function paintBake() {
 }
 function paintPatch(sh) {
   for (const k in PAINT_UNI) sh.uniforms[k] = PAINT_UNI[k];
-  sh.vertexShader = 'varying vec3 vPW; varying vec3 vPN;\n' + sh.vertexShader
+  // `aRoad` IS 1 ON A ROAD AND ABSENT EVERYWHERE ELSE, WHICH IS WHY IT NEEDS NO DEFINE.
+  // A vertex attribute a geometry does not supply reads as the generic constant (0,0,0,1), so
+  // every mesh in the game that never heard of this -- the cars, the props, the ramps, the
+  // ladders, the clouds -- gets 0 and is painted exactly as before. Only the city chunks carry
+  // it, and only the road slabs in them carry a 1. No define to keep in step, no second
+  // material, no extra draw call.
+  sh.vertexShader = 'varying vec3 vPW; varying vec3 vPN; varying float vRoad; attribute float aRoad;\n' + sh.vertexShader
     .replace('#include <project_vertex>', `#include <project_vertex>
       vPW = (modelMatrix * vec4(transformed, 1.0)).xyz;
-      vPN = mat3(modelMatrix) * objectNormal;`);
-  sh.fragmentShader = `uniform float uPaintK, uPaintTile, uPaintP, uPaintI, uPaintC, uPaintW;
+      vPN = mat3(modelMatrix) * objectNormal;
+      vRoad = aRoad;`);
+  sh.fragmentShader = `uniform float uPaintK, uPaintTile, uPaintP, uPaintI, uPaintC, uPaintW, uPaintRoad;
     uniform sampler2D uPaintT;
-    varying vec3 vPW; varying vec3 vPN;
+    varying vec3 vPW; varying vec3 vPN; varying float vRoad;
   ` + sh.fragmentShader
     .replace('#include <color_fragment>', `#include <color_fragment>
-      if (uPaintK > 0.002) {
+      float uPK = uPaintK * mix(1.0, uPaintRoad, clamp(vRoad, 0.0, 1.0));
+      if (uPK > 0.002) {
         // DOMINANT-AXIS PLANAR PROJECTION, not triplanar. This city is a box city: its surfaces
         // are within a few degrees of an axis nearly everywhere, so blending three samples would
         // triple the cost to hide a seam that only exists at 45 degrees. Where the axis DOES
@@ -1794,13 +1823,13 @@ function paintPatch(sh) {
         float band = (t0.r - 0.5) * 0.68 + (t1.r - 0.5) * 0.32;
         float cell = t0.g * 0.6 + t1.g * 0.4;
         float ink  = max(t0.b, t1.b * 0.7);
-        diffuseColor.rgb *= 1.0 + uPaintK * (band * uPaintP + (cell - 0.5) * uPaintC);
+        diffuseColor.rgb *= 1.0 + uPK * (band * uPaintP + (cell - 0.5) * uPaintC);
         // THE HUE DRIFTS TOO, not just the value. A patch that is only lighter reads as
         // lighting; one that is lighter AND a touch warmer reads as a different mix of paint.
-        diffuseColor.rgb += uPaintK * uPaintW * band * vec3(1.0, 0.25, -0.7);
+        diffuseColor.rgb += uPK * uPaintW * band * vec3(1.0, 0.25, -0.7);
         // THE INK: the seam between two patches, darkened. Without it this is mottling, and
         // mottling is not painting.
-        diffuseColor.rgb *= 1.0 - uPaintK * ink * uPaintI;
+        diffuseColor.rgb *= 1.0 - uPK * ink * uPaintI;
         diffuseColor.rgb = max(diffuseColor.rgb, vec3(0.0));
       }`);
 }
@@ -2848,7 +2877,7 @@ function stepAim(dt) {
   // THE BALL WINDS UP AT THE MUZZLE while he holds it -- the swirl closing in is the whole
   // read of the charge, and it says the shot is getting bigger without a number on screen.
   stepChargeFx(p.aim ? WEAP.min + (1 - WEAP.min) * p.chg : 0, dt);
-  reticShow(p.lock, !!p.aim, p.aimH);
+  reticShow(p.lock, !!p.aim, p.aimH, dt);
 }
 // WHAT THE GUN IS POINTING AT. A cone about the aim, nearest-and-straightest first, and
 // whatever is ALREADY locked keeps it on a wider cone and a discount so the reticle does not
@@ -2892,37 +2921,72 @@ function pickTarget(h) {
 // lookup. A mark a metre out on a sixty-metre shot is invisible; a mark on the wrong side of a
 // wall is not.
 const _ap = { x: 0, y: 0, z: 0 }, _apb = [];
-function aimPoint(h) {
+let _apT = 0;
+function aimPoint(h, dt) {
   const p = player, B = BOLT;
   const sx = Math.sin(h), sz = Math.cos(h);
   let x = p.pos.x + sx * 1.2, z = p.pos.z + sz * 1.2;
   let g = groundAt(x, z, p.pos.y + 3, 0);
   let y = (g.hit ? g.floor : hmAt(x, z)) + B.ride;
   const far = Math.min(WEAP.lock.range * 1.6, B.speed * B.life), step = 2.2;
+  let stop = 0;
   for (let d = 0; d < far; d += step) {
     const nx = x + sx * step, nz = z + sz * step;
     g = groundAt(nx, nz, y + B.ride + 2, 0);
     const fl = (g.hit ? g.floor : hmAt(nx, nz)) + B.ride;
     // a rise it cannot climb stops it, which is the same rule the real bolt follows
-    if (fl - y > step * (B.climb / Math.max(1, B.speed)) + .9) break;
-    x = nx; z = nz; y = fl;
+    if (fl - y > step * (B.climb / Math.max(1, B.speed)) + .9) { stop = 1; break; }
     // ...and so does anything solid
-    gridQuery(x, z, 1, _apb);
-    let hit = false;
-    for (const b of _apb) { if (x > b.minx && x < b.maxx && z > b.minz && z < b.maxz && y > b.miny && y < b.maxy) { hit = true; break; } }
-    if (hit) break;
+    if (apSolid(nx, nz, fl)) { stop = 1; break; }
+    x = nx; z = nz; y = fl;
   }
-  _ap.x = x; _ap.y = y; _ap.z = z;
+  // AND THE STOP IS BISECTED, WHICH IS THE WHOLE FLICKER (c141). *"The aimer still does this
+  // flickering thing -- I don't know if it's locking onto stuff or jumping up and down."*
+  // The lock has been OFF since c136, so it was never that. Walking in fixed 2.2 m steps and
+  // returning the last CLEAR one means the answer only ever takes values 2.2 m apart -- and he
+  // is moving, so the phase of the walk slides under him and the break lands one step earlier
+  // or later from frame to frame. The mark jumps two metres in and out along the shot, and on
+  // a camera pitched down that reads as UP AND DOWN on screen.
+  // **THIS IS c137's CAMERA PROBE, EXACTLY.** Same fault, same fix, one system over: a
+  // quantised probe is fine for a yes/no and wrong the moment something continuous is drawn
+  // from it. Four more grid lookups and the number is continuous.
+  if (stop) {
+    let lo = 0, hi = step;
+    for (let k = 0; k < 4; k++) {
+      const m = (lo + hi) * .5, mx = x + sx * m, mz = z + sz * m;
+      const gg = groundAt(mx, mz, y + B.ride + 2, 0);
+      const fl = (gg.hit ? gg.floor : hmAt(mx, mz)) + B.ride;
+      if (fl - y > m * (B.climb / Math.max(1, B.speed)) + .9 || apSolid(mx, mz, fl)) hi = m; else lo = m;
+    }
+    x += sx * lo; z += sz * lo;
+    const gg = groundAt(x, z, y + B.ride + 2, 0);
+    y = (gg.hit ? gg.floor : hmAt(x, z)) + B.ride;
+  }
+  // AND IT IS DAMPED ON TOP, because the other half of the jitter is the GROUND: `y` takes
+  // whatever surface the last sample landed on, and a kerb edge sampled a few centimetres
+  // either way flips it. A mark is a picture, so easing it costs nothing and a real swing of
+  // the thumb still arrives inside a tenth of a second.
+  const e = WEAP.aimEase, d = dt || .016;
+  if (_apT && e > .001) { _ap.x = damp(_ap.x, x, e, d); _ap.y = damp(_ap.y, y, e, d); _ap.z = damp(_ap.z, z, e, d); }
+  else { _ap.x = x; _ap.y = y; _ap.z = z; _apT = 1; }
   return _ap;
+}
+function apSolid(x, z, y) {
+  gridQuery(x, z, 1, _apb);
+  for (const b of _apb) if (x > b.minx && x < b.maxx && z > b.minz && z < b.maxz && y > b.miny && y < b.maxy) return true;
+  return false;
 }
 const _rt = new THREE.Vector3();
 let _reticEl = null;
-function reticShow(o, on, h) {
+function reticShow(o, on, h, dt) {
   if (!_reticEl) _reticEl = document.getElementById('retic');
   if (!_reticEl) return;
-  if (!on) { if (!_reticEl.hidden) _reticEl.hidden = true; return; }
+  // SEEDING, NOT EASING, ON THE FIRST FRAME. A damp that carries over from the last time the
+  // gun was up slides the mark in from wherever it was left, which reads as the reticle
+  // chasing rather than appearing.
+  if (!on) { _apT = 0; if (!_reticEl.hidden) _reticEl.hidden = true; return; }
   // ON the thing when there is one, on the ground the shot would reach when there is not.
-  const t = o || aimPoint(h);
+  const t = o || aimPoint(h, dt);
   const y = o ? (o.y || 0) + (o.hh ? o.hh * .9 : COLIN_HEIGHT * .6) : t.y;
   _rt.set(t.x, y, t.z).project(camera);
   if (_rt.z > 1) { _reticEl.hidden = true; return; }   // behind the lens
@@ -3536,6 +3600,13 @@ function stepHole() {
   holeUni.uHoleLo.value = (_holeF.y * .5 + .5) * rtScene.height - rtScene.height * .02;
   compMat.uniforms.uHoleLoU.value = holeUni.uHoleLo.value / Math.max(1, rtScene.height);
 }
+// AND A DECLARED ATTRIBUTE A GEOMETRY DOES NOT SUPPLY NEEDS AN EXPLICIT DEFAULT.
+// `paintPatch` declares `aRoad` in every material this hook reaches, and only the city chunks
+// actually carry it. three skips a missing attribute rather than zeroing it, which leaves the
+// GENERIC vertex attrib holding whatever the last draw call that did use it set -- so without
+// this line a car drawn after a road slab could inherit the road's flag for a frame. WebGL's
+// documented default is (0,0,0,1) and that is exactly what a stale generic is not.
+THREE.MeshStandardMaterial.prototype.defaultAttributeValues = { aRoad: [0, 0, 0, 0] };
 THREE.MeshStandardMaterial.prototype.onBeforeCompile = function (sh) {
   toonPatch(sh);
   // THE PAINT GOES ON EVERYTHING THE HOOK REACHES, which is the whole city, the ramps, the
@@ -4955,6 +5026,16 @@ function normGeo(g, m, flat) {
   // the dot: +1. They agree.
   return out;
 }
+// ONE CONSTANT PER VERTEX, WHICH IS WHAT A PER-MESH FLAG COSTS ONCE EVERYTHING IS MERGED.
+// The city is a few dozen big meshes on ONE material -- there is no object left to ask -- so a
+// per-surface dial has to ride in the geometry. Four bytes a vertex against a second material,
+// a second merge bucket and a second draw call per chunk.
+function roadTag(g, v) {
+  const n = g.attributes.position.count, a = new Float32Array(n);
+  if (v) a.fill(v);
+  g.setAttribute('aRoad', new THREE.BufferAttribute(a, 1));
+  return g;
+}
 const isCar = n => /^(car|jeep|truck|tractor)_/.test(n);
 // `landscape` IS WALKABLE and must stay walkable -- those shells are the hillsides, and he
 // runs up them. c52 excluded them because `landscape_005` reads 3 up-facing triangles against
@@ -5021,7 +5102,14 @@ function buildCity(gltf, ramps) {
     // solid ceiling at head height, and a trunk is the right abstraction for a tree.
     // static geometry -> chunk
     const key = gkey(Math.floor(_v.x / CH), Math.floor(_v.z / CH)); let l = chunks.get(key); if (!l) chunks.set(key, l = []);
-    l.push(normGeo(mesh.geometry, mesh.matrixWorld, mesh.userData.flat)); statics++;
+    // AND EVERY CHUNK GEOMETRY CARRIES `aRoad`, 1 ON TARMAC AND 0 ON EVERYTHING ELSE, so the
+    // paint pass can hold back on the one surface he does not want it on. It has to go on ALL
+    // of them and not only the roads: `mergeGeometries` refuses a bucket whose members do not
+    // share an attribute set, and a silently dropped chunk is a hole in the city.
+    // The test is the same prefix regex `isWalk` uses, minus the land and the grass -- those
+    // are surfaces he likes the paint on, and the complaint was specifically the roads.
+    l.push(roadTag(normGeo(mesh.geometry, mesh.matrixWorld, mesh.userData.flat),
+      /^(road_|parking_area|bridge)/.test(name) ? 1 : 0)); statics++;
   }
   // PINHOLES. A cell every surface happened to miss, ringed by cells that all found one,
   // is not a gap in the world -- it is a gap in the rasteriser, and it reads in game as
@@ -6992,11 +7080,19 @@ function boardFlick(dx, dy) {
     // So a quick flick of that pad is a punch and a deliberate push-and-hold is a shot --
     // *"if you do a flick of the right stick he melees, versus press and hold to shoot."*
     if (p.aim) return;
-    if (p.grounded) meleeGo('hit', flickH(dx, dy));
-    // IN THE AIR THE SAME FLICK PICKS WHICH WAY HE GOES OVER, and spends the second jump to
-    // do it -- it is the tap with a direction on it, not a separate move. Up is a front flip
-    // and down a back one, the same way round as on the board.
-    else { p.airWant = dy < 0 ? 'front' : 'back'; p.jump = 1; }
+    if (p.grounded) { meleeGo('hit', flickH(dx, dy)); return; }
+    // AND IN THE AIR IT IS A FLYING KICK (c141), WHICH MAKES THIS PAD MEAN ONE THING AGAIN:
+    // a TAP is the jump, a FLICK is the strike, a HOLD is the charge. On the ground that flick
+    // has been a punch since c93 and in the air it was picking which way he went over, so the
+    // pad meant "strike" on the road and "flip" one metre above it.
+    // A FLICK STRAIGHT DOWN IS STILL THE BACK FLIP, because there is no other way to ask for
+    // one and "over backwards" is not a gesture anybody reads as a kick forward. The FRONT
+    // flip is unchanged and still what a plain tap gets, so nothing is lost: the gesture that
+    // moved is up-and-sideways, which was falling into the `dy < 0 ? front : back` test and
+    // giving a BACK flip for a sideways flick -- arbitrary rather than designed, which is
+    // exactly what made it the free slot.
+    if (dy > Math.abs(dx)) { p.airWant = 'back'; p.jump = 1; }
+    else meleeAir(flickH(dx, dy));
     return;
   }
   if (p.hit) return;
@@ -7119,7 +7215,24 @@ document.getElementById('soundB').addEventListener('pointerdown', e => { e.preve
 // It remembers in localStorage under `OPT.key`, because a setting you have to re-pick after
 // every reload is a setting nobody uses twice.
 const OPT = { key: 'city.opt', on: false, el: null };
+// WHICH TYPES HOLD A VALUE. `optSave` used to walk every non-heading row and CALL `r[2]()`,
+// which is a getter for the three of them and an ACTION for a preset button -- so without this
+// saving the settings would fire every preset in the panel. A row type that is not a value is
+// not a value everywhere, not only where it is drawn.
+const OPT_VAL = { num: 1, tog: 1, seg: 1 };
+const OPT_SLOTS = [['a', 'A'], ['b', 'B'], ['c', 'C']];
 const OPT_ROWS = [
+  // PRESETS (c141). *"We can save our current preset and then play with these presets."*
+  // Exactly right, and it costs almost nothing: `optSave` already serialises every row in this
+  // panel by its label, so a preset IS that same object under a different key. Three slots,
+  // plus the file's own defaults, which is the one that matters most -- once you have pushed
+  // eight sliders around there has to be a way back that is not a reload.
+  // TWO ROWS RATHER THAN A MODE. A "save" button you arm and then a slot you press is a state
+  // you can be in without knowing it; a Load row and a Save row say what they do by being two
+  // rows, and nothing is ever one mis-tap from overwriting the thing you were comparing to.
+  ['h', 'Presets'],
+  ['pre', 'Load', v => optRecall(v), [['def', 'Default'], ...OPT_SLOTS]],
+  ['pre', 'Save to', v => optStore(v), OPT_SLOTS],
   ['h', 'Shading'],
   ['seg', 'Shadows', () => SHADE.mode, v => { SHADE.mode = v; applyShade(); }, [['map', 'Map'], ['blob', 'Blobs'], ['off', 'None']]],
   ['num', 'Shadow dark', () => SHADE.k, v => { SHADE.k = v; applyShade(); }, 0, 1, .02],
@@ -7160,7 +7273,10 @@ const OPT_ROWS = [
   ['num', 'Ink seam', () => PAINT.ink, v => { PAINT.ink = v; }, 0, .6, .02],
   ['num', 'Hue drift', () => PAINT.warm, v => { PAINT.warm = v; }, 0, .12, .005],
   ['num', 'Mottle', () => PAINT.cell, v => { PAINT.cell = v; }, 0, .4, .01],
-  ['num', 'Tooth', () => PAINT.grain, v => { PAINT.grain = v; }, 0, .2, .005],
+  // THE ROADS' OWN AMOUNT. *"I don't know if I like the effects on the roads, but everything
+  // else looks really nice."* At 1 they are painted like everything else; at 0 they are flat
+  // colour under the same palette. See `PAINT.road`.
+  ['num', 'Paint on roads', () => PAINT.road, v => { PAINT.road = v; }, 0, 1, .05],
   ['h', 'World'],
   ['tog', 'Card effects', () => FX.on, v => { FX.on = v; }],
   // THE LOOK IS A LOOK-AT-IT DECISION, which is the half of the tuning this panel exists for.
@@ -7174,21 +7290,37 @@ const OPT_ROWS = [
   ['num', 'Jet puff size', () => JET.puff, v => { JET.puff = v; }, .25, 2.5, .05],
   ['num', 'Jet flame', () => JET.flame.len, v => { JET.flame.len = v; }, 0, 1.5, .04],
   ['num', 'Sky exposure', () => SKY.envB, v => { SKY.envB = v; }, 0, 8, .1],
+  ['num', 'Aim mark ease', () => WEAP.aimEase, v => { WEAP.aimEase = v; }, .005, .2, .005],
+  ['tog', 'Air kick', () => MELEE.air, v => { MELEE.air = v; }],
+  ['num', 'Air kick speed', () => MELEE.airV, v => { MELEE.airV = v; }, 4, 20, .5],
   ['num', 'Sprint x', () => MOVE.sprint, v => { MOVE.sprint = v; }, 1, 4, .05],
   ['num', 'Speed rush', () => CAM.fovRush, v => { CAM.fovRush = v; }, 0, 24, .5],
   ['num', 'Rush blur', () => CAM.rushK, v => { CAM.rushK = v; }, 0, 1.5, .05],
   ['num', 'Rush starts', () => CAM.rush0, v => { CAM.rush0 = v; }, 0, 20, .5],
 ];
-function optSave() {
-  const o = {};
-  for (const r of OPT_ROWS) if (r[0] !== 'h') o[r[1]] = r[2]();
-  try { localStorage.setItem(OPT.key, JSON.stringify(o)); } catch (e) {}
+const optGrab = () => { const o = {}; for (const r of OPT_ROWS) if (OPT_VAL[r[0]]) o[r[1]] = r[2](); return o; };
+const optApply = o => { if (o) for (const r of OPT_ROWS) if (OPT_VAL[r[0]] && o[r[1]] !== undefined) r[3](o[r[1]]); };
+function optSave() { try { localStorage.setItem(OPT.key, JSON.stringify(optGrab())); } catch (e) {} }
+function optLoad() { let o = null; try { o = JSON.parse(localStorage.getItem(OPT.key) || 'null'); } catch (e) {} optApply(o); }
+// A PRESET IS THE LIVE SETTINGS UNDER A DIFFERENT KEY, and that is the whole feature -- there
+// is no second schema to keep in step with the panel, so a row added tomorrow is in every slot
+// saved after it and absent (which `optApply` skips) from every slot saved before.
+const optSlotKey = n => OPT.key + '.' + n;
+const optHas = n => { try { return n === 'def' || !!localStorage.getItem(optSlotKey(n)); } catch (e) { return false; } };
+function optStore(n) { try { localStorage.setItem(optSlotKey(n), JSON.stringify(optGrab())); } catch (e) {} return true; }
+function optRecall(n) {
+  let o = null;
+  if (n === 'def') o = OPT_DEF;
+  else try { o = JSON.parse(localStorage.getItem(optSlotKey(n)) || 'null'); } catch (e) {}
+  if (!o) return false;
+  optApply(o); optSave(); optBuild();    // rebuilt, or every slider still shows the old number
+  return true;
 }
-function optLoad() {
-  let o = null; try { o = JSON.parse(localStorage.getItem(OPT.key) || 'null'); } catch (e) {}
-  if (!o) return;
-  for (const r of OPT_ROWS) if (r[0] !== 'h' && o[r[1]] !== undefined) r[3](o[r[1]]);
-}
+// THE FILE'S OWN NUMBERS, CAPTURED BEFORE `optLoad` EVER RUNS. Read a moment later and this is
+// whatever is in localStorage, which is the opposite of a default -- and "get me back to how it
+// shipped" is the preset that earns its place, because it is the one you want after an hour of
+// sliders and it is the one a reload cannot give you any more.
+const OPT_DEF = {};
 function optBuild() {
   const el = OPT.el = document.getElementById('opt');
   el.innerHTML = '';
@@ -7208,6 +7340,25 @@ function optBuild() {
       t.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation();
         const v = get() ? 0 : 1; set(v); t.className = 'tog' + (v ? ' on' : ''); t.textContent = v ? 'on' : 'off'; optSave(); });
       row.appendChild(t);
+    } else if (r[0] === 'pre') {
+      const [, , act, opts] = r;
+      const g = document.createElement('div'); g.className = 'seg';
+      for (const [val, txt] of opts) {
+        const i = document.createElement('i'); i.textContent = txt;
+        // A SLOT WITH NOTHING IN IT SAYS SO. Pressing one and having nothing happen is the
+        // same picture as a broken button, which is this file's oldest complaint about itself.
+        if (!optHas(val)) i.style.opacity = '.35';
+        i.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation();
+          const ok = act(val);
+          i.className = ok ? 'on' : ''; if (!ok) return;
+          // A press that rebuilt the panel has already thrown this node away; one that only
+          // stored a slot has not, so the flash has to be cleared. Touching a detached node is
+          // harmless, which is why there is no branch here.
+          setTimeout(() => { i.className = ''; i.style.opacity = ''; }, 280);
+        });
+        g.appendChild(i);
+      }
+      row.appendChild(g);
     } else if (r[0] === 'seg') {
       const [, , get, set, opts] = r;
       const g = document.createElement('div'); g.className = 'seg';
@@ -7254,7 +7405,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -7521,13 +7672,44 @@ function meleeGo(kind, h) {
 // is `stepSkate`'s, and a lunge would stop the deck dead under him. A skater does not stop to
 // punch, so the only thing that happens is the swing, and it comes out of the c115 override:
 // the strike's spine-up tracks over the board's legs.
+// A FLYING KICK IS THE TACKLE WITH THE GROUND TAKEN AWAY (c141, `meleeAir`).
+// It reuses `MELEE.slide` for the reason the grind reuses `skate_idol_crouch`: that clip is
+// already a body thrown forward legs-first, which is what a flying kick is, and a pose that
+// reads right is worth more than a pose that is named right.
+// **IT COSTS NO JUMP.** Spending the double would put it in direct competition with the flip
+// on the same thumb, and then the pad would be answering two questions with one gesture again.
+// It is limited to ONE PER AIRTIME instead (`p.airKick`), which is what stops it being a
+// flutter kick across the whole city.
+// **AND HE KEEPS HIS SPEED.** `melV` is floored at what he was already carrying, so a charged
+// running leap kicks further than a hop -- the tackle's own rule, one axis up.
+function meleeAir(h) {
+  const p = player;
+  if (!MELEE.air || p.hit || p.board || p.grounded || p.mel || p.airKick) return;
+  if (p.rollT > 0 || p.hang || p.lad || p.aim) return;
+  const nm = MELEE.slide;
+  if (!colin.actions[nm]) return;
+  p.airKick = 1; p.melAir = 1; p.mel = nm;
+  p.melT = p.melDur = MELEE.airDur;
+  colinScale(nm, clipLen(nm, p.melDur) / p.melDur);
+  p.melWin = 0; p.melI = 0; p.melStep = 0; p.melFx = 0;
+  p.melH = h !== undefined ? h : (p.speed > .4 ? Math.atan2(p.vel.x, p.vel.z) : p.faceH);
+  p.heading = p.faceH = p.melH;
+  p.melV = Math.max(p.speed, MELEE.airV);
+  p.pushing = false; p.goT = 0;
+  snd.jump();
+}
 function stepMelee(dt, ride) {
   const p = player;
   p.melT = Math.max(0, p.melT - dt);
   // hold, then scrub -- see MELEE.carry. `u` is progress through the move, 0 at the launch.
   const u = 1 - clamp(p.melT / Math.max(.01, p.melDur), 0, 1);
   if (!ride) {
-    const sp = p.melV * (u < MELEE.carry ? 1 : Math.max(0, 1 - u) / (1 - MELEE.carry));
+    // THE AIR KICK DOES NOT SCRUB. `MELEE.carry`'s profile is a body dragging on tarmac, and
+    // there is no tarmac up here -- bleeding the speed off mid-flight reads as him hitting a
+    // wall of nothing. He holds the drive and GRAVITY ends the move, which is the same reason
+    // `copFly` is ended by the ground rather than by a timer.
+    const sp = p.melAir ? p.melV
+      : p.melV * (u < MELEE.carry ? 1 : Math.max(0, 1 - u) / (1 - MELEE.carry));
     p.vel.x = Math.sin(p.melH) * sp; p.vel.z = Math.cos(p.melH) * sp;
     p.vel.y -= MOVE.g * dt;
     const px = p.pos.x, pz = p.pos.z, py = p.pos.y;
@@ -7559,9 +7741,14 @@ function stepMelee(dt, ride) {
   // THE TAIL IS HIS AGAIN. Holding the whole clip makes a three-punch chain feel like three
   // seconds of watching, so past `hold` a thumb on the pad cancels out of the recovery -- the
   // same escape `stepRoll` gives him, and what makes the chain feel like a decision each time.
-  if ((!p.grounded && !ride) || p.melT <= 0 || (p.melT < p.melDur * (1 - MELEE.hold) && stickWorld().mag > .25)) {
+  // AND THE AIR KICK'S END IS THE EXACT OPPOSITE TEST. Every other strike ends the moment he
+  // leaves the ground; this one ends the moment he MEETS it -- so the condition has to branch
+  // rather than gain a clause, or the kick would cancel itself on the frame it began.
+  const done = p.melAir ? (p.grounded || p.melT <= 0)
+    : ((!p.grounded && !ride) || p.melT <= 0 || (p.melT < p.melDur * (1 - MELEE.hold) && stickWorld().mag > .25));
+  if (done) {
     p.melWin = p.melI ? 0 : MELEE.window;   // a dodge does not open the chain
-    p.mel = ''; p.melT = 0; p.melI = 0; p.goT = 0;
+    p.mel = ''; p.melAir = 0; p.melT = 0; p.melI = 0; p.goT = 0;
   }
 }
 function stepRoll(dt) {
@@ -7677,7 +7864,7 @@ function stepFoot(dt) {
   const sp = Math.hypot(p.vel.x, p.vel.z);
   // jump
   p.coyote = p.grounded ? MOVE.coyote : p.coyote - dt;
-  if (p.grounded) { p.jumps = 0; p.air = ''; }
+  if (p.grounded) { p.jumps = 0; p.air = ''; p.airKick = 0; }
   // THE SECOND ONE IS THE SAME TAP. `coyote` is what says the ground is still his; past that
   // he has one more in him, and that one goes over.
   // THE JETPACK REPLACES THE DOUBLE JUMP. One thumb cannot mean both: a tap in the air would
@@ -8617,7 +8804,11 @@ function stepCam(dt) {
 // ---------- HUD ----------
 const speedEl = document.getElementById('speed').querySelector('b');
 const buildEl = document.getElementById('build'), buildNEl = document.getElementById('buildN'), perfEl = document.getElementById('perf');
-function optStart() { try { optLoad(); } catch (e) { console.warn('[opt] stored settings ignored', e); } optBuild(); }
+function optStart() {
+  Object.assign(OPT_DEF, optGrab());      // FIRST: a default read after optLoad is not a default
+  try { optLoad(); } catch (e) { console.warn('[opt] stored settings ignored', e); }
+  optBuild();
+}
 optStart(); kitStart();
 let fpsT = 0, fpsN = 0, fps = 0;
 buildNEl.textContent = BUILD; buildEl.classList.add('fresh');

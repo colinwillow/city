@@ -678,6 +678,78 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
     the same lift. The history is seeded at the CENTRE on pointerdown, because on an absolute
     pad a thumb slammed onto the top edge is a flick and a delta from where it landed says
     the stick never moved.
+- **PRESETS ARE THE PANEL UNDER A DIFFERENT KEY (c141, `optStore`/`optRecall`, `OPT_DEF`).**
+  *"We can save our current preset and then play with these presets."* `optSave` already
+  serialises every row by its LABEL, so a preset needed no second schema: three slots plus the
+  file's own defaults, and a row added tomorrow is in every slot saved after it and absent
+  (which `optApply` skips) from every slot saved before.
+  **`OPT_DEF` IS CAPTURED BEFORE `optLoad` EVER RUNS.** Read a moment later it is whatever is in
+  `localStorage`, which is the opposite of a default -- and "get me back to how it shipped" is
+  the slot that earns its place, because a reload cannot give it to you any more.
+  **TWO ROWS, NOT A MODE.** A "save" button you arm and then a slot you press is a state you can
+  be in without knowing it; a Load row and a Save row say what they do by being two rows.
+  **AND `optSave` USED TO CALL `r[2]()` ON EVERY NON-HEADING ROW**, which is a getter for a
+  slider and an ACTION for a preset button -- so without `OPT_VAL` gating it by type, saving the
+  settings would have fired every preset in the panel. **A row type that is not a value is not a
+  value everywhere, not only where it is drawn.**
+  **The dead `Tooth` row is gone.** `PAINT.grain` has done nothing since c139 took it out of the
+  shader, and a slider that moves nothing is indistinguishable from a broken one.
+- **THE ROADS GET THEIR OWN PAINT AMOUNT (c141, `PAINT.road`, `aRoad`).** *"I don't know if I
+  like the effects on the roads, but everything else looks really nice."* A road is the one
+  surface in this city you see FROM ABOVE, at a shallow angle, across a hundred metres at once
+  -- so the same 34 m tile that reads as brush work on a wall reads as BLOTCHES on tarmac, and
+  no other surface in the game is looked at that way.
+  **IT IS A VERTEX ATTRIBUTE, BECAUSE THERE IS NO OBJECT LEFT TO ASK.** The city is a few dozen
+  merged meshes on ONE material; a per-surface dial has to ride in the geometry. Four bytes a
+  vertex against a second material, a second merge bucket and a second draw call per chunk.
+  **AND IT NEEDS NO DEFINE, BECAUSE ABSENT MEANS ZERO MEANS UNCHANGED.** `aRoad` is 1 on tarmac
+  and simply not present on the cars, props, ramps, ladders and clouds, so they are painted
+  exactly as before. **It has to go on ALL the chunk geometries and not only the road ones** --
+  `mergeGeometries` refuses a bucket whose members do not share an attribute set, and a silently
+  dropped chunk is a hole in the city.
+  **THREE DOES NOT ZERO A MISSING ATTRIBUTE, IT SKIPS IT** -- which leaves the GENERIC vertex
+  attrib holding whatever the last draw that did use it set, so a car drawn after a road slab
+  could inherit the road's flag for a frame. `MeshStandardMaterial.prototype.defaultAttributeValues`
+  is the one line that closes it.
+- **THE AIM MARK'S FLICKER WAS c137's CAMERA PROBE, ONE SYSTEM OVER (c141).** *"The aimer still
+  does this flickering thing -- I don't know if it's locking onto stuff or if it's jumping up and
+  down."* **The lock has been OFF since c136, so it was never that**, and saying so is what left
+  only one candidate. `aimPoint` walks the bolt's path in fixed 2.2 m steps and returns the last
+  CLEAR one, so its answer only ever takes values 2.2 m apart -- and he is MOVING, so the phase
+  of the walk slides under him and the break lands a step earlier or later from frame to frame.
+  The mark jumps two metres along the shot, and on a camera pitched down that is up and down on
+  screen.
+  **Identical fault, identical fix: bisect.** Four more grid lookups and the number is
+  continuous. **A quantised probe is fine for a yes/no and wrong the moment something continuous
+  is drawn from it** -- that is now twice in this file, and it is the thing to check first
+  whenever something that should glide instead steps.
+  **PLUS A DAMP (`WEAP.aimEase`), for the other half**: `y` takes whatever surface the last
+  sample landed on, and a kerb sampled a centimetre either way flips it. A mark is a PICTURE, so
+  easing it costs nothing. **Seeded rather than eased on the first frame** (`_apT`, cleared when
+  the reticle hides), or it slides in from wherever the gun was last pointed, which reads as the
+  reticle chasing rather than appearing.
+- **THE RIGHT PAD MEANS ONE THING NOW: TAP JUMPS, FLICK STRIKES, HOLD CHARGES (c141, `meleeAir`).**
+  *"When you're not riding a skateboard and you jump in the air and you flick the right stick he
+  should do the slide tackle forward, almost like a flying kick."* On the ground that flick has
+  been a punch since c93; in the air it was picking which way he went over, so the pad meant
+  "strike" on the road and "flip" one metre above it.
+  **IT REUSES `MELEE.slide`**, the grind's own rule: that clip is already a body thrown forward
+  legs-first, which is what a flying kick IS, and a pose that reads right is worth more than a
+  pose that is named right.
+  **IT COSTS NO JUMP.** Spending the double would put it in direct competition with the flip on
+  the same thumb and the pad would be answering two questions with one gesture again. One per
+  airtime (`p.airKick`) is what stops it being a flutter kick across the city.
+  **A FLICK STRAIGHT DOWN IS STILL THE BACK FLIP**, because there is no other way to ask for one
+  and "over backwards" is not a gesture anybody reads as a kick forward. The FRONT flip is what a
+  plain tap already gets, so nothing was lost: the gesture that moved is up-and-sideways, which
+  was falling into `dy < 0 ? front : back` and giving a BACK flip for a SIDEWAYS flick --
+  arbitrary rather than designed, which is exactly what made it the free slot.
+  **AND ITS END IS THE OPPOSITE TEST.** Every other strike ends the moment he leaves the ground;
+  this one ends the moment he MEETS it, so `stepMelee`'s condition had to BRANCH rather than gain
+  a clause, or the kick would cancel itself on the frame it began. It does not scrub either --
+  `MELEE.carry` is a body dragging on tarmac and there is no tarmac up here, so he holds the
+  drive and GRAVITY ends the move, which is `copFly`'s rule.
+
 - **A SLOW CONNECTION IS NOT A MISSING FILE, AND FOR TWENTY BUILDS THEY WERE THE SAME CODE PATH
   (c140, `LOADT`, `bootAsk`).** *"I loaded up the game, it took a really long time and then none
   of the characters were rendered -- it was just see-through, just nothing there."*
