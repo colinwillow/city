@@ -314,7 +314,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c177</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c178</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -328,7 +328,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c177';
+const BUILD = 'c178';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -4224,8 +4224,10 @@ function stepJet(dt) {
     p.vel.y = Math.min(JET.cap * (B ? B.cap : 1), p.vel.y + JET.up * (B ? B.up : 1) * p.jetK * dt);
     p.grounded = false;
     // THE SECOND JUMP IS THE PACK'S ON FOOT AND THE BOARD'S OWN OLLIE IS NOT ITS BUSINESS.
-    // `p.jumps = 1` spends the double so a tap cannot also flip him; riding, the tap is the
-    // ollie and the rail catch, which `stepSkate` owns and which must be left alone.
+    // `p.jumps = 1` leaves exactly one more in him; riding, the whole jump ladder is
+    // `stepSkate`'s -- the ollie, the rail catch and (c178) the double -- and it must be left
+    // alone. **What stops a flight spending the double on the way out is `p.jetFlew`, not
+    // this**, and c178 had to teach `stepSkate` to honour it the way `stepFoot` already did.
     if (!p.board) p.jumps = 1;
     if (p.jetK > .3) { p.airT = 0; p.landT = 0; }
   } else if (p.grounded) p.fuel = Math.min(1, p.fuel + JET.fill * dt);
@@ -8685,23 +8687,7 @@ bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
   // and nothing else -- but a fast sweep and a hold are two different gestures on the same
   // axis, and the pad has always been able to tell them apart.
   const side = Math.abs(dy) <= Math.abs(dx);
-  const nm = side ? null : dy < 0 ? 'front_flip' : 'back_flip';
-  if (nm && !colin.actions[nm]) return;
-  // THE TRICK FILLS THE JUMP, so the clip is stretched to the air he has left rather than
-  // the other way round. It has to be: an ollie is 1.26 s of air and back_flip is 1.77 s
-  // of clip, so at 1x he could never once have landed it, while front_flip at .80 would
-  // finish a third of the way up and hold a pose for the rest of the flight.
-  const gy = groundAt(p.pos.x, p.pos.z, p.pos.y, SK8.step);
-  const h = Math.max(0, p.pos.y - (gy.hit ? gy.floor : p.pos.y));
-  const air = (p.vel.y + Math.sqrt(p.vel.y * p.vel.y + 2 * SK8.g * h)) / SK8.g;
-  // ROLLING RIGHT IS A POSITIVE ANGLE. Rz(a) takes his local up (0,1,0) to (-sin a, cos a),
-  // and his local +X is his LEFT (he faces +Z, so Ry(faceH) sends +X to (cos h, -sin h),
-  // which is -right) -- so a > 0 tips his head toward his right. Derived, not felt: if it
-  // comes out mirrored on the phone this is the one sign to flip.
-  p.trick = side ? (dx > 0 ? 'rollR' : 'rollL') : dy < 0 ? 'front' : 'back'; p.trickT = 0;
-  p.trickDur = clamp(air * .88, .42, 1.7);
-  if (nm) colinScale(nm, clipLen(nm, p.trickDur) / p.trickDur);
-  snd.flip();
+  trickFlip(side ? (dx > 0 ? 'rollR' : 'rollL') : dy < 0 ? 'front' : 'back');
 }, false);
 // A TAP AND A HELD CROUCH ARE THE SAME GESTURE, released. The pad still orbits: push it
 // sideways past .42 and it is a look, so neither the crouch nor the jump ever fires. That
@@ -9803,6 +9789,32 @@ function airStart(kind) {
   colinScale(nm, clipLen(nm, p.airDur) / p.airDur);
   snd.flip();
 }
+// THE BOARD'S BODY FLIP, AND IT IS A FUNCTION BECAUSE TWO GESTURES START ONE (c178). The left
+// pad's flick picks front, back or a barrel roll; the right pad's SECOND TAP in the air starts a
+// front one off the double jump. Written inline it was the left pad's alone, and a second copy
+// of it is a second thing to keep in step -- which is this repo's oldest mistake, small.
+// THE TRICK FILLS THE JUMP, so the clip is stretched to the air he has left rather than the
+// other way round. It has to be: an ollie is 1.26 s of air and back_flip is 1.77 s of clip, so
+// at 1x he could never once have landed it, while front_flip at .80 would finish a third of the
+// way up and hold a pose for the rest of the flight. **CALL IT AFTER THE KICK** -- `vel.y` has
+// to be the new one or the flip is fitted to the air he had a frame ago, which is `airStart`'s
+// own rule one body along.
+// ROLLING RIGHT IS A POSITIVE ANGLE. Rz(a) takes his local up (0,1,0) to (-sin a, cos a), and
+// his local +X is his LEFT (he faces +Z, so Ry(faceH) sends +X to (cos h, -sin h), which is
+// -right) -- so a > 0 tips his head toward his right. Derived, not felt: if it comes out
+// mirrored on the phone this is the one sign to flip.
+function trickFlip(kind) {
+  const p = player, nm = kind === 'front' ? 'front_flip' : kind === 'back' ? 'back_flip' : null;
+  if (nm && !colin.actions[nm]) return false;
+  const gy = groundAt(p.pos.x, p.pos.z, p.pos.y, SK8.step);
+  const h = Math.max(0, p.pos.y - (gy.hit ? gy.floor : p.pos.y));
+  const air = (p.vel.y + Math.sqrt(p.vel.y * p.vel.y + 2 * SK8.g * h)) / SK8.g;
+  p.trick = kind; p.trickT = 0;
+  p.trickDur = clamp(air * .88, .42, 1.7);
+  if (nm) colinScale(nm, clipLen(nm, p.trickDur) / p.trickDur);
+  snd.flip();
+  return true;
+}
 // START ONE. `kind` is 'hit' for the chain and 'roll' for the dodge; everything else about
 // them is the same, which is why they share a timer.
 // WHO THAT FLICK WAS AIMED AT. Scored on ANGLE first and distance second -- nearest-and-
@@ -10231,10 +10243,14 @@ function stepGrind(dt) {
   p.heading = Math.atan2(r.dx * p.railDir, r.dz * p.railDir); p.faceH = p.heading;
   p.vel.x = r.dx * p.railV * p.railDir; p.vel.z = r.dz * p.railV * p.railDir; p.vel.y = 0;
   p.speed = p.railV; p.grounded = false; p.airT = 0; p.coyote = 0;
+  // A RAIL IS A SURFACE, so it hands the second jump back the way the road does -- and popping
+  // OFF one spends the first, so an ollie out of a grind still has the double in it. Running
+  // out of rail is walking off a ledge and grants nothing, which is `AIR`'s own rule.
+  p.jumps = 0;
   p.bRollA = damp(p.bRollA, 0, TRICK.rest, dt); p.bYawA = damp(p.bYawA, 0, TRICK.rest, dt);
   if (done) {
     p.rail = null; p.vel.y = off ? GRIND.pop : 1.0;
-    if (off) snd.ollie();
+    if (off) { p.jumps = 1; snd.ollie(); }
   }
 }
 function stepSkate(dt) {
@@ -10471,10 +10487,36 @@ function stepSkate(dt) {
   if (p.grounded) { groundNormal(p.pos.x, p.pos.z, p.pos.y, gN); p.vel.x += SK8.g * gN.y * gN.x * dt; p.vel.z += SK8.g * gN.y * gN.z * dt; }
   // ollie
   p.coyote = p.grounded ? MOVE.coyote : p.coyote - dt;
+  if (p.grounded) p.jumps = 0;
   if (p.popT > 0) {
     p.popT -= dt;
-    if (p.popT <= 0) { p.vel.y = SK8.ollie; p.grounded = false; p.coyote = 0; p.airT = 0; p.landT = 0; snd.ollie(); }
+    if (p.popT <= 0) { p.vel.y = SK8.ollie; p.grounded = false; p.jumps = 1; p.coyote = 0; p.airT = 0; p.landT = 0; snd.ollie(); }
   } else if (p.jump && p.coyote > 0) { p.popT = SK8.pop; p.pushing = false; }
+  // **THE SECOND TAP IS THE SECOND JUMP ON THE BOARD TOO (c178).** *"When you have a skateboard
+  // you can't double jump like you can otherwise, and I want that to still be in effect, because
+  // the double tap on the right stick is still open -- it doesn't do anything on the skateboard,
+  // so why not have that second jump that does a flip?"* He is right that it was open: in the
+  // air this pad's TAP was the rail catch and nothing else, and the catch still outranks it --
+  // it runs at the top of `stepSkate` and eats `p.jump` before this is reached, so a tap over a
+  // rail is a grind and a tap over nothing is the double. One gesture, two answers, decided by
+  // what is under him rather than by a second control.
+  // **THE GATE IS `p.jumps > 0`, so rolling off a kerb grants nothing** -- the second jump
+  // exists only if he actually took the first, which is `AIR`'s rule on foot and is why the
+  // ollie above now marks it. **AND THE KICK IS SET, NOT ADDED**: added, a double off the top
+  // of a big ollie goes into orbit and one off the bottom of a fall does nothing.
+  // **`p.jetFlew` HAS TO BE HONOURED HERE**, or the release that ends a hoverboard flight spends
+  // the double on the way out -- c156's landmine, which until now only `stepFoot` was closing.
+  // It is cleared on a `p.jump` rather than unconditionally, so it can eat exactly one.
+  // **AND NOTHING CUTS.** A body trick already in flight keeps its own clock: the jump gives him
+  // the air and the running flip finishes into the ordinary pose, which is what `p.air` does on
+  // foot. Restarting it here would re-fit `trickDur` under an already-advanced `trickT` and the
+  // rotation would visibly jump backwards.
+  else if (p.jump && !p.grounded && !p.jetFlew && !p.hit && p.jumps > 0 && p.jumps < AIR.jumps) {
+    p.vel.y = SK8.ollie * AIR.second; p.jumps++;
+    p.coyote = 0; p.airT = 0; p.landT = 0;
+    if (!p.trick) trickFlip('front');
+  }
+  if (p.jump) p.jetFlew = 0;
   p.jump = 0;
   p.vel.y -= SK8.g * dt;
   const px = p.pos.x, pz = p.pos.z, py = p.pos.y;

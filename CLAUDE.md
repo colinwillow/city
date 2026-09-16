@@ -1198,6 +1198,48 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE SECOND TAP IS THE SECOND JUMP ON THE BOARD TOO (c178, `trickFlip`, `p.jumps` in
+  `stepSkate`).** *"When you have a skateboard you can't double jump like you can otherwise, and
+  I want that to still be in effect, because the double tap on the right stick is still open --
+  it doesn't do anything on the skateboard, so why not have that second jump that does a flip?"*
+  **He is right that it was open**: in the air that pad's TAP was the rail catch and nothing
+  else, and `p.jumps` was never even COUNTED while riding -- `stepFoot` owned the whole ladder,
+  so the board had an ollie and then nothing.
+  **THE CATCH STILL OUTRANKS IT, AND THAT COSTS NO NEW RULE.** `railAt` runs at the TOP of
+  `stepSkate` and eats `p.jump` before the ollie block is reached, so a tap over a rail is a
+  grind and a tap over nothing is the double. One gesture, two answers, decided by what is under
+  him -- which is the same shape as the tap that ollies on the road and catches in the air.
+  **THE GATE IS `p.jumps > 0`, SO ROLLING OFF A KERB GRANTS NOTHING.** The second jump exists
+  only if he actually took the first, which is `AIR`'s rule on foot and is why the ollie now
+  marks `p.jumps = 1` at the moment the POP fires rather than when it is armed -- during
+  `SK8.pop` he is still on the road, and `if (p.grounded) p.jumps = 0` would wipe it.
+  **AND A RAIL IS A SURFACE**: `stepGrind` hands the jumps back every frame, and popping OFF one
+  spends the first, so an ollie out of a grind still has the double in it. Running out of rail is
+  walking off a ledge and grants nothing.
+  **`p.jetFlew` HAD TO BE HONOURED HERE, AND ONLY `stepFoot` WAS DOING IT.** The release that
+  ends a hoverboard flight is a `p.jump` like any other, so without it every landing off the pack
+  would have spent the double on the way out -- c156's landmine, which had been latent on the
+  board only because the board had no double to spend. It is cleared on a `p.jump` rather than
+  unconditionally, so it can eat exactly one.
+  **AND NOTHING CUTS.** A body trick already in flight keeps its own clock: the jump gives him the
+  air and the running flip finishes into the ordinary pose, which is what `p.air` does on foot.
+  Re-starting it would re-fit `trickDur` under an already-advanced `trickT` and the rotation would
+  visibly jump BACKWARDS -- a duration is not a thing to change halfway through.
+  **`trickFlip` IS A FUNCTION BECAUSE TWO GESTURES NOW START ONE.** The left pad's flick picks
+  front, back or a barrel roll; the right pad's second tap starts a front one. Inline it was the
+  left pad's alone, and a second copy is a second thing to keep in step.
+  Driven through the shipped `stepJet`/`stepPlayer` over the real collider
+  (`JAM_PROBE=tools/probe-jump2.mjs`), pack away and pack out, and identical in both except the
+  two rows that are meant to differ:
+      tap                    ollie, jumps 1, vy 11.6
+      tap, tap               jumps 2, vy 8.3 -> 11.3   (SK8.ollie x AIR.second = 11.59, less g*dt)
+      tap, tap, tap          jumps 2, vy UNTOUCHED     -- no third
+      rolled off a kerb      jumps 0, still falling    -- never popped, so nothing to spend
+      tap, HOLD 0.6s         no pack: jumps 2   pack out: jetK 0.87, jumps 1  <- the flight ate it
+      tap, tap, HOLD 0.6s    jumps 2, THEN jetK 0.87
+  **THE FLIP ITSELF IS A STATED GAP IN THAT HARNESS**, the same one `probe-jump.mjs` has:
+  `trickFlip` returns early on a missing `colin.actions['front_flip']` and `npm run jam` cannot
+  build a skin (DRACO wants a Worker). `p.jumps` and `vel.y` are the mechanic and they are real.
 - **THE PUSH CLIP IS A LOOP AND THE SCRAPE WAS ARRIVING BEFORE IT (c177, `SK8.pushBlend`,
   `SK8.pushGrace`, `pushAct`, `PUSHDRIFT`).** *"It plays the first sound when you push the left
   stick forward, which is not really quite when he pushes. It seems like the animation is on a
