@@ -2301,6 +2301,25 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
     anything meant to be SEEN is placed in the frame's terms and never in metres.
     `startParade` stays for the case it was written for — no line-up, one man, walking in from
     off frame — and `LINE.on = 0` gets you back to it.
+- **THE TITLE CAMERA POPPED BECAUSE ITS BOOM WAS NEVER EASED (c137).** *"It pops to a zoomed-in
+  position, then pops in a bit more, then pops out. I think it's because cars are driving by."*
+  **IT IS NOT THE CARS** -- `camFree` probes `gridQuery`, which is the STATIC grid built once at
+  load. Moving traffic is not in it and cannot be (that is why a car's box is handed to the
+  player's resolver separately every frame). Parked cars are, but they do not move. A good
+  hypothesis, and ruling it out is what pointed at the real one.
+  **TWO CAUSES, BOTH MINE, BOTH FROM c131.**
+  1. **THE PROBE WAS QUANTISED.** Walking in fixed `CAM.probe` steps and returning the last
+     clear one means the answer only ever takes values 0.6 m apart -- so as the shot sways past
+     a wall the boom comes back 6.4, 5.8, 5.2, 5.8 and the picture JUMPS sixty centimetres at a
+     time. It bisects between the last clear sample and the first blocked one now: four more
+     grid queries, and a continuous number, which is what anything that moves over it needs.
+  2. **AND `camAim` APPLIED IT RAW.** `stepCam` has damped its boom since c129 -- snap in, ease
+     out -- and the title camera, which is the one that sways across geometry on purpose, had
+     none of it. Same rule, and **only while the card is held**: the descent interpolates its own
+     distance and a second filter on top would lag the arrival, which is two writers on one
+     number a level down.
+  The sway itself was never the problem: `sweep` .26 rad is a 30-degree ping-pong on an 18 s
+  period, which is what he described wanting.
 - **`TITLE.az` WAS TYPED AND THE LENS ENDED UP INSIDE A HOUSE (c134, `titleAimClear`).**
   *"There's just this giant geometry including the camera view."* The bearing was aimed at the
   skyline on paper — measured, but measured for what is in FRONT of the shot and never for what

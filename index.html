@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c136</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c137</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c136';
+const BUILD = 'c137';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -7919,6 +7919,9 @@ const _cq = [];
 // (0.6 m steps rather than seven samples at 12%, so it cannot step over a railing, and it
 // honours `CAM.min`). Two functions answering one question is two things to keep in step.
 function camClear(tx, ty, tz, dx, dy, dz, dist) { return camFree(tx, ty, tz, dx, dy, dz, dist); }
+// `camAim` is handed no dt -- it is called from the card and from the descent, both of which
+// have one. Rather than thread it through two signatures for one damp, the frame parks it here.
+let camDt = 1 / 60;
 function camAim(az, el, dist, look) {
   cam.az = az; cam.el = el;
   // THE LINE-UP SLIDES THE LENS, not the row. Centring the man you picked is what makes the
@@ -7927,7 +7930,18 @@ function camAim(az, el, dist, look) {
   cam.tgt.set(player.pos.x + px, player.pos.y + look, player.pos.z + pz);
   const ce = Math.cos(el);
   const dx = -Math.sin(az) * ce, dy = Math.sin(el), dz = -Math.cos(az) * ce;
-  dist = camClear(cam.tgt.x, cam.tgt.y, cam.tgt.z, dx, dy, dz, dist);
+  // EASED, WHICH THE PLAY CAMERA HAS ALWAYS BEEN AND THIS ONE NEVER WAS. `stepCam` damps its
+  // boom -- snap in, ease out -- and `camAim` applied the raw probe straight to the position,
+  // so every metre the sway swept past a wall arrived as a cut. Same rule here: coming in is
+  // immediate because easing IN is time spent inside the wall, going back out is eased.
+  // ONLY WHILE THE CARD IS HELD. The descent interpolates its own distance and a second filter
+  // on top of it would lag the arrival -- two writers on one number, one level down.
+  const free = camClear(cam.tgt.x, cam.tgt.y, cam.tgt.z, dx, dy, dz, dist);
+  if (TITLE.on) {
+    if (cam.tdist === undefined) cam.tdist = free;
+    cam.tdist = free < cam.tdist ? free : damp(cam.tdist, free, CAM.outHL, camDt);
+    dist = cam.tdist;
+  } else { dist = free; cam.tdist = undefined; }
   cam.pos.set(cam.tgt.x + dx * dist, cam.tgt.y + dy * dist, cam.tgt.z + dz * dist);
   const floor = hmAt(cam.pos.x, cam.pos.z) + .6; if (cam.pos.y < floor) cam.pos.y = floor;
   camera.position.copy(cam.pos); camera.lookAt(cam.tgt);
@@ -8196,7 +8210,7 @@ function stepParade(dt) {
   return true;
 }
 function titleFrame(dt) {
-  TITLE.t += dt;
+  TITLE.t += dt; camDt = dt;
   // NO SEE-THROUGH HOLE ON THE CARD. It exists so a building between the play camera and him
   // does not hide him, and on a held title shot it is a dither storm across the picture --
   // which is what it was, because the sway walks the lens into the house behind him.
@@ -8299,17 +8313,32 @@ document.getElementById('startB').addEventListener('click', startGame);
 // and a lens that clips the corner of a lamp post for an instant is not the failure a lens
 // inside a building is.
 const _cbx = [];
+// ...AND IT HAS TO RETURN A CONTINUOUS NUMBER, WHICH IS WHY IT REFINES (c137). Walking in fixed
+// steps and returning the last clear one quantises the boom to `CAM.probe` -- so as the shot
+// sways, the distance comes back 6.4, 5.8, 5.2, 5.8 and the picture JUMPS by sixty centimetres
+// at a time. *"It pops to a zoomed-in position, then pops in a bit more, then pops out."*
+// A few bisections between the last clear sample and the first blocked one cost four more grid
+// queries and make the answer smooth, which is what a camera that moves over it needs.
+function camHit(x, y, z, pad) {
+  _cbx.length = 0; gridQuery(x, z, 1, _cbx);
+  for (const b of _cbx) {
+    if (x < b.minx - pad || x > b.maxx + pad || z < b.minz - pad || z > b.maxz + pad
+      || y < b.miny - pad || y > b.maxy + pad) continue;
+    return true;
+  }
+  return false;
+}
 function camFree(tx, ty, tz, dx, dy, dz, want) {
   const step = CAM.probe, n = Math.ceil(want / step), pad = CAM.pad;
   for (let i = 1; i <= n; i++) {
     const d = Math.min(want, i * step);
-    const x = tx + dx * d, y = ty + dy * d, z = tz + dz * d;
-    _cbx.length = 0; gridQuery(x, z, 1, _cbx);
-    for (const b of _cbx) {
-      if (x < b.minx - pad || x > b.maxx + pad || z < b.minz - pad || z > b.maxz + pad
-        || y < b.miny - pad || y > b.maxy + pad) continue;
-      return Math.max(CAM.min, d - step);
+    if (!camHit(tx + dx * d, ty + dy * d, tz + dz * d, pad)) continue;
+    let lo = d - step, hi = d;                       // clear .. blocked
+    for (let k = 0; k < 4; k++) {
+      const m = (lo + hi) * .5;
+      if (camHit(tx + dx * m, ty + dy * m, tz + dz * m, pad)) hi = m; else lo = m;
     }
+    return Math.max(CAM.min, lo);
   }
   return want;
 }
