@@ -32,7 +32,8 @@
     "sheet": "node tools/sheet.mjs",
     "jam": "node tools/jam.mjs",
     "aim": "node tools/aim.mjs",
-    "title": "node tools/title.mjs"
+    "title": "node tools/title.mjs",
+    "palette": "node tools/palette.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

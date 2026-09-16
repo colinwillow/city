@@ -2404,6 +2404,46 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   not the locomotion. Suspect the camera before re-tuning movement.
 - **`Colin_Head_MIX` rides at weight 1.** It is the blend shape that turns the generic
   base head into his; the other 41 targets are visemes and stay at zero.
+- **`npm run palette` READS THE PALETTE OFF HIS OWN KEY ART (c135).** *"Can we nudge the colours
+  toward this palette -- the start screen image, it's in the repo so you should be able to sample
+  it."* So sample it. Reading a palette off a picture by eye is the same mistake as placing a
+  ramp off a screenshot, and `npm run sky` already measures an exposure rather than guessing one.
+  **IT IS A SATURATION-WEIGHTED HUE HISTOGRAM, and the weighting is the part that matters.** A
+  poster is mostly midtones and sky; counting every pixel equally reports the BACKGROUND rather
+  than the palette. What an artist means by the colours of a picture are the ones carrying
+  chroma, so those are the ones that get a vote. `images/splash_screen_01.png`:
+      hue .576  #4fa4ed  sky blue     11% of the chroma   <- the dominant family
+      hue .063  #c27c52  warm tan      6%
+      hue .924  #9e476f  rose          minor
+      hue .785  #a94bcf  purple        minor
+      mean value .68, mean saturation .40, 9% of it neutral
+  A blue-and-warm-tan COMPLEMENTARY poster with purple and rose in the corners — which is not
+  what c130 reasoned its way to (rose / amber / teal / violet), and the measurement is the one
+  that gets shipped.
+  **THE ART HAS NO GREEN IN IT AT ALL**, nearest family 0.24 away, and that is the one entry that
+  is a judgement rather than a measurement: pulling the whole landscape that far would be
+  INVENTING a colour rather than matching one. Green goes to teal — out of primary, heading
+  toward the dominant blue, stopping well short of becoming it. Said out loud because everything
+  either side of it in that array is measured and this one is not.
+  **`satMax` COMES OFF THE SAME READING**: the art's own mean saturation is .40, so a ceiling near
+  twice that is a world that can be as chromatic as the poster and no more.
+  `city.PAL.set('poster')` is this, `'plutopia'` is the c130 reasoned set, `'raw'` is off.
+- **HIDING A SKIN FREES NOTHING (c135, `dropSkins`).** *"I got through the character selection,
+  started playing and then it crashed again."* Streaming the music took 157 MB off the session
+  and it still went. `wear` only makes the other characters INVISIBLE, and a hidden mesh costs
+  exactly what a drawn one does everywhere except the GPU's vertex fetch: geometry, textures, a
+  skeleton, a mixer and its own clone of every clip in the pool, all resident for a game that
+  will only ever draw one of them.
+  **SO THEY ARE RELEASED WHEN THE CARD GOES**, and that is safe because nothing is lost:
+  `pickChar` already loads a skin the first time it is asked for, so a disposed character simply
+  comes back from disk, and the card is the only thing that ever asks.
+  **AND THE BOOT POSTER GOES WITH THEM.** `#boot` only ever got a class that fades it out, so its
+  `<img>` sat in the document for ever holding a 941x1672 decode — 6.3 MB for a screen that has
+  gone. The title card already removes itself; this one never did.
+  **ROBIT AND MOUSSA BOT ARE OFF THE ROSTER.** They were the jury-rigged tests the
+  borrowed-character machinery was proved on and they served that purpose; three skins instead of
+  five is the cheapest memory there is. Both files stay in the repo and are still measured by
+  `npm run wear`, so a line brings either back.
 - **THE PALETTE (`PAL`, `palPatch`) IS A HUE-VS-HUE CURVE, AND THE TWO OBVIOUS DESIGNS ARE BOTH
   WRONG (c130).** *"It feels very McDonald's -- red and yellow. Tint the green, tint the red,
   tint the blue."* The source GLB is full of raw primaries and no amount of lighting rescues one.

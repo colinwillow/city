@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c134</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c135</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c134';
+const BUILD = 'c135';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -994,8 +994,12 @@ const CHARS = {
   // the THIRD stands dead centre -- *"Colin should be in the middle and every other character
   // should be to his side"*. A new character goes on an END, never next to him.
   list: [
-    { key: 'moussa', name: 'Moussa Bot', url: 'models/chars/moussa_robit.glb' },
-    { key: 'robot',  name: 'Robit',  url: 'models/chars/robot.glb' },
+    // ROBIT AND MOUSSA BOT ARE OUT (c135). They were the jury-rigged tests the borrowed-character
+    // machinery was PROVED on and they have served that purpose -- and three skins resident
+    // instead of five is the cheapest memory there is on a phone that is being killed for it.
+    // Nothing about them was deleted: `models/chars/robot.glb` and `moussa_robit.glb` are still
+    // in the repo and still measured by `npm run wear`, so a line here brings either back.
+    { key: 'moussat', name: 'Moussa', url: 'models/chars/moussa_toon.glb' },
     { key: 'colin',  name: 'Colin',  url: 'models/colin.glb' },            // the clips come from him
     // THE TOON MOUSSA IS THE BEST-CASE RIG IN HERE (c122). Measured before anything was built:
     // 65/65 of the bones Colin's clips drive, rest-pose offset mean 0.0 deg / worst 0 deg, so
@@ -1003,7 +1007,6 @@ const CHARS = {
     // rest-delta everyone reaches for first would be a no-op on him anyway. 2 skinned meshes,
     // ZERO loose donor meshes, so `stripPoses` has nothing to do. And he carries
     // `weapon_root` on `mixamorig_RightHand`, so the blaster parents with identity.
-    { key: 'moussat', name: 'Moussa', url: 'models/chars/moussa_toon.glb' },
     { key: 'alien',  name: 'Alien',  url: 'models/chars/alien_orange.glb' },
   ],
   cur: 'colin', want: 'colin', skins: {}, loading: {},
@@ -1397,11 +1400,14 @@ const snd = {
     : (SFX.noise(.10, .08 + .16 * k, 520), SFX.blip(96, .07, 'sine', .05 + .10 * k, 54)),
   bail: () => SFX.play('crack', .55, rnd(.80, 1.00)) || SFX.noise(.22, .22, 700),
   // the three car tiers, told apart by weight and pitch rather than by three different files
+  // QUIETER (c135). *"Can we turn down the metal clang, it's pretty loud."* The three tiers keep
+  // their RATIO to each other -- that spread is what tells a shoulder from a head-on apart, and
+  // flattening it would trade one complaint for a worse one -- so all three come down together.
   hit: (tier, x, z) => tier === 0
-    ? SFX.play('clang', .30, rnd(1.20, 1.45), x, z) || SFX.blip(420, .07, 'square', .06, 200, x, z)
+    ? SFX.play('clang', .15, rnd(1.20, 1.45), x, z) || SFX.blip(420, .07, 'square', .06, 200, x, z)
     : tier === 1
-      ? SFX.play('clang', .58, rnd(.95, 1.12), x, z) || SFX.blip(260, .10, 'square', .10, 120, x, z)
-      : (SFX.play('clang', .85, rnd(.72, .86), x, z) || SFX.noise(.12, .30, 800, x, z),
+      ? SFX.play('clang', .29, rnd(.95, 1.12), x, z) || SFX.blip(260, .10, 'square', .10, 120, x, z)
+      : (SFX.play('clang', .43, rnd(.72, .86), x, z) || SFX.noise(.12, .30, 800, x, z),
          SFX.blip(120, .16, 'square', .16, 58, x, z)),
   grind: () => SFX.play('clang', .34, rnd(.45, .60)) || SFX.noise(.20, .18, 1400),
   // THE BLASTER, AND THE CHARGE IS IN BOTH NUMBERS. Louder AND LOWER as it fills -- pitch is
@@ -1516,14 +1522,34 @@ const fill = new THREE.DirectionalLight(0x9fd4e8, LIGHT.fill); fill.position.set
 // shadows, so this is the paint the world is made OF and not a filter laid over the picture.
 // Colin is untouched -- his materials shadow the hook -- which keeps the mixed-media split.
 const PAL = {
-  on: 1, pull: 1, satK: .92, satMax: .62, tone: .5,
+  // `satMax` off the same measurement: the art's own mean saturation is .40, so a ceiling near
+  // twice that is a world that can be as chromatic as the poster and no more.
+  on: 1, pull: 1, satK: .95, satMax: .72, tone: .5,
   shadow: [.88, .90, 1.06],        // cool
   light: [1.06, 1.00, .95],        // warm
   // [centre hue, how far it moves, how wide the family is]
-  shift: [[0.00, -.055, .10], [0.15, -.050, .085], [0.33, .105, .105], [0.62, .075, .10]],
+  // MEASURED OFF HIS OWN KEY ART, not chosen (c135). `npm run palette` runs a saturation-weighted
+  // hue histogram over `images/splash_screen_01.png` -- weighted by chroma, because a poster is
+  // mostly midtones and counting every pixel equally reports the BACKGROUND rather than the
+  // palette. What it found:
+  //     hue .576  #4fa4ed  sky blue      11% of the chroma   <- the dominant family
+  //     hue .063  #c27c52  warm tan       6%
+  //     hue .924  #9e476f  rose           minor
+  //     hue .785  #a94bcf  purple         minor
+  //     mean value .68, mean saturation .40, 9% of it neutral
+  // A blue-and-warm-tan complementary poster with purple and rose in the corners -- so every
+  // entry below except one is the distance from a primary to the nearest family the ART CONTAINS.
+  // THE EXCEPTION IS GREEN, AND IT IS A JUDGEMENT: there is NO green family in the picture at
+  // all, nearest is 0.24 away, and pulling the whole landscape that far would be inventing a
+  // colour rather than matching one. It goes to teal -- out of primary green, heading toward the
+  // dominant blue, stopping well short of becoming it.
+  shift: [[0, .063, .10], [.1667, -.104, .09], [.3333, .13, .11], [.5, .076, .10], [.6667, -.09, .10], [.8333, -.049, .10]],
   sets: {
+    // the c130 set, which was reasoned rather than sampled -- kept to flip back to
     plutopia: { shift: [[0, -.055, .10], [.15, -.05, .085], [.33, .105, .105], [.62, .075, .10]],
                 pull: 1, satMax: .62, shadow: [.88, .90, 1.06], light: [1.06, 1.00, .95] },
+    poster:   { shift: [[0, .063, .10], [.1667, -.104, .09], [.3333, .13, .11], [.5, .076, .10], [.6667, -.09, .10], [.8333, -.049, .10]],
+                pull: 1, satK: .95, satMax: .72, shadow: [.88, .90, 1.06], light: [1.06, 1.00, .95] },
     dusk:     { shift: [[0, -.035, .10], [.15, -.055, .09], [.33, -.06, .10], [.62, .06, .10]],
                 pull: 1, satMax: .58, shadow: [.90, .88, 1.04], light: [1.12, 1.00, .90] },
     raw:      { pull: 0, satK: 1, satMax: 1, tone: 0 },
@@ -7967,6 +7993,42 @@ function titleAimClear() {
   console.log('[title] bearing ' + best.toFixed(2) + ' rad, boom clear to ' + bestD.toFixed(1) + ' of ' + want + ' m');
   return best;
 }
+// THE CARD IS OVER, SO THE REST OF THE LINE-UP GOES (c135). *"I got through the character
+// selection, started playing and then it crashed again."* Streaming the music took 157 MB off
+// the session and it still went, which says the rest of the pressure is real too -- and the
+// line-up is the obvious half of it, because three whole characters stay resident for a game
+// that will only ever draw one of them.
+// A SKIN IS NOT SMALL. Geometry, textures, a skeleton, a mixer and its own clone of every clip
+// in the pool -- and `wear` only makes them INVISIBLE, which frees nothing at all. Hiding is not
+// disposing, and a hidden mesh costs exactly what a drawn one does everywhere except the GPU's
+// vertex fetch.
+// AND THIS IS SAFE BECAUSE NOTHING IS LOST: `pickChar` already loads a skin the first time it is
+// asked for, so a character disposed here simply comes back from disk if it is ever asked for
+// again. The card is the only place that asks.
+function dropSkins(keep) {
+  let n = 0;
+  for (const k in CHARS.skins) {
+    if (k === keep) continue;
+    const skin = CHARS.skins[k];
+    if (skin.mixer) { skin.mixer.stopAllAction(); skin.mixer.uncacheRoot(skin.model); }
+    if (skin.root) {
+      scene.remove(skin.root);
+      skin.root.traverse(o => {
+        if (!o.isMesh) return;
+        if (o.geometry) o.geometry.dispose();
+        for (const m of (Array.isArray(o.material) ? o.material : [o.material])) {
+          if (!m) continue;
+          // every texture the material holds, whatever it calls them
+          for (const key in m) { const v = m[key]; if (v && v.isTexture) v.dispose(); }
+          m.dispose();
+        }
+      });
+    }
+    delete CHARS.skins[k]; n++;
+  }
+  if (n) console.log('[skin] released ' + n + ' unused character' + (n > 1 ? 's' : '') + ', kept ' + keep);
+  return n;
+}
 function lineFill() {
   if (!LINE.fill || !TITLE.on || !colin.ready) return;
   for (const k in CHARS.loading) if (CHARS.loading[k]) return;
@@ -8104,7 +8166,17 @@ function startGame() {
   // has to be re-run AFTER `TITLE.on` goes false or it decides everybody is still standing
   // there -- and they would be, for the whole game, rooted at the spawn.
   wear(CHARS.cur);
-  if (SHIPFLY.g) SHIPFLY.g.visible = false;
+  // and everybody else is released rather than merely hidden -- see `dropSkins`
+  dropSkins(CHARS.cur);
+  if (SHIPFLY.g) {
+    scene.remove(SHIPFLY.g);
+    SHIPFLY.g.traverse(o => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
+    SHIPFLY.g = null; SHIPFLY.on = 0;
+  }
+  // AND THE BOOT CARD'S POSTER. `#boot` only gets a class that fades it out, so the <img> stays
+  // in the document for ever holding a 941x1672 decode -- 6.3 MB for a screen that has gone.
+  // (The title card removes itself 900 ms later, which is where its own 2129x739 goes.)
+  setTimeout(() => { const b = document.getElementById('boot'); if (b) b.remove(); }, 1200);
   player.jump = 0; player.charge = 0; player.rHold = 0;   // nothing held over the card is spent on entry
   stick.L.x = stick.L.y = stick.R.x = stick.R.y = 0; for (const k in keys) keys[k] = 0;
   titleEl.classList.add('go'); setTimeout(() => titleEl.remove(), 900);
