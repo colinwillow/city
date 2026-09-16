@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c135</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c136</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c135';
+const BUILD = 'c136';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -739,7 +739,18 @@ const WEAP = {
   // is a lead-on and never a snap.
   // `range` is Plutopia's 70 x .625, the borrowed-length rule; every other number here is a
   // fraction or a rate and comes over raw.
-  lock: { cone: .38, range: 44, pull: 5.0, grab: .58, taper: .55, keep: .55 },
+  // THE ASSIST IS OFF BY DEFAULT (c136). *"It keeps locking onto everything and it won't be what
+  // you're trying to shoot at -- it finds something in the distance and it glitches."*
+  // Plutopia's numbers are right FOR PLUTOPIA, where the things worth shooting are sparse. This
+  // city is four hundred cars and eight officers inside a 44 m radius, so a 22-degree cone
+  // almost always contains SOMETHING -- and the mark snapping between two of them at forty
+  // metres is the glitching. An assist that is always on is not an assist, it is a hand on the
+  // wheel; the honest version here is a reticle that goes where the thumb points and a bolt
+  // that goes to the reticle.
+  // NOTHING IS DELETED. `on: 1` brings the whole loop back exactly as it was -- `pickTarget`,
+  // the accumulating ease, the wider keep-cone, all of it -- for the day this game has a
+  // fight worth assisting in.
+  lock: { on: 0, cone: .38, range: 44, pull: 5.0, grab: .58, taper: .55, keep: .55 },
   // RIDING, THE WHOLE LOOP IS LIVELIER AND IT READS AS THE AIMER ZIPPING ABOUT. Two things
   // feed it and both are speed: the camera sweeps in behind the aim while he is ALSO being
   // carried across the ground at twenty metres a second, so a target's bearing changes on its
@@ -1560,8 +1571,48 @@ const PAL = {
 const PAL_UNI = { uPalK: { value: 1 }, uPalPull: { value: 1 }, uPalSatK: { value: .92 },
   uPalSatMax: { value: .62 }, uPalTone: { value: .5 }, uPalN: { value: 4 },
   uPalC: { value: new Float32Array(6) }, uPalA: { value: new Float32Array(6) }, uPalW: { value: new Float32Array(6) },
-  uPalSh: { value: new THREE.Color(.88, .90, 1.06) }, uPalLi: { value: new THREE.Color(1.06, 1.00, .95) } };
+  uPalSh: { value: new THREE.Color(.88, .90, 1.06) }, uPalLi: { value: new THREE.Color(1.06, 1.00, .95) },
+  uPalLUT: { value: null } };
+// THE CURVE IS BAKED INTO A LOOK-UP TEXTURE (c136). *"Whatever we've done made it a little bit
+// slower, it's clearly struggling slightly."* It is this pass, and the cost was avoidable.
+// The shader was walking SIX gaussian families per fragment -- an `exp` and a wrap each -- over
+// the whole screen, to evaluate a function of ONE variable. A function of one variable is a
+// texture. 256 samples across the hue circle is finer than any eye on a phone, it is computed
+// once in JS whenever a number moves, and the fragment cost collapses to a single fetch.
+// THE SATURATION GATE STAYS IN THE SHADER because it is a function of the OTHER variable, and
+// making the table 2D to absorb one `smoothstep` would trade a cheap instruction for a bigger
+// texture and a worse cache.
+const PAL_LUT = { tex: null, data: new Uint8Array(256 * 4) };
+function palBake() {
+  const D = PAL_LUT.data;
+  for (let i = 0; i < 256; i++) {
+    const h = (i + .5) / 256;
+    let off = 0;
+    for (const e of PAL.shift) {
+      let d = h - e[0]; d -= Math.floor(d + .5);
+      const t = d / Math.max(.005, e[2]);
+      off += e[1] * Math.exp(-t * t);
+    }
+    let out = (h + off * PAL.pull) % 1; if (out < 0) out += 1;
+    // 16 bits across two channels: 256 steps of hue is visibly banded on a wide gradient, and
+    // this costs nothing because the texture is already RGBA.
+    const v = Math.round(out * 65535);
+    D[i * 4] = v >> 8; D[i * 4 + 1] = v & 255; D[i * 4 + 2] = 0; D[i * 4 + 3] = 255;
+  }
+  if (!PAL_LUT.tex) {
+    PAL_LUT.tex = new THREE.DataTexture(D, 256, 1, THREE.RGBAFormat);
+    PAL_LUT.tex.magFilter = PAL_LUT.tex.minFilter = THREE.LinearFilter;
+    PAL_LUT.tex.wrapS = THREE.RepeatWrapping;
+    PAL_LUT.tex.generateMipmaps = false;
+  }
+  PAL_LUT.tex.needsUpdate = true;
+  PAL_UNI.uPalLUT.value = PAL_LUT.tex;
+}
+let _palWas = '';
 function palSync() {
+  // re-baked only when something it depends on actually moved
+  const sig = PAL.pull + '|' + JSON.stringify(PAL.shift);
+  if (sig !== _palWas) { _palWas = sig; palBake(); }
   PAL_UNI.uPalK.value = PAL.on ? 1 : 0;
   PAL_UNI.uPalPull.value = PAL.pull; PAL_UNI.uPalSatK.value = PAL.satK;
   PAL_UNI.uPalSatMax.value = PAL.satMax; PAL_UNI.uPalTone.value = PAL.tone;
@@ -1576,9 +1627,8 @@ function palSync() {
 }
 function palPatch(sh) {
   for (const k in PAL_UNI) sh.uniforms[k] = PAL_UNI[k];
-  sh.fragmentShader = `uniform float uPalK, uPalPull, uPalSatK, uPalSatMax, uPalTone;
-    uniform int uPalN; uniform float uPalC[6]; uniform float uPalA[6]; uniform float uPalW[6];
-    uniform vec3 uPalSh, uPalLi;
+  sh.fragmentShader = `uniform float uPalK, uPalSatK, uPalSatMax, uPalTone;
+    uniform sampler2D uPalLUT; uniform vec3 uPalSh, uPalLi;
     vec3 palToHsv(vec3 c){
       vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
       vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
@@ -1595,20 +1645,18 @@ function palPatch(sh) {
     .replace('#include <color_fragment>', `#include <color_fragment>
       if (uPalK > 0.5) {
         vec3 hsv = palToHsv(max(diffuseColor.rgb, vec3(0.0)));
-        float off = 0.0;
-        for (int i = 0; i < 6; i++) {
-          if (i >= uPalN) break;
-          // WRAPPED, because hue is a circle: without this every red is judged to be a long
-          // way from a family centred at zero and the reds are the whole complaint.
-          float d = hsv.x - uPalC[i];
-          d -= floor(d + 0.5);
-          float t = d / uPalW[i];
-          off += uPalA[i] * exp(-t * t);
-        }
+        // ONE FETCH instead of six gaussians. The wrap that used to be per-family is baked in,
+        // and RepeatWrapping is what carries the circle across the seam at hue 0.
+        // (No backticks in here -- this whole block is a template literal, and one closes it.)
+        vec2 lut = texture2D(uPalLUT, vec2(hsv.x, 0.5)).rg;
+        float mapped = lut.r + lut.g / 255.0;
         // A GREY HAS NO HUE, and tinting one is how a neutral road turns lilac. The shift is
         // scaled by saturation, so the less colour a surface has the less it is moved -- which
-        // is why the road above comes out unchanged and the grass does not.
-        hsv.x = fract(hsv.x + off * uPalPull * smoothstep(0.02, 0.18, hsv.y));
+        // is why a road comes out unchanged and the grass does not. This one stays in the
+        // shader: it is a function of the other axis, and a 2D table to absorb one smoothstep
+        // is a bigger texture and a worse cache for no instructions saved.
+        float hshift = mapped - hsv.x; hshift -= floor(hshift + 0.5);
+        hsv.x = fract(hsv.x + hshift * smoothstep(0.02, 0.18, hsv.y));
         hsv.y = min(hsv.y * uPalSatK, uPalSatMax);
         diffuseColor.rgb = palToRgb(hsv);
         float pl = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
@@ -1643,7 +1691,10 @@ const PAINT = {
   cell: .13,        // the flagstone mottle inside a patch
   cellS: .85,
   warm: .035,       // a patch drifts in HUE as well as value: warm one side, cool the other
-  grain: .05,       // fine tooth, so a big flat wall is not perfectly smooth
+  // OFF BY DEFAULT (c136). It is one more value-noise sample -- four of this pass's fourteen
+  // sin() a fragment, about 30% of it -- for the least visible of the four things it does.
+  // Turn it on when there are frames to spend: `city.PAINT.grain = .05`.
+  grain: 0,
 };
 const PAINT_UNI = { uPaintK: { value: 1 }, uPaintS: { value: .055 }, uPaintP: { value: .30 },
   uPaintI: { value: .20 }, uPaintC: { value: .13 }, uPaintCS: { value: .85 },
@@ -1888,6 +1939,10 @@ const FX = {
   // LOSING THE WORDS IS THE REAL TRADE and it is the thing to judge: POW / BOOM / ZAP are
   // drawn INTO the sheet, so they cannot survive a vocabulary with no drawing in it.
   style: 'cards',
+  // HOW BIG AN IMPACT CARD IS, as a fraction of what it used to be. *"Those cards are too big."*
+  // A separate dial from `FX.size` on purpose: the jetpack's puffs are a CLOUD and want to be
+  // broad, while a hit is a point event that must not cover the thing it happened to.
+  impact: .55,
   // Hot to cool, per event. Same stack-of-bursts idea as the bolt's own detonation -- a single
   // sprite going out is a dot, and the stack is what makes it read as an impact.
   glowHue: {
@@ -2695,7 +2750,7 @@ function stepAim(dt) {
     // one. Feeding the corrected heading back in is a loop: once the aim has swung onto a
     // target, the test for what to aim at is being made from a bearing already glued to it, so
     // pointing the stick somewhere else cannot shake it off. And nothing locks unless armed.
-    p.lock = armed ? pickTarget(raw) : null;
+    p.lock = (WEAP.lock.on && armed) ? pickTarget(raw) : null;
     // The ease is a CORRECTION THAT ACCUMULATES while the aim is held, not a fraction
     // reapplied to a fresh stick reading every frame -- that version leaves a held aim a good
     // five degrees off. It settles at `grab` of the way there, so a lock is forgiving without
@@ -3049,7 +3104,7 @@ class PBolt {
       if (Math.hypot(o.x - this.x, o.z - this.z) > R + o.hl) continue;
       if (this.y > o.box.maxy + 1) continue;
       o.zap = B.stun; o.speed = 0; heatAdd(HEAT.zap);
-      fxPop(o.x, o.y + o.hh * .9, o.z, 'zap', 2.4);
+      fxPop(o.x, o.y + o.hh * .9, o.z, 'zap', 2.4 * FX.impact);
       this.pop('#bfe8ff', 7, .8); return true;
     }
     // anything solid, the same box test the police rounds use
@@ -3080,7 +3135,14 @@ class PBolt {
       burst(this.x + Math.cos(a) * r, this.y + rnd(-.2, .6), this.z + Math.sin(a) * r,
         i % 2 ? '#8fe6ff' : '#eaffff', rnd(.6, 1.4), rnd(.4, .8));
     }
-    fxPop(this.x, this.y, this.z, 'boom', 1.6 + this.c * .9);
+    // A PLASMA BOLT LANDING IS NOT A CARTOON EXPLOSION (c136). *"Even when the beam hits
+    // something it does the smoke and it says POW and it's really big and it just envelops
+    // whatever it hits."* `boom` is the drawn bank -- a star, the word, and debris going grey,
+    // 1.6 m across at point blank. That is the wrong vocabulary for a plasma shot and it is the
+    // c126 lesson one event later: the MUZZLE stopped being a card then and the IMPACT did not.
+    // Same treatment, same reason -- the bolt's own colours, thrown along the way it was going.
+    muzzleFlash(this.x, this.y, this.z, this.vx / (BOLT.speed || 1), this.vz / (BOLT.speed || 1), .5 + this.c * .5);
+    fxPop(this.x, this.y, this.z, 'hit', (.5 + this.c * .3) * FX.impact);
     snd.hit(1, this.x, this.z);
     this.dispose();
   }
@@ -4883,15 +4945,30 @@ function buildCity(gltf, ramps) {
 // toon patch, so anything loaded anywhere is toon shaded without being told.
 const PARK = {
   url: 'models/ramps/skate_ramps_fun_boxes.glb',
+  // TWO OF THE FOUR ARE NOT RAMPS, AND BOTH OF THE NEAR SPOTS HAD ONE (c136).
+  // *"I'm unable to ride on the skate jump ramps that we put in."* Measured through the file,
+  // with the node's own +90 deg X rotation applied -- WITHOUT that they all read plausibly and
+  // the fault is invisible, which is why this was never caught:
+  //     ramp_fun_box_01   13.00 x 1.62 tall x 7.63 deep    a fun box
+  //     ramp_fun_box_04   10.34 x 2.83 tall x 2.84 deep    a ramp
+  //     ramp_fun_box_02    5.90 x 1.43 tall x 0.13 DEEP    a thirteen-centimetre PANEL
+  //     ramp_fun_box_03    4.20 x 1.83 tall x 0.15 deep    the same thing, shorter
+  // `_02` and `_03` are flat panels standing on edge -- a grind rail and a wall-ride, not
+  // anything you roll up. Every face on them is vertical, `triAdd` rejects a vertical face as
+  // "not a floor" (correctly), and so there is NOTHING THERE TO RIDE. They were four of the six
+  // placements INCLUDING BOTH of the pair nearest the spawn, which are the ones he would find
+  // first -- so the two he met were the two with no rideable surface on them at all.
+  // The boxes go near, the panels stay in the park where their RAILS are worth having:
+  // `railsFrom` still gets a grind rail off each, which is what they are actually for.
   spots: [
     // the park: the largest clear level square within reach -- 46 m, 214 m from the spawn
     { n: 'ramp_fun_box_01', x: -48, z: 190, rot: 0, y: .02 },
-    { n: 'ramp_fun_box_02', x: -18, z: 190, rot: 0, y: .02 },
-    { n: 'ramp_fun_box_03', x: -48, z: 216, rot: Math.PI, y: .02 },
-    { n: 'ramp_fun_box_04', x: -18, z: 216, rot: Math.PI, y: .02 },
+    { n: 'ramp_fun_box_04', x: -18, z: 190, rot: 0, y: .02 },
+    { n: 'ramp_fun_box_02', x: -48, z: 216, rot: Math.PI, y: .02 },
+    { n: 'ramp_fun_box_03', x: -18, z: 216, rot: Math.PI, y: .02 },
     // and two on the way out, 86 m from the spawn, so the first one is found rather than sought
-    { n: 'ramp_fun_box_02', x: -36, z: 40, rot: Math.PI / 2, y: .05 },
-    { n: 'ramp_fun_box_03', x: -22, z: 56, rot: -Math.PI / 2, y: .05 },
+    { n: 'ramp_fun_box_04', x: -36, z: 40, rot: Math.PI / 2, y: .05 },
+    { n: 'ramp_fun_box_01', x: -22, z: 56, rot: -Math.PI / 2, y: .05 },
   ],
   built: 0,
 };
@@ -6496,7 +6573,7 @@ function stepShots(dt) {
 }
 function shotPop(m) {
   m.visible = false;
-  fxPop(m.position.x, m.position.y, m.position.z, 'hit', .75);
+  fxPop(m.position.x, m.position.y, m.position.z, 'hit', .75 * FX.impact);
 }
 // WHAT IT IS INSIDE, AND WHICH WAY OUT. The city is axis-aligned boxes in a grid, so this is
 // three overlaps and a smallest-penetration test -- the axis it is LEAST deep into is the face
@@ -6555,7 +6632,7 @@ function playerShot(dx, dz) {
   p.vel.x = dx * SHOT.push; p.vel.z = dz * SHOT.push; p.vel.y = SHOT.push * .45;
   if (p.board) dropBoard();
   snd.hit(2, p.pos.x, p.pos.z);
-  fxPop(p.pos.x, p.pos.y + COLIN_HEIGHT * .55, p.pos.z, 'boom', 1.5);
+  fxPop(p.pos.x, p.pos.y + COLIN_HEIGHT * .55, p.pos.z, 'boom', 1.5 * FX.impact);
 }
 // The clip's real length for THIS officer, read off his own action rather than Colin's pool.
 function clipLen2(c, nm) { const a = c.actions[nm]; return a ? Math.max(.05, a.getClip().duration) : .6; }

@@ -2404,6 +2404,54 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   not the locomotion. Suspect the camera before re-tuning movement.
 - **`Colin_Head_MIX` rides at weight 1.** It is the blend shape that turns the generic
   base head into his; the other 41 targets are visemes and stay at zero.
+- **TWO OF THE FOUR "RAMPS" ARE NOT RAMPS, AND BOTH NEAR SPOTS HAD ONE (c136).** *"I'm unable
+  to ride on the skate jump ramps that we put in."* Measured through the file **with the node's
+  own +90 deg X rotation applied** -- and that is the whole reason it was never caught, because
+  without it every one of them reads plausibly:
+      ramp_fun_box_01   13.00 x 1.62 tall x 7.63 deep    a fun box
+      ramp_fun_box_04   10.34 x 2.83 tall x 2.84 deep    a ramp
+      ramp_fun_box_02    5.90 x 1.43 tall x 0.13 DEEP    a thirteen-centimetre PANEL
+      ramp_fun_box_03    4.20 x 1.83 tall x 0.15 deep    the same, shorter
+  `_02` and `_03` are flat panels standing on edge — a grind rail and a wall-ride, not anything
+  you roll up. Every face on them is vertical, `triAdd` rejects a vertical face as "not a floor"
+  (correctly), so **there is nothing there to ride**. They were four of the six placements
+  INCLUDING BOTH of the pair nearest the spawn — the two he would meet first were the two with
+  no rideable surface on them at all.
+  **THE ASSET WAS NEVER THE PROBLEM AND THE COLLIDER WAS NEVER THE PROBLEM.** `npm run rails`
+  measured these four at the start and reported a clean rail off each, which is true and which
+  says nothing about whether you can ride one. A measurement that answers a different question
+  than the one being asked is worth less than no measurement at all.
+- **A LOOK-UP TEXTURE IS WHAT A FUNCTION OF ONE VARIABLE COSTS (c136).** *"Whatever we've done
+  made it a little bit slower."* `palPatch` was walking SIX gaussian families per fragment -- an
+  `exp` and a wrap each -- over the whole screen, to evaluate a function of hue alone. That is a
+  texture: 256 samples across the circle, baked in JS whenever a number moves, `RepeatWrapping`
+  to carry the seam at zero, 16 bits across two channels because 256 steps of hue bands visibly
+  on a wide gradient. The fragment cost collapses to one fetch.
+  **THE SATURATION GATE STAYS IN THE SHADER** because it is a function of the OTHER axis, and a
+  2D table to absorb one `smoothstep` is a bigger texture and a worse cache for nothing saved.
+  **AND `PAINT.grain` IS OFF BY DEFAULT** -- one more value-noise sample, four of that pass's
+  fourteen `sin()`, for the least visible of the four things it does.
+  **NO BACKTICKS INSIDE A SHADER STRING.** The whole block is a template literal and a backtick
+  in a COMMENT closes it -- which is a syntax error a hundred lines later, in a different
+  function, pointing at a line that is fine.
+- **THE AIM ASSIST IS OFF (c136).** *"It keeps locking onto everything and it won't be what
+  you're trying to shoot at -- it finds something in the distance and it glitches."*
+  Plutopia's numbers are right FOR PLUTOPIA, where the things worth shooting are sparse. This
+  city is four hundred cars and eight officers, so a 22-degree cone at 44 m almost always
+  contains SOMETHING, and the mark snapping between two of them at forty metres is the
+  glitching. **An assist that is always on is not an assist, it is a hand on the wheel.**
+  Nothing is deleted: `WEAP.lock.on = 1` brings the whole loop back exactly as it was.
+  **A ported number is only as good as the shape of the world it was tuned in** -- the third
+  time that has been the answer, after the see-through hole's radius and the jetpack's palette.
+- **AND A PLASMA BOLT LANDING IS NOT A CARTOON EXPLOSION (c136).** *"Even when the beam hits
+  something it does the smoke and says POW and it's really big and it just envelops whatever it
+  hits."* `boom` is the drawn bank -- a star, the word, debris going grey -- at 1.6 m across on a
+  point-blank impact. **This is the c126 lesson one event later**: the MUZZLE stopped being a
+  card then and the IMPACT did not. Same treatment, same reason: the bolt's own colours thrown
+  along the way it was travelling, with a much smaller card underneath it.
+  `FX.impact` scales every impact card and is deliberately separate from `FX.size` -- the
+  jetpack's puffs are a CLOUD and want to be broad, a hit is a point event that must not cover
+  the thing it happened to.
 - **`npm run palette` READS THE PALETTE OFF HIS OWN KEY ART (c135).** *"Can we nudge the colours
   toward this palette -- the start screen image, it's in the repo so you should be able to sample
   it."* So sample it. Reading a palette off a picture by eye is the same mistake as placing a
