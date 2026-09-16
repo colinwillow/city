@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c161</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c162</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c161';
+const BUILD = 'c162';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -6696,6 +6696,7 @@ function ownClips(skin, gltf) {
   // which clips a character actually drives, and what his soles do on them -- and the two
   // derived families are covered in the game by `npm run check:boot`. A stated gap, not a
   // silent one; move them inside the markers the day the harness needs to test them.
+  if (typeof markClips === 'function') markClips(mine);      // the gun does not move inside his fist
   if (typeof trimClips === 'function') trimClips(mine);      // his `back_flip` opens with the same crouch
   if (typeof deriveClips === 'function') deriveClips(mine);  // his own sighted hold and leg clones
   skin.own = new Map(mine.map(c => [c.name, c]));
@@ -6912,6 +6913,7 @@ function buildColin(gltf, extra) {
   // know when a LoopOnce action is done. A head is taken by starting the action late --
   // the frames are still in the file, nothing ever reaches them.
   // ON THE CLIP OBJECTS, before any skin clones them, so every skin inherits the cut.
+  markClips(colin.clips);
   trimClips(colin.clips);
   // BRACED, NOT AT EASE. `rifle_idle_01` is the gun DOWN and him standing about, which is the
   // wrong body for a man holding a charge on a trigger -- and until c105 that is what played
@@ -6936,6 +6938,31 @@ function buildColin(gltf, extra) {
 // whatever pool it is handed, because a character that brings his OWN clips needs the same cut
 // taken on his (his `back_flip` opens with the same standing crouch Colin's does).
 /* DERIVE:START */
+// A MOUNT MARKER'S REST POSE *IS* THE PLACEMENT, SO A CLIP MUST NEVER MOVE ONE (c162).
+// `weapon_root` says where the gun is held and `weapon_tip` where the muzzle is; `weapFit`
+// parents the blaster onto the first with identity, and `tipAt` reads the second every frame.
+// Both are children of his right hand, so the hand's own animation already carries them --
+// a track ON the marker is the gun moving INSIDE his fist, which is not a thing a hand does.
+// c158 checked that all 51 clips key both and found them inert, and wrote down that they were
+// "still a loaded gun". They are not inert any more. Measured through the real loader, the
+// worst rotation each clip puts on `weapon_root`:
+//     bar_release  139.2 deg   bar_pump  83.2..103.2   bar_hang_idle  76.7   walk_fwd_swagger  57.5
+//     idle_neutral   0.0       walk_fwd_neutral 0.0    run_fwd  0.0
+// So standing still the gun is exactly where he rigged it, and swinging on a bar it is 139
+// degrees out -- which is c151's landmine wearing its other face. There he keyed the markers in
+// the bar clips and it spread to the REST pose; here what is left is the tracks themselves.
+// **The rest pose is the one thing he can see in Blender, so it is the one thing that must win.**
+// Stripped over the POOL, beside the trim and the derive, so a character with his own clips is
+// covered by the same line -- Moussa's `weapon_root` chain is byte-for-byte Colin's (c122).
+const MOUNTS = /^(weapon_root|weapon_tip)$/;
+function markClips(list) {
+  let cut = 0, hit = 0;
+  for (const c of list) {
+    const keep = c.tracks.filter(t => { const d = t.name.indexOf('.'); return !MOUNTS.test(d > 0 ? t.name.slice(0, d) : t.name); });
+    if (keep.length !== c.tracks.length) { cut += c.tracks.length - keep.length; hit++; c.tracks = keep; }
+  }
+  if (cut) console.log('[clips] ' + cut + ' mount-marker tracks stripped from ' + hit + ' clips -- the grip is the rest pose');
+}
 function trimClips(list) {
   for (const nm in TRIM) {
     const c = list.find(x => x.name === nm), t = TRIM[nm];

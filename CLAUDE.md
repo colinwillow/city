@@ -1198,6 +1198,48 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **"ARE YOU JUST NOT USING THE MODELS I'M PUSHING?" -- WE ARE, AND THE GUN'S OFFSET WAS NEVER IN
+  `colin.glb` (c162, `npm run gunpose`, `markClips`).** *"I really cannot figure out why the
+  blaster is wrong. I've corrected it five times. It's right in Cinema 4D, it's right in Blender.
+  I've pushed it four or five times."* Three separate answers, and none of them is the one he
+  was afraid of.
+  **1. ONLY ONE OF THOSE PUSHES EVER CHANGED A FILE.** `git log -- models/colin.glb` stops at
+  `834d408` (c155, my copy of his `6370ce9 "fixed colin"`). Every commit after it is **EMPTY --
+  zero files.** So four of the five corrections never left his machine, which is a REAL bug and
+  it is in the upload, not in the game. That is worth checking first every time, and it takes one
+  command.
+  **2. THE JOINT HE KEEPS CORRECTING IS ALREADY RIGHT.** Every previous check here measured the
+  REST pose -- `npm run joints`, `npm run gun`, the export diffs -- **and the rest pose is exactly
+  what he is looking at in Blender.** The game is never in it: a clip plays on every frame, the
+  hand bone moves, and `weapon_root` rides it. So `npm run gunpose` poses the rig with a real
+  mixer in the clip he is STANDING in and reads where the mount ends up:
+      idle_neutral  weapon_root 0.479 (37% of his height)   his RIGHT HAND 0.506 (39%)
+      walk / run / rifle_idle -- all four clips: 0.062 from the hand, **5% of his height**
+  Six centimetres off his palm, in every clip. **The grip is on his hand and his export is fine.**
+  **3. SO THE OFFSET LIVES IN `blaster.glb`, WHICH IS THE FILE HE HAS NOT BEEN CORRECTING.**
+  `attachGear` neutralises that file's own chain above `weapon_root` and parents with identity
+  (c98), so where the gun sits relative to the grip is **entirely the blaster's mesh-to-marker
+  transform**. Mounted the way the game mounts it, its centre lands 0.322 from his hand -- a
+  quarter of his height, mostly +Z and +X, which is the gun projecting forward and across his
+  body. **Correcting Colin can never move that, however many times it is done.** Two ways out and
+  both are open: move the mesh relative to `weapon_root` in `blaster.glb`, or dial it live on the
+  phone with c158's **Blaster grip** sliders and send back the `city.grip()` line to bake in.
+  **AND THE LATENT HALF IS NOW REAL.** c158 checked that all 51 clips key both markers, found them
+  inert, and wrote down that they were "still a loaded gun". They are not inert any more --
+  measured, worst rotation put on `weapon_root` per clip:
+      bar_release 139.2 deg   bar_pump 83.2..103.2   bar_hang_idle 76.7   walk_fwd_swagger 57.5
+      idle_neutral 0.0        walk_fwd_neutral 0.0   run_fwd 0.0
+  Standing still the gun is where he rigged it; swinging on a bar it is **139 degrees out**, which
+  is why nothing in his idle screenshots could ever show it. That is c151's landmine wearing its
+  other face: there the keys spread INTO the rest pose, here what is left is the tracks.
+  **A MOUNT MARKER'S REST POSE IS THE PLACEMENT, SO A CLIP MUST NEVER MOVE ONE.** Both markers are
+  children of his right hand, so the hand's own animation already carries them -- a track ON the
+  marker is the gun moving inside his fist. `markClips` strips them over the POOL, beside
+  `trimClips` and `deriveClips`, so a character driving his OWN clips is covered by the same line
+  (Moussa's `weapon_root` chain is byte-for-byte Colin's). **The rest pose is the one thing he can
+  see in Blender, so it is the one thing that has to win.**
+  **AND THE BAR DOES NOT CARE**, because c151 already took it off these markers: `BAR.mark` is
+  `bar_root`/`bar_tip` then the HANDS, and the hands are bones whose animation is the whole point.
 - **THE BOLT TESTED A CIRCLE ON THE CAR'S LONG AXIS (c161).** *"I think the vehicle colliders are
   way too big -- one will be next to me, I'm not even really near it, trying to shoot something
   else, and when I shoot there's a big flat line and the car gets hit even though I didn't shoot
