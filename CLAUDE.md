@@ -863,6 +863,27 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   local translations up the parent chain, which ignores every rotation and scale on the way:
   it put Colin's hips at 52.8 and three candidates at a NEGATIVE height, and that number was
   about to pick the scale every character is drawn at.
+- **`moussa_toon` IS THE BEST-CASE RIG IN HERE, AND EVERY TOOL SAID SO BEFORE ANYTHING WAS
+  BUILT (c122).** He needed one roster line and not one typed constant:
+      65/65 of the bones Colin's clips drive, rest-pose offset mean 0.0 deg / worst 0 deg
+        -> he shares Colin's bind pose EXACTLY, like `alien_orange`. No `HIPFIX`, and the
+           rest-delta everyone reaches for first would be a no-op on him anyway.
+      2 skinned meshes, 0 loose donor meshes   -> `stripPoses` has nothing to do
+      scale x1.178, lift y=-0.048, 1.71 m tall, soles 0.05 / crown 1.69  -> UPRIGHT
+      left-right axis 90 deg against Colin's 88   -> 2 deg, idle asymmetry, so no `SPIN`
+  **AND HIS `weapon_root` CHAIN IS BYTE-FOR-BYTE COLIN'S**, down to the `Armature[0.01]` at the
+  top — checked rather than assumed, because a weapon file parented with identity onto an
+  armature at 1.0 instead of 0.01 is the **73-metre** bug `npm run gun` found, one rig over.
+  Same chain means the blaster lands proportional: 0.730 m x his 1.178 = 0.86 m, against 0.93
+  on Colin.
+  **He also ships 48 clips of his own**, which nothing uses — every skin wears Colin's pool
+  through `skinClips`, and a second path for one character is a second path to keep in step.
+- **`npm run wear` READS THE ROSTER OUT OF `CHARS.list`, NOT A COPY OF IT (c122).** It kept its
+  own hand-written `FILES` map, so the first run after a character was added measured the four
+  it already knew about and **said nothing at all about the new one** — no error, no omission
+  notice, just a report that looked complete. A harness that measures a set the game does not
+  have is the `normals.mjs` / `normGeo` mistake, and **that is the fourth time in this file**.
+  It parses `CHARS.list` out of `index.html` now, so the roster cannot drift again.
 - **LADDERS GO WHERE THE JUMPS CANNOT REACH, AND `npm run ladders` FINDS THEM.** A charge jump
   into a double tops out at 8.04 m and the grab window adds 2.15, so **anything under 10.2 m
   is already climbable and does not want a ladder**. The tool takes every building over that,

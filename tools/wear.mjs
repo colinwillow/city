@@ -50,9 +50,16 @@ async function prep(f) {
 }
 const loader = new GLTFLoader();
 const load = f => new Promise((res, rej) => loader.parse(readFileSync(f).buffer.slice(0), '', res, rej));
-const FILES = { colin: 'models/colin.glb', robot: 'models/chars/robot.glb',
-                moussa_robit: 'models/chars/moussa_robit.glb', alien_orange: 'models/chars/alien_orange.glb',
-                melee: 'models/chars/melee.glb' };
+// THE ROSTER COMES FROM THE GAME, NOT FROM A COPY OF IT. A hand-kept list here is a list that
+// silently stops covering the character you just added -- and a harness that measures a set the
+// game does not have is the `normals.mjs` / `normGeo` mistake, which this file has now paid for
+// four times. `CHARS.list` in index.html is the one roster.
+const HTML = readFileSync('index.html', 'utf8');
+const ROSTER = [...HTML.matchAll(/\{\s*key:\s*'([a-z0-9_]+)'\s*,\s*name:\s*'[^']*'\s*,\s*url:\s*'([^']+)'/gi)]
+  .map(m => ({ key: m[1], url: m[2] }));
+if (!ROSTER.length) { console.error('could not read CHARS.list out of index.html'); process.exit(1); }
+const FILES = { melee: 'models/chars/melee.glb' };
+for (const r of ROSTER) FILES[r.key] = r.url;
 const gl = {};
 for (const k in FILES) gl[k] = await load(await prep(FILES[k]));
 
@@ -191,7 +198,4 @@ function check(key, gltf) {
   if (Math.abs(yLo) > .12) console.log('   *** ' + (yLo > 0 ? 'FLOATING ' + yLo.toFixed(2) + ' m ABOVE' : 'SUNK ' + (-yLo).toFixed(2) + ' m BELOW') + ' THE GROUND ***');
   root.remove(skin.model);
 }
-check('colin', gl.colin);
-check('robot', gl.robot);
-check('moussa', gl.moussa_robit);
-check('alien', gl.alien_orange);
+for (const r of ROSTER) check(r.key, gl[r.key]);
