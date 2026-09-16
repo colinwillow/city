@@ -1198,6 +1198,55 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **A FINISHED TRICK IS OVER, AND ON THE BOARD IT NEVER WAS (c180, `TRICK.tail`).** *"I did a
+  double jump, which does a flip, and then used my jetpack in the air, and it held the end of the
+  flip rather than going back to the skateboard idle."* Exactly that, and it is one line's worth
+  of asymmetry: `colinAnim`'s board branch asks for the flip clip for as long as `p.trick` is set
+  AND he is off the ground, and **`p.trick` was only ever cleared on LANDING**. So the clip
+  reached its last frame, `ONCE` held it there by design, and the whole rest of the flight was
+  spent in a landing pose. The jetpack did not cause it -- it just makes the flight long enough
+  to be impossible to miss. `stepFoot` has cleared `p.air` on its own clock since c148 (*"the
+  flip runs out before the flight usually does, and he finishes it in the ordinary pose"*) and
+  the board simply never got the equivalent. Measured through the shipped `stepSkate`
+  (`JAM_PROBE=tools/probe-flip.mjs`):
+      double jump, no pack       airtime 1.32s   flip 1.17s   then the board pose for 0.15s
+      double jump + the JETPACK  airtime 2.90s   flip 1.17s   then the board pose for 1.73s
+  That 1.73 s is what he was looking at.
+  **IT CANNOT SNAP, AND THAT IS WHY IT IS SAFE AT EXACTLY `trickDur`.** Both geometry terms that
+  read `p.trick` -- the barrel roll on `colin.root.rotation.z` and the board carried round a body
+  flip -- are `2*PI * clamp(trickT / trickDur)`, so at the moment it completes the angle is a
+  WHOLE TURN and both offsets are zero. Clearing takes it to 0, which is the identical pose.
+  **AND THE JETPACK DELIBERATELY DOES NOT CUT A FLIP SHORT.** Killing one mid-rotation would put
+  `board.rotation.x` through as much as half a turn in a single frame, and nothing in this game
+  cuts. A flip is at most 1.7 s and usually far less; the thrust waits it out.
+  **A COMPLETED TRICK IS ALSO NOT A BAIL.** The landing test is `p.trick && p.trickT / p.trickDur
+  < TRICK.land`, so clearing it here is what says *he landed it* -- an unfinished one still holds
+  `p.trick` and still scrubs, and `bRoll`/`bYaw` catch a half-done kickflip either way.
+- **AND THE FLIP CLIP ENDS ON THE FLOOR, WHICH IS WRONG IN MID-AIR (c180, `TRICK.tail`).** *"We
+  could probably shave some off the end of the flip animation, because he lands on the ground and
+  we don't want it... he's above the skateboard, it's just floating below him."* `front_flip` and
+  `back_flip` are STANDING flips: they open with a crouch (which is what `TRIM.back_flip` already
+  cuts off the front) and they CLOSE with a landing recovery. The clip's own hips translation
+  stands him up out of his stance while the deck stays where his feet were -- **that is the deck
+  floating below him**, and it is the same landmine `tools/melee.mjs` paid for, one clip along.
+  **BOARD ONLY, WHICH IS WHY IT LIVES IN `trickFlip` AND NOT IN `TRIM`.** On foot he really does
+  land on the ground and the tail is right, so `airStart` plays the whole clip; `trickFlip` is the
+  board's entry point and `airStart` is the foot's, so the two bodies get two readings of one clip
+  with nothing to keep in step. Put it in `TRIM` and it would be taken from both.
+  **THE SCALE IS WHAT DECIDES HOW MUCH IS REACHED.** Covering `clipLen * tail` seconds of clip in
+  `trickDur` of real time is `clipLen * tail / trickDur`, so the tail past that is never played.
+  Measured through the shipped `trickFlip` -- a fabricated action carrying the REAL duration out
+  of `models/colin.glb`, because `colinScale` and `clipLen` between them touch exactly two
+  methods and that is all it takes to make the function run headless:
+      front_flip  0.800s          tail 1.00 -> plays 0.800s   tail .82 -> 0.656s, CUTS 4 frames
+      back_flip   1.367s useable  (1.767 less TRIM's 0.400 off the head) -> cuts about 7
+  **`front_flip` IS THE ONE THE PROBE MEASURES** because it has no `TRIM` entry, so `clipLen`
+  headless -- where `TRIM_IN` is empty -- is the same number it is in the game.
+  **AND IT IS A SETTINGS ROW (`Board flip length`)**, because how many frames of landing to shave
+  is a look-at-it decision and those belong on the phone, not in a commit. Read at the moment the
+  flip STARTS, so a drag takes effect on the next one. **A new row needs no `OPT.ver` bump** --
+  there is no stored value for it and `optApply` skips what it does not find.
+  Delete the whole thing the day there is a board flip clip that ends in a stance.
 - **HALF THE CARS, AND THE JAM WENT WITH THEM (c179, `TRAF.share`).** *"I think we need to
   significantly reduce the amount of cars -- like maybe cut them in half."* Six hypotheses across
   five builds had all measured the RULE and all six were wrong; the count was the thing nobody

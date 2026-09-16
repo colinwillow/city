@@ -314,7 +314,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c179</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c180</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -328,7 +328,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c179';
+const BUILD = 'c180';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -533,6 +533,19 @@ const TRICK = {
   bail: .45,         // what an unlanded trick costs him
   pivot: .95,        // the height a body flip turns about, which carries the board round
   rest: .14,         // how fast the board settles back under him after a landing
+  // HOW MUCH OF THE FLIP CLIP A BOARD TRICK PLAYS (c180). *"We could probably shave some off the
+  // end of the flip animation, because he lands on the ground and we don't want it... he's above
+  // the skateboard, it's just floating below him."* `front_flip` and `back_flip` are STANDING
+  // flips: they open with a crouch (which is what `TRIM.back_flip` already cuts off the front)
+  // and they CLOSE with a landing recovery on the floor. On foot that tail is exactly right and
+  // `airStart` plays the whole clip. On a board it is a man landing in mid-air -- the clip's own
+  // hips translation stands him up out of his stance while the deck stays where his feet were,
+  // which is the deck floating below him.
+  // **BOARD ONLY, AND THAT IS WHY IT LIVES IN `trickFlip`** rather than in the clip or in `TRIM`:
+  // `trickFlip` is the board's entry point and `airStart` is the foot's, so the two bodies get
+  // the two readings of the same clip with nothing to keep in step.
+  // Delete this the day there is a board flip clip that ends in a stance.
+  tail: .82,
   // A BARREL ROLL IS GEOMETRY TOO -- there is no clip for one, so he holds the ordinary air
   // pose and the WHOLE of him turns about his own forward axis, the board carried round with
   // him. `colin.root.rotation.z` is already that axis: the root is Euler XYZ, so Z is applied
@@ -9053,6 +9066,10 @@ const OPT_ROWS = [
   ['seg', 'Slash mark', () => SLASH.lay, v => { SLASH.lay = v; }, [['ground', 'Flat'], ['card', 'Card']]],
 
   ['num', 'Slash tilt', () => SLASH.tilt, v => { SLASH.tilt = v; }, 0, 1.2, .02],
+  // HOW MUCH OF THE FLIP CLIP A BOARD TRICK PLAYS (c180). How many frames of landing recovery
+  // to shave off the end of a mid-air flip is a look-at-it decision, and this panel is where
+  // those live. Read at the moment the flip STARTS, so a drag takes effect on the next one.
+  ['num', 'Board flip length', () => TRICK.tail, v => { TRICK.tail = v; }, .5, 1, .02],
   ['num', 'Impact size', () => FX.impact, v => { FX.impact = v; }, .2, 1.5, .05],
   ['num', 'Jet flame width', () => JET.flame.wide, v => { JET.flame.wide = v; }, .02, .4, .005],
   ['num', 'Card fps', () => FX.fps, v => { FX.fps = v; }, 4, 24, 1],
@@ -9884,7 +9901,10 @@ function trickFlip(kind) {
   const air = (p.vel.y + Math.sqrt(p.vel.y * p.vel.y + 2 * SK8.g * h)) / SK8.g;
   p.trick = kind; p.trickT = 0;
   p.trickDur = clamp(air * .88, .42, 1.7);
-  if (nm) colinScale(nm, clipLen(nm, p.trickDur) / p.trickDur);
+  // ONLY `TRICK.tail` OF THE CLIP, OVER THE WHOLE OF `trickDur`. The scale is what decides how
+  // much of it is reached: covering `clipLen * tail` seconds of clip in `trickDur` of real time
+  // is `clipLen * tail / trickDur`, so the landing recovery at the end is never played.
+  if (nm) colinScale(nm, clipLen(nm, p.trickDur) * TRICK.tail / p.trickDur);
   snd.flip();
   return true;
 }
@@ -10536,7 +10556,31 @@ function stepSkate(dt) {
     // air and his LINE comes round with him. A spin turns the board under a line that
     // keeps going -- which is also what makes landing switch mean anything.
     p.heading += turn;
-    if (p.trick) p.trickT += dt;
+    // **A TRICK THAT HAS FINISHED IS OVER, AND ON THE BOARD IT NEVER WAS (c180).** *"I did a
+    // double jump, which does a flip, and then used my jetpack in the air, and it held the end
+    // of the flip rather than going back to the skateboard idle."* Exactly that: `colinAnim`'s
+    // board branch asks for the flip clip for as long as `p.trick` is set AND he is off the
+    // ground, and `p.trick` was only ever cleared on LANDING -- so the clip reached its last
+    // frame, `ONCE` held it there, and the rest of the flight was spent in a landing pose. A
+    // jetpack simply makes the flight long enough to notice; a big ollie does it too.
+    // `stepFoot` has always done this (`if (p.air) { p.airFT += dt; if (...) p.air = ''; }`) and
+    // the board never got the equivalent. Clearing it drops him straight back to
+    // `skate_ollie_air`, which IS the board's air idle.
+    // **IT CANNOT SNAP, AND THAT IS WHY IT IS SAFE AT EXACTLY `trickDur`.** Both geometry terms
+    // that read `p.trick` -- the barrel roll on `colin.root` and the board carried round a body
+    // flip -- are `2*PI * clamp(trickT/trickDur)`, so at the moment it completes the angle is a
+    // whole turn and the offsets are zero. Clearing takes it to 0, which is the same pose.
+    // **AND THE JETPACK DELIBERATELY DOES NOT CUT ONE SHORT.** Killing a flip mid-rotation would
+    // put `board.rotation.x` through as much as half a turn in one frame, and nothing in this
+    // game cuts. A flip is at most `trickDur` 1.7 s and usually far less; the thrust waits.
+    // **AND A COMPLETED TRICK IS NOT A BAIL.** The landing test reads `p.trick &&
+    // p.trickT / p.trickDur < TRICK.land`, so clearing it here is what says "he landed it" --
+    // an unfinished one still holds `p.trick` and still scrubs, and `bRoll`/`bYaw` still catch
+    // a half-done kickflip either way.
+    if (p.trick) {
+      p.trickT += dt;
+      if (p.trickT >= p.trickDur) { p.trick = ''; p.trickT = 0; p.trickDur = 0; }
+    }
     // and the board's own two axes: roll is the flip, yaw is the shove.
     const dr = Math.sign(p.bRoll) * Math.min(Math.abs(p.bRoll), TRICK.flip * dt);
     p.bRoll -= dr; p.bRollA += dr;
