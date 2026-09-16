@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c165</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c166</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c165';
+const BUILD = 'c166';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1404,7 +1404,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/colin_name_256.png":"d6a1be53","images/hdr_toon_03.png":"129d2760","images/moussa_name_256.png":"e8d784eb","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/shredworld_title_02.webp":"8e192e8b","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","images/zorp_name_256.png":"4aab0ca5","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"99d38b7d","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/senagal_flag.glb":"5ff5a849","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/colin.glb":"99d38b7d","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/colin_name_256.png":"d6a1be53","images/hdr_toon_03.png":"129d2760","images/moussa_name_256.png":"e8d784eb","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/shredworld_title_02.webp":"8e192e8b","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","images/zorp_name_256.png":"4aab0ca5","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"99d38b7d","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"0db65872","models/police_officer.glb":"0c10098b","models/police_officer_toon.glb":"724965ac","models/senagal_flag.glb":"5ff5a849","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/colin.glb":"99d38b7d","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -7368,7 +7368,19 @@ const board = new THREE.Group(); scene.add(board);
 //     58 joints, all mixamorig, hips height on Y -- the same convention Colin uses
 // If a future officer export floats or walks away from himself, that tool is where it shows.
 const COP = {
-  url: 'models/police_officer.glb', gunUrl: 'models/pistol.glb',
+  // HIS NEW OFFICER (c166). *"I updated a new version of the pistol that goes with a new version
+  // of the cop. It's a different animation style. He should have all the same animations."*
+  // He does -- `npm run cop` diffed the two exports and **all sixteen clip names are identical**,
+  // so `COP.clips` needed no change at all. What DID change, measured through the real loader:
+  //     height  0.868 -> 0.859 file units   ->  x2.016 -> x2.038, and `buildCops` MEASURES it
+  //     soles   0.000 -> 0.002 in every ground clip   ->  still no `sitSkin` lift
+  //     travel  0.00 m in every clip        ->  still animates in place, locomotion code-driven
+  //     weapon_root on mixamorig_RIGHTHand  ->  he was LEFT-handed, this one is not
+  //     knock_down_front -> get_up_front still 174.1 deg out   ->  `COP.flip` STAYS
+  // **The hand swap cost nothing because the mount finds the joint BY NAME**, which is the whole
+  // reason c85 stopped hand-placing the grip. `models/police_officer.glb` stays in the repo and
+  // `npm run cop models/police_officer.glb` still measures it.
+  url: 'models/police_officer_toon.glb', gunUrl: 'models/pistol.glb',
   // WHERE THEY STAND. Measured with `npm run spots 4` rather than picked off a screenshot --
   // flat, open, unbuilt squares near the spawn, which is the same rule the ramps are placed
   // by and the reason none of them is inside a bank.
@@ -7428,7 +7440,18 @@ const COP = {
   // Seven and a half seconds of a man standing up is a nap, so the get-up is played at a
   // beat like every other one-shot in this game. It is a state TIMER rather than a clip
   // time scale, so the pose still reads; he simply stops waiting through the tail.
-  upRate: 2.6,
+  // 1, NOT 2.6 -- AND DELETING THE COMPENSATION IS THE POINT (c166). `upRate` cuts the get-up
+  // state short at `clipLen / upRate`, and 2.6 existed because `get_up_front` was **7.67 s at
+  // 1x, which is a nap**. His new export cuts it to 3.04 s, so the old divisor would end the
+  // state 1.17 s in -- 38% of the way through a man standing up, which is where the OLD one
+  // ended too and is why he pops upright. That is `TRIM`'s rule one system over: **delete the
+  // compensation the moment the export bakes the cut in**, or it is taken twice.
+  // At 1 the clip simply finishes, and the whole down-and-up beat is almost exactly what it was:
+  //     front   old  out 2.4 + 7.67/2.6 = 5.35 s      new  2.4 + 3.04 = 5.44 s
+  //     back    old  out 2.4 + 2.75/2.6 = 3.46 s      new  2.4 + 2.75 = 5.15 s
+  // The back one is the 1.7 s that moved, and it moved because 1.06 s of a 2.75 s get-up is a
+  // man snapping upright rather than getting up.
+  upRate: 1,
   // AN OVERRIDE, NOT A PLACEMENT. His re-export carries `weapon_root`/`weapon_tip` on the
   // officer's own LEFT hand and the pistol file is built round the same pair, so the alignment
   // is already done and nothing below is applied by default. These stay for nudging the art.
@@ -7554,12 +7577,18 @@ function buildCops(gltf, gunGltf) {
     // HIS RE-EXPORT HAS THE JOINT, AND THAT ENDS EVERY GUESS IN HERE.
     // c82 had to hand-place the pistol, because the officer's rig was 58 bones and every one
     // of them `mixamorig_`: the two files shared no placement and nothing in either said where
-    // the grip went. The new export carries `weapon_root` and `weapon_tip` on the LEFT hand --
-    // he is left-handed, which no amount of reasoning would have produced -- and they are the
+    // the grip went. Both his exports carry `weapon_root` and `weapon_tip`, and they are the
     // same pair the pistol file is built round. Measured through the real loader:
-    //     officer  weapon_root (0.440, 0.461, 0.001)   weapon_tip (0.673, 0.454, 0.055)
-    //     pistol   weapon_root (0, 0, 0)               weapon_tip (-0.233, 0.008, 0.054)
-    // Same offset, X mirrored, because one is a left hand. So the alignment is ALREADY DONE:
+    //     c85's officer   weapon_root on mixamorig_LEFTHand   tip (+0.233, 0.008, 0.054)
+    //     c166's officer  weapon_root on mixamorig_RightHand  tip (-0.249, 0.000, 0.000)
+    //     pistol.glb      weapon_root at the armature         tip (-0.249, 0.000, 0.000)
+    // **THE HAND CHANGED BETWEEN HIS TWO OFFICERS AND THIS CODE DID NOT**, because the joint is
+    // found by NAME -- which is exactly what c85 bought when it stopped hand-placing the grip.
+    // **AND NO ROOT->TIP AIM IS APPLIED HERE, WHICH IS A DECISION.** c165 had to add one for the
+    // BLASTER, because Colin's barrel axis and the blaster file's are **76.7 degrees** apart.
+    // These two are identical to three decimals -- `npm run joints` prints MATCH -- so the same
+    // correction would be an identity matrix and a second thing to keep in step. That tool is
+    // what catches it if a future export drifts. So the alignment is ALREADY DONE:
     // the pistol mesh keeps its own local transform and is parented to the officer's joint,
     // and no scale, offset or rotation is applied at all. `COP.gunLen` and `COP.gun` survive
     // only as overrides if the art wants nudging; by default this is exactly what he authored.

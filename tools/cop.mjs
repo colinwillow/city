@@ -37,7 +37,10 @@ const loader = new GLTFLoader();
 // garment went through it. Slice by the buffer's OWN view.
 const load = f => { const b = readFileSync(f); return new Promise((res, rej) =>
   loader.parse(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), '', res, rej)); };
-const cop = await load(await prep('models/police_officer.glb'));
+// THE FILE IS AN ARGUMENT, because there is more than one officer export now and a tool that
+// measures a file the game does not load is this repo's oldest mistake. `npm run cop [glb]`.
+const COPFILE = process.argv[2] || 'models/police_officer_toon.glb';
+const cop = await load(await prep(COPFILE));
 const gun = await load(await prep('models/pistol.glb'));
 
 // SKIN REAL VERTICES. Bone world positions are not the answer: `npm run wear`'s first version

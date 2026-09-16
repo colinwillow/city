@@ -1198,6 +1198,42 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE NEW OFFICER AND THE NEW PISTOL (c166).** *"I updated a new version of the pistol that
+  goes with a new version of the cop. It's a different animation style. He should have all the
+  same animations. I just stole them from the other one and kinda adjusted them, but he's a new
+  guy so you'll need to inspect that and use him instead of the old cop."*
+  `models/police_officer_toon.glb`, and `models/pistol.glb` replaced in place. **All sixteen clip
+  names are identical to the old export**, diffed with `npm run cop` on both files -- so
+  `COP.clips` needed no change and neither did the state machine. What moved:
+      height   0.868 -> 0.859 file units   ->  x2.016 -> x2.038, and `buildCops` MEASURES it
+      soles    0.000 -> 0.002 in every ground clip   ->  still no `sitSkin` lift to apply
+      travel   0.00 m in every clip        ->  still animates in place, locomotion code-driven
+      weapon_root on mixamorig_RIGHTHand   ->  c85's officer was LEFT-handed. This one is not.
+      knock_down_front -> get_up_front  174.1 deg out, back pair 14.0   ->  `COP.flip` STAYS
+      get_up_front  7.67 s -> 3.04 s     idle_01  8.38 -> 3.04    hit_while_shooting 3.63 -> 3.04
+  **THE HAND SWAP COST NOTHING, AND THAT IS c85 BEING PAID BACK.** The mount finds `weapon_root`
+  BY NAME, so an officer who changed hands between exports needed no code change at all -- which
+  is exactly the property that ended two builds of hand-nudging when the joint first appeared.
+  **AND `COP.upRate` HAD TO COME DOWN TO 1, WHICH IS `TRIM`'S RULE ONE SYSTEM OVER.** It cuts the
+  get-up state short at `clipLen / upRate`, and 2.6 existed only because `get_up_front` was
+  **7.67 s at 1x, which is a nap**. His new export cuts it to 3.04 s and the old divisor would
+  end the state 1.17 s in -- 38% of the way through a man standing up. **Delete the compensation
+  the moment the export bakes the cut in**, or it is taken twice. The beat barely moves:
+      front   old  out 2.4 + 7.67/2.6 = 5.35 s      new  2.4 + 3.04 = 5.44 s
+      back    old  out 2.4 + 2.75/2.6 = 3.46 s      new  2.4 + 2.75 = 5.15 s
+  The back one is the 1.7 s that changed, and it changed because 1.06 s of a 2.75 s get-up is a
+  man snapping upright rather than getting up. A flat RATE means two different beats on two
+  different clip lengths; letting each finish is one rule.
+  **AND NO ROOT->TIP AIM ON THE PISTOL, WHICH IS A DECISION RATHER THAN AN OMISSION.** c165 added
+  one for the blaster because Colin's barrel axis and the blaster file's are 76.7 degrees apart.
+  Here `npm run joints` reads the officer's tip offset as `(-0.249, 0.000, 0.000)` and the
+  pistol's as `(-0.249, -0.000, -0.000)` -- **MATCH, to three decimals** -- so the correction
+  would be an identity matrix and a second thing to keep in step. That tool is what catches it if
+  a future export drifts: it prints MATCH or it does not.
+  **`npm run cop` TAKES THE FILE AS AN ARGUMENT NOW.** It hard-coded `models/police_officer.glb`,
+  and there is more than one officer export in the repo -- a tool that measures a file the game
+  does not load is this repo's oldest mistake, and it was one line from making it again.
+  `models/police_officer.glb` stays in the repo and is still measurable that way.
 - **THE BLASTER: HIS JOINTS WERE RIGHT AND THE MOUNT ONLY USED ONE OF THEM (c165, `WEAP.aimTip`).**
   *"Are you gonna correct the blaster or am I? My two joints are correct. You're rigging the
   blaster based on the rotation of the blaster root, but if you were to attach the blaster to the
