@@ -36,7 +36,8 @@
     "palette": "node tools/palette.mjs",
     "wreck": "node tools/wreck.mjs",
     "cars": "node tools/cars.mjs",
-    "glsl": "node tools/glsl.mjs"
+    "glsl": "node tools/glsl.mjs",
+    "bar": "node tools/bar.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",

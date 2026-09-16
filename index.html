@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c147</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c148</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c147';
+const BUILD = 'c148';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -624,6 +624,82 @@ const LADDERS = [];
 // a grind rail is the top edge of the metal. The city is already thirty thousand boxes in a
 // grid, so every roof, wall top, balcony and shipfront in it is a ledge for free and nothing
 // has to be placed by hand.
+// ---------- THE HIGH BAR (c148, `BAR`, `barsFrom`, `barCatch`, `stepBar`) ----------
+// *"Picture a gymnast -- there's a bar they hang on, they swing and pump and get a bit more
+// speed, eventually they swing all the way over in 360, and eventually they launch off. I
+// constantly run into the street lights and they just reject me and bank-shot me backwards --
+// maybe instead you just immediately go into a swing."*
+//
+// **HE BUILT THE HARD PART INTO THE EXPORT, AND `npm run bar` SAYS SO.** *"I put the two weapon
+// joints where the bar would go -- you'd align those to the bar and rotate the whole character
+// around the centre of them."* Measured through the real loader and a real mixer:
+//     bar_hang_idle 4.73s   bar axis (0.999, 0.001, -0.033)  -- dead horizontal, along +X
+//                           midpoint drift 0.012 / 0.005 / 0.034 over the WHOLE clip
+//     bar_pump      0.80s   hips 0.857 below the bar, head 0.384   (x1.273 -> 1.09 m, 0.49 m)
+//     bar_release   0.40s   -- a THIRD clip he had forgotten he made
+// A pivot that wanders a centimetre and a half across five seconds is a fixed pivot, so "rotate
+// him about the midpoint" is exactly what the file supports.
+// **AND NOTHING BROKE: `weapon_root` IS STILL ON `mixamorig_RightHand`.** The joints did not
+// move to the bar -- his HANDS did, and the joints went with them, which is the joint doing its
+// job rather than a hack. The blaster mount is untouched.
+//
+// **THE PLACEMENT IS MEASURED EVERY FRAME, NOT TYPED.** Pose him, read where `weapon_root` and
+// `weapon_tip` actually ENDED UP in world space, and slide the root by the difference so the
+// midpoint lands on the bar. Nothing here knows how far the joints sit above his feet, so a
+// re-export at any height lands right with no edit -- `buildBoard`'s rule, one rig over.
+//
+// **THE SWING IS A REAL PENDULUM**, `w' = -(g/L) sin(a)`, which is worth more than a hand-rolled
+// curve for one reason: **going all the way over needs no special case.** Past the top the same
+// equation keeps `a` increasing and he giants round; under it he falls back and swings the other
+// way. The 360 is not a state, it is what enough energy looks like.
+//
+// **PUMPING: HE ASKED WHICH OF TWO, AND THE ANSWER IS BOTH.** *"I can't decide if I just wanna
+// hold forward, or if I wanna make you hold forwards then backwards then forwards."* Energy is
+// added only while the stick AGREES with the way he is already swinging, which is what pumping
+// physically is -- you drive with the swing, not against it. So holding forward works and builds
+// on every forward half; alternating with the swing builds on BOTH halves and gets him over in
+// half the time. One rule, his easy option and his interesting option both fall out of it, and
+// the mechanic teaches itself without a tutorial.
+const BAR = {
+  on: 1,
+  // WHAT COUNTS AS A BAR, FOUND AND NEVER AUTHORED -- the grind rails' rule and the ledges'.
+  // The city is already thirty thousand boxes and `npm run cols` says 679 of them have their
+  // bottom above 2.2 m across 106 meshes: those are the sign gantries and lamp arms, which is
+  // exactly what he keeps flying into.
+  hi: 2.5,          // the bar has to be at least this high, or it is furniture
+  top: 7.5,         // and not so high that nothing could ever reach it
+  // 0.9, NOT 1.3, AND THE REASON IS THE SPLITTER (c148). `solidAdd` merges its column runs
+  // ALONG X, so an arm lying along X comes out as one long box and an identical arm along Z
+  // comes out as a ROW OF CELL-WIDE ONES. At 1.3 the first probe found 67 bars and **every
+  // single one of them was along X**, which is not a fact about the city -- it is the merge
+  // axis showing through. Short segments qualify now and `barJoin` puts the rows back together.
+  long: .9,         // long in ONE horizontal axis
+  wide: 1.30,       // and no wider than this across
+  thick: 1.10,      // and no taller than this: an arm, not a wall
+  maxLen: 12,       // AND A CAP ON THE JOIN. The first run produced a 71.3 m "bar" -- `barJoin`
+                    // had welded a whole roof edge into one. Past this it is a building, not
+                    // something you swing on, and the segments are left as they were.
+  grab: .95,        // how close his hands have to pass
+  cool: .45,        // and how long after letting go before he can catch again
+  len: 1.09,        // the pendulum arm: his centre of mass below the bar. MEASURED, see above.
+  g: 17,            // gravity for the swing -- under the world's 20, which reads as heavier
+  pump: 5.2,        // rad/s^2 added while the stick agrees with the swing
+  drag: .22,        // and what bleeds off, so a bad rhythm does not accumulate for ever
+  wMax: 7.0,        // ceiling on angular speed
+  kick: .6,         // AT REST THE STICK PICKS THE DIRECTION. Without this the swing can never
+                    // START: "add energy only while the stick agrees with the swing" multiplied
+                    // by a swing of exactly zero is zero, so a bar caught from a dead hang hangs
+                    // for ever however hard you push. `npm run jam` with the bar probe read
+                    // w = 0.00 after fourteen seconds of holding forward, which is what that
+                    // rule looks like from outside and exactly why it was driven rather than
+                    // argued. Below this he is at rest and the thumb starts him.
+  wGo: 1.4,         // below this he is just hanging, above it the pump clip plays
+  launch: 1.15,     // what the release keeps of his tangential speed
+  up: 2.2,          // plus a kick straight up, so a release at the bottom is not a faceplant
+  relDur: .40,      // `bar_release` is 0.40 s at 1x
+  minW: .5,         // release under this and he just drops
+  catchW: 1.1,      // how much of his incoming speed becomes swing
+};
 const HANG = {
   reach: .72,        // how close to the face he has to be
   tall: 1.3,         // and the thing it belongs to has to be at least this tall
@@ -1172,7 +1248,7 @@ const SPAWN = { x: -100.8, y: 0, z: 0, heading: 0 };
 // WRITTEN BY `npm run bump` -- do not edit by hand. The sha1 of each asset's CONTENTS, so a
 // file replaced in place arrives and a file that did not change stays cached. See tools/bump.mjs.
 /* ASSETS:START */
-const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"3bef7f12","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
+const ASSETS = {"images/HDRI_01_2K.jpg":"69af8105","images/HDRI_02_galaxy_2K.jpg":"e3379219","images/hdr_toon_03.png":"129d2760","images/shredworld_title_01.png":"9bcf4dc9","images/shredworld_title_02.png":"be65220f","images/splash_screen_01.png":"6113e27e","images/splash_screen_01.webp":"2b4404f2","models/alien_blaster.glb":"22d4629b","models/alien_jetpack.glb":"7e0697b2","models/alien_ship_orange.glb":"c7be6727","models/blaster.glb":"f01d10cf","models/city.glb":"a15d4187","models/colin.glb":"9e847761","models/fluffy_cloud.glb":"90632e17","models/fluffy_cloud_01.glb":"90632e17","models/pistol.glb":"ff3ad38f","models/police_officer.glb":"0c10098b","models/skateboard.glb":"5ba93796","models/ramps/skate_ramps_fun_boxes.glb":"f977f546","models/chars/alien_orange.glb":"ca6524a3","models/chars/melee.glb":"d96f8dce","models/chars/moussa_robit.glb":"8623416d","models/chars/moussa_toon.glb":"6d80b1cf","models/chars/robot.glb":"b2d4e27f","audio/bamboo_01.mp3":"8604cd97","audio/bamboo_02.mp3":"939a5a82","audio/blaster_sound_01.mp3":"40d99583","audio/blaster_sound_02.mp3":"4bd7bb7c","audio/box_break_01.mp3":"e4127980","audio/box_break_02.mp3":"7cad53f2","audio/explosion_medium.mp3":"c68d3172","audio/explosion_small.mp3":"f154a537","audio/fire_burn_01.mp3":"f6e5bf66","audio/jewel_noise_01.mp3":"6c6637f5","audio/metal_clang_01.mp3":"a333bd27","audio/metal_clang_02.mp3":"1e3ebbd6","audio/metal_clang_03.mp3":"afe44812","audio/metal_clang_04.mp3":"573ca086","audio/plutopia_song_03.mp3":"194212e0","audio/plutopia_song_04.mp3":"81ae19c5","audio/swoosh_01.mp3":"193db185","audio/swoosh_02.mp3":"19145e70","audio/swoosh_03.mp3":"544fdffb","audio/swoosh_04.mp3":"843bee5d","audio/swoosh_05.mp3":"a19e7ad2","audio/swoosh_06.mp3":"9052bfe5","audio/songs/shredworld_song_01.mp3":"e2bd491d","audio/songs/shredworld_song_02.mp3":"cb8ff968","audio/skateboarding_sound_effects/skateboarding_landing.mp4.mp3":"4892c778","audio/skateboarding_sound_effects/skateboarding_ollie.mp3":"62a25534","audio/skateboarding_sound_effects/skateboarding_riding.mp4.mp3":"5a92f4fb","audio/skateboarding_sound_effects/skateboarding_riding_01.mp4.mp3":"294b3e79","audio/skateboarding_sound_effects/skateboarding_start.mp3":"bb1528fb"};
 /* ASSETS:END */
 // EVERY runtime asset URL goes through this. A bare path is a URL the phone already has.
 const A = p => p + (ASSETS[p] ? '?v=' + ASSETS[p] : '');
@@ -6423,6 +6499,20 @@ function colinAnim(dt) {
   // A MELEE OWNS HIM WHOLE. One clip at weight 1 and nothing of the gait underneath: a punch
   // with a walk cycle blended into it is a man waving while he strolls.
   if (p.mel) { t[p.mel] = 1; colinSet(t, dt); return; }
+  // THE BAR. His own three clips, and which one is playing IS the state: hanging under the bar,
+  // kipping while the swing builds, and the release on the way off. `bar_hang_idle` doubles as
+  // the giant pose, which is his own note -- *"this could be used for both when he's hanging but
+  // also when you're spinning him all the way around."*
+  if (p.bar) {
+    if (p.barRel > 0) t['bar_release'] = 1;
+    else {
+      const k = clamp((Math.abs(p.barW) - BAR.wGo) / 2.2, 0, 1);
+      t['bar_hang_idle'] = 1 - k; t['bar_pump'] = k;
+      // the kip runs at the swing's own rate, so the pump and the arc are one motion
+      if (k > .02) colinScale('bar_pump', clamp(Math.abs(p.barW) / 3.2, .5, 2.2));
+    }
+    colinSet(t, dt); return;
+  }
   // no hang clip and no climb clip: the one pose with his arms up stands in for both
   if (p.hang) { t[HANG.clip] = 1; colinSet(t, dt); return; }
   // and no climb clip either: a walk cycle facing a wall is legs on rungs and arms reaching
@@ -7868,7 +7958,7 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
 function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
@@ -8153,6 +8243,180 @@ function ledgeGrab(p) {
 // HANGING IS NOT FALLING, so gravity and the collider are both off and his position is held.
 // Tap to climb, pull away to let go -- and letting go gives back the second jump, so a bad
 // grab costs a moment rather than a life.
+// EVERY BAR IN THE CITY, FOUND ONCE AT LOAD OUT OF THE SOLID BOXES. Nothing is placed by hand:
+// a lamp arm and a sign gantry are already boxes high in the air that are long one way and thin
+// the other, which is the whole definition of a bar.
+const bars = [];
+function barsFrom() {
+  bars.length = 0;
+  if (!BAR.on) return;
+  for (const b of solids) {
+    if (b.miny < BAR.hi || b.miny > BAR.top) continue;
+    if (b.maxy - b.miny > BAR.thick) continue;
+    const sx = b.maxx - b.minx, sz = b.maxz - b.minz;
+    // long one way, narrow the other -- and NOT both, which would be a roof
+    const alongX = sx >= BAR.long && sz <= BAR.wide, alongZ = sz >= BAR.long && sx <= BAR.wide;
+    if (alongX === alongZ) continue;
+    const y = (b.miny + b.maxy) * .5;
+    bars.push(alongX
+      ? { x: (b.minx + b.maxx) * .5, y, z: (b.minz + b.maxz) * .5, ax: 1, az: 0, half: sx * .5 }
+      : { x: (b.minx + b.maxx) * .5, y, z: (b.minz + b.maxz) * .5, ax: 0, az: 1, half: sz * .5 });
+  }
+  const raw = bars.length;
+  barJoin();
+  console.log('bars: ' + bars.length + ' catchable in the city (' + raw + ' segments joined)');
+}
+// **EVERY BAR THIS FINDS RUNS ALONG X, AND THAT IS THE SPLITTER RATHER THAN THE CITY.** Measured:
+// 66 of 66. `solidAdd` merges its column runs along X, so a Z-facing lamp arm comes out as a row
+// of cell-wide boxes that no length test can tell from a sign panel -- the only threshold that
+// would catch them also catches all 679 overhead boxes. **So Z-facing arms are not catchable and
+// that is a stated gap, not a silent one**; the real fix is for `solidAdd` to merge along both
+// axes, which is its own build. 66 bars at a median 3.1 m is plenty to play with meanwhile.
+// AND ADJACENT COLLINEAR SEGMENTS ARE ONE BAR. The splitter's cell-wide pieces of a Z-facing arm
+// are the same arm; leaving them apart gives a row of stubs where the catch can fall between two
+// of them. Same idea as `railsFrom` clustering a rail broken up by its own uprights.
+function barJoin() {
+  const out = [];
+  bars.sort((a, b) => (a.ax - b.ax) || (a.y - b.y) || (a.ax ? a.z - b.z || a.x - b.x : a.x - b.x || a.z - b.z));
+  for (const r of bars) {
+    const prev = out[out.length - 1];
+    const gap = prev && prev.ax === r.ax && Math.abs(prev.y - r.y) < .25
+      && (r.ax ? Math.abs(prev.z - r.z) < .5 : Math.abs(prev.x - r.x) < .5)
+      ? (r.ax ? (r.x - r.half) - (prev.x + prev.half) : (r.z - r.half) - (prev.z + prev.half)) : 1e9;
+    const joined = prev ? (r.ax ? Math.max(prev.x + prev.half, r.x + r.half) - Math.min(prev.x - prev.half, r.x - r.half)
+                                : Math.max(prev.z + prev.half, r.z + r.half) - Math.min(prev.z - prev.half, r.z - r.half)) : 0;
+    if (gap < .45 && joined <= BAR.maxLen) {
+      const lo = r.ax ? Math.min(prev.x - prev.half, r.x - r.half) : Math.min(prev.z - prev.half, r.z - r.half);
+      const hi = r.ax ? Math.max(prev.x + prev.half, r.x + r.half) : Math.max(prev.z + prev.half, r.z + r.half);
+      if (r.ax) prev.x = (lo + hi) * .5; else prev.z = (lo + hi) * .5;
+      prev.half = (hi - lo) * .5;
+    } else out.push(r);
+  }
+  bars.length = 0; bars.push(...out);
+}
+// CAUGHT IN THE AIR, THE WAY A LEDGE IS. It runs BEFORE the collider, because the whole point is
+// that the thing which currently bank-shots him should catch him instead -- resolve first and the
+// bounce has already happened.
+const _barB = [];
+function barCatch() {
+  const p = player;
+  if (!BAR.on || p.bar || p.hit || p.grounded || p.hang || p.lad || p.barCool > 0 || !bars.length) return false;
+  const hx = p.pos.x, hy = p.pos.y + COLIN_HEIGHT * .92, hz = p.pos.z;   // his hands, near the crown
+  let best = null, bd = BAR.grab * BAR.grab;
+  for (const r of bars) {
+    // nearest point on the bar SEGMENT, which is why `half` is stored: a lamp arm caught at its
+    // far end should hold at the end and not at the middle
+    const dx = hx - r.x, dz = hz - r.z, dy = hy - r.y;
+    const t = clamp(dx * r.ax + dz * r.az, -r.half, r.half);
+    const ox = dx - r.ax * t, oz = dz - r.az * t;
+    const d = ox * ox + oz * oz + dy * dy;
+    if (d < bd) { bd = d; best = r; best._t = t; }
+  }
+  if (!best) return false;
+  barGrab(best, best._t);
+  return true;
+}
+function barGrab(r, t) {
+  const p = player;
+  p.bar = { x: r.x + r.ax * t, y: r.y, z: r.z + r.az * t, ax: r.ax, az: r.az };
+  // THE SWING PLANE IS PERPENDICULAR TO THE BAR, so the only part of his speed that survives is
+  // the part already in it -- which is what makes catching one at pace carry into a swing rather
+  // than starting from a dead hang.
+  const fx = -r.az, fz = r.ax;                        // "forward" across the bar
+  const along = p.vel.x * fx + p.vel.z * fz;
+  p.barA = 0; p.barW = clamp(along / Math.max(.2, BAR.len) * BAR.catchW, -BAR.wMax, BAR.wMax);
+  // and he faces whichever way he was going, so the catch does not spin him round
+  p.barSide = along >= 0 ? 1 : -1;
+  p.barT = 0; p.barRel = 0; p.jumps = 1;
+  p.vel.set(0, 0, 0); p.speed = 0;
+  if (p.board) dropBoard();
+  snd.land(.35, false);
+}
+// THE SWING. A real pendulum, so the giant needs no case of its own -- see the note on `BAR`.
+function stepBar(dt) {
+  const p = player, B = p.bar;
+  p.barT += dt;
+  if (p.barRel > 0) {                                  // the launch clip is playing; he is gone
+    p.barRel -= dt;
+    if (p.barRel <= 0) { p.bar = null; p.barCool = BAR.cool; }
+  }
+  const fx = -B.az, fz = B.ax;                         // the swing plane's forward
+  if (!p.barRel) {
+    // w' = -(g/L) sin a. Past the top this keeps `a` climbing and he giants round; under it he
+    // falls back. The 360 is not a state, it is what enough energy looks like.
+    p.barW += -(BAR.g / BAR.len) * Math.sin(p.barA) * dt;
+    // PUMPING ADDS ENERGY ONLY WHILE THE STICK AGREES WITH THE SWING, which is what pumping is.
+    // Hold forward and every forward half builds; alternate with him and both halves do.
+    const s = stickWorld();
+    if (s.mag > .35) {
+      const want = (s.x * fx + s.z * fz) * p.barSide;   // + is "with his face", in the swing plane
+      // FROM REST the thumb chooses which way he goes; once he is moving it has to AGREE with
+      // the swing, which is what makes holding forward work and alternating work better.
+      if (Math.abs(p.barW) < BAR.kick) p.barW += want * BAR.pump * dt;
+      else if (want * p.barW > 0) p.barW += Math.sign(p.barW) * BAR.pump * Math.abs(want) * dt;
+      p.pumping = 1;
+    } else p.pumping = 0;
+    p.barW -= p.barW * BAR.drag * dt;
+    p.barW = clamp(p.barW, -BAR.wMax, BAR.wMax);
+    p.barA = wrapAngle(p.barA + p.barW * dt);
+    // RELEASE. The right pad is the verb everywhere else in this game and it is the verb here:
+    // a tap lets go, and he leaves on the TANGENT he was already travelling, which is the whole
+    // reason to have built speed at all.
+    if (p.jump) { p.jump = 0; barLetGo(); }
+  }
+  // HIS POSITION IS THE PENDULUM'S, and `poseColin` puts the JOINTS on the bar from there.
+  const c = Math.cos(p.barA), sn = Math.sin(p.barA);
+  p.pos.x = B.x + fx * BAR.len * sn;
+  p.pos.z = B.z + fz * BAR.len * sn;
+  p.pos.y = B.y - BAR.len * c - COLIN_HEIGHT * .5;
+  p.faceH = Math.atan2(fx * p.barSide, fz * p.barSide);
+  p.grounded = false;
+}
+function barLetGo() {
+  const p = player, B = p.bar;
+  const fx = -B.az, fz = B.ax;
+  const c = Math.cos(p.barA), sn = Math.sin(p.barA);
+  // the tangent: d/da of (sin a, -cos a) is (cos a, sin a)
+  const v = p.barW * BAR.len * BAR.launch;
+  p.vel.x = fx * c * v; p.vel.z = fz * c * v; p.vel.y = sn * v + BAR.up;
+  p.speed = Math.hypot(p.vel.x, p.vel.z);
+  p.heading = p.speed > .3 ? Math.atan2(p.vel.x, p.vel.z) : p.faceH;
+  p.barRel = BAR.relDur; p.jumps = 1;
+  // AND THE FLIP OFF IT, which is `airStart`'s own move rather than a second one. He guessed he
+  // would have to reuse `back_flip` and he was right -- but `bar_release` exists too, so the
+  // release plays and the flip follows it rather than replacing it.
+  if (Math.abs(p.barW) > BAR.minW) { p.airWant = 'back'; }
+  snd.jump();
+}
+const _bq = new THREE.Quaternion(), _bax = new THREE.Vector3(), _bwr = new THREE.Vector3(),
+      _bwt = new THREE.Vector3(), _YUP = new THREE.Vector3(0, 1, 0);
+function poseBar() {
+  const p = player, B = p.bar;
+  _bax.set(B.ax, 0, B.az).normalize();
+  // his facing at a dead hang, then the whole of him turned about the bar by the swing angle
+  _bq.setFromAxisAngle(_bax, p.barA);
+  colin.root.quaternion.setFromAxisAngle(_YUP, p.faceH).premultiply(_bq);
+  colin.root.rotation.z = 0;
+  // AND NOW THE MEASUREMENT. Pose is set, so read where the joints actually ended up and slide
+  // the root until their midpoint is ON the bar. One extra matrix walk per frame, and not one
+  // number about his proportions anywhere in this file.
+  // THE SAME TWO NODES `aimBarrel` ALREADY FINDS, cached on the worn skin the same way -- one
+  // lookup per character, and a rig with no joints simply hangs where the clip puts him rather
+  // than throwing. (A borrowed skin without them is the `NO WEAPON JOINT` case, one state over.)
+  const skin = CHARS.skins[CHARS.cur];
+  if (skin && skin.wr === undefined) {
+    skin.wr = null; skin.wt = null;
+    colin.model.traverse(o => { if (o.name === 'weapon_root') skin.wr = o; if (o.name === 'weapon_tip') skin.wt = o; });
+  }
+  const jr = skin && skin.wr, jt = skin && skin.wt;
+  if (!jr || !jt) return;
+  colin.root.updateMatrixWorld(true);
+  jr.getWorldPosition(_bwr); jt.getWorldPosition(_bwt);
+  colin.root.position.x += B.x - (_bwr.x + _bwt.x) * .5;
+  colin.root.position.y += B.y - (_bwr.y + _bwt.y) * .5;
+  colin.root.position.z += B.z - (_bwr.z + _bwt.z) * .5;
+  colin.root.updateMatrixWorld(true);
+}
 function stepHang(dt) {
   const p = player;
   if (p.climbT > 0) {
@@ -8759,6 +9023,11 @@ function stepPlayer(dt) {
   // A STRIKE THROWN WHILE RIDING, after the skate step so his position is the one the mark and
   // the punch cone are measured from. `stepFoot` already hands over to `stepMelee` itself; the
   // board cannot, because the board still has to be driving.
+  // THE BAR OWNS THE BODY, BOARD OR NOT, so it is tested above the branch rather than inside
+  // one of them -- the same place `p.rHold` had to move to at c117, and for the same reason.
+  if (player.barCool > 0) player.barCool -= dt;
+  if (player.bar) { stepBar(dt); poseColin(dt); return; }
+  if (!player.grounded && !player.hit && barCatch()) { stepBar(dt); poseColin(dt); return; }
   if (player.board && player.mel) stepMelee(dt, 1);
   if (colin.ready) colinAnim(dt);
   // fell in the water / off the world
@@ -8771,6 +9040,13 @@ const _roll = new THREE.Vector3();   // the barrel roll's pivot offset, shared b
 function poseColin(dt) {
   colin.root.position.copy(player.pos); if (player.board) colin.root.position.y += BOARD.deck;
   colin.root.rotation.set(0, player.faceH, 0);
+  // ON THE BAR HE IS TURNED ABOUT IT, AND THE ROOT IS THEN CORRECTED BY MEASUREMENT (c148).
+  // The Euler above cannot do this: `rotation.x` on an XYZ root is a WORLD pitch, which is only
+  // the swing axis for a bar that happens to lie along X. The quaternion is built from the bar's
+  // own axis instead, so any bearing works -- and nothing here knows how far his hands sit above
+  // his feet, because that is read back off the rig rather than typed. A re-export at a
+  // different height lands right with no edit.
+  if (player.bar) { poseBar(); return; }
   const lean = damp(player.lean, player.board ? -player.steer * SK8.lean : 0, .1, dt); player.lean = lean;
   // THE BARREL ROLL. No clip: the whole of him turns about his own forward axis, which is
   // `rotation.z` on a root whose Euler order is XYZ -- Z applied innermost, in his own frame.
@@ -9521,6 +9797,7 @@ frame();
     // the first skin and for every change after it, which is the one place that knows.
     buildCity(city, ramps);
     buildLadders();
+    barsFrom();       // after the solids exist: a bar IS one of them
     buildCash();      // after the collider: every strap's height is read off the ground
     if (copGlb) buildCops(copGlb, gunGlb);
     {
@@ -9572,7 +9849,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, barsFrom, stick, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

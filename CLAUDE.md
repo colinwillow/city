@@ -1166,6 +1166,48 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   ends the way a ledge does and there is ONE piece of code that puts him on a roof.
   **No climb clip exists**: `walk_fwd_neutral` quickened stands in, because a walk cycle facing
   a wall is legs on rungs and arms reaching. Same stand-in rule as the grind and the hang.
+- **THE HIGH BAR (c148, `BAR`, `barsFrom`, `barCatch`, `stepBar`, `poseBar`).** *"Picture a
+  gymnast. I constantly run into the street lights and they just reject me and bank-shot me
+  backwards -- maybe instead you just immediately go into a swing."*
+  **HE BUILT THE HARD PART INTO THE EXPORT, AND `npm run bar` CONFIRMED IT.** *"I put the two
+  weapon joints where the bar would go."* Measured through the real loader and a real mixer:
+      bar_hang_idle 4.73s   axis (0.999, 0.001, -0.033) -- dead horizontal, along +X
+                            midpoint drift 0.012 / 0.005 / 0.034 across the WHOLE clip
+      bar_pump      0.80s   hips 0.857 below the bar, head 0.384  (x1.273 -> 1.09 m / 0.49 m)
+      bar_release   0.40s   -- A THIRD CLIP HE HAD FORGOTTEN HE MADE
+  A pivot that wanders a centimetre and a half over five seconds IS a fixed pivot.
+  **AND NOTHING BROKE: `weapon_root` IS STILL ON `mixamorig_RightHand`.** The joints did not move
+  to the bar -- his HANDS did, and the joints went with them. That is the joint doing its job,
+  not a hack, and the blaster mount is untouched. Worth checking every time, because a rig change
+  under a mount this file depends on would be silent.
+  **THE PLACEMENT IS MEASURED EVERY FRAME, NOT TYPED.** Pose him, read where the two joints
+  actually ended up in world space, slide the root by the difference. Nothing in the file knows
+  how far his hands sit above his feet, so a re-export at any height lands right -- `buildBoard`'s
+  rule, one rig over. **And the orientation must be a QUATERNION**: `rotation.x` on an XYZ root is
+  a WORLD pitch, which is the swing axis only for a bar that happens to lie along X.
+  **THE SWING IS A REAL PENDULUM** (`w' = -(g/L) sin a`), and that is worth more than a tuned
+  curve for one reason: **the giant needs no special case.** Past the top the same equation keeps
+  the angle climbing; under it he falls back. The 360 is not a state, it is what enough energy
+  looks like.
+  **PUMPING: HE ASKED WHICH OF TWO AND THE ANSWER IS BOTH.** Energy is added only while the stick
+  AGREES with the way he is already swinging -- which is what pumping physically is. Holding
+  forward builds on every forward half; alternating with the swing builds on both and gets him
+  over in half the time. One rule, both of his options, and it teaches itself.
+  **BUT THAT RULE CANNOT START FROM REST, AND THE PROBE IS WHAT CAUGHT IT.** "Agrees with the
+  swing" multiplied by a swing of exactly zero is zero, so a bar caught from a dead hang hangs
+  FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
+  seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
+  rather than argued, which is the only reason it was not shipped.
+- **EVERY BAR IS FOUND, NEVER AUTHORED -- AND ALL 67 RUN ALONG X, WHICH IS THE SPLITTER (c148).**
+  A lamp arm and a sign gantry are already boxes high in the air, long one way and thin the other:
+  67 of them, heights 2.9 to 5.9 m (median 3.1), lengths 1.4 to 7.7 m, nearest 50 m from the
+  spawn. **But `solidAdd` merges its column runs along X**, so a Z-facing arm comes out as a row
+  of cell-wide boxes that no length test can tell from a sign panel -- the only threshold that
+  catches them also catches all 679 overhead boxes. **Z-facing arms are therefore not catchable,
+  and that is a stated gap rather than a silent one**; the real fix is merging along both axes in
+  `solidAdd`, which is its own build.
+  **AND `barJoin` NEEDED A LENGTH CAP.** Its first run welded a whole roof edge into a single
+  **71.3 m** "bar". Past `BAR.maxLen` it is a building, not something you swing on.
 - **A LEDGE IS THE TOP EDGE OF A SOLID BOX — FOUND, NEVER AUTHORED (`HANG`, `ledgeGrab`).**
   The same idea as the grind rails: the city is already thirty thousand boxes in a grid, so
   every roof, wall top, balcony and shopfront in it is a ledge for free and nothing is placed
