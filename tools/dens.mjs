@@ -5,6 +5,7 @@
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import draco3d from 'draco3dgltf';
+import { readFileSync } from 'node:fs';
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
   'draco3d.decoder': await draco3d.createDecoderModule() });
 const doc = await io.read('models/city.glb');
@@ -47,8 +48,21 @@ for (const c of carsRaw) {
 // down it (car.lane is 0 or 1), so the lane-metres available are 2x the centreline.
 let road = 0; for (const t of tiles) if (t.nb.length) road += Math.max(t.sx, t.sz);
 const lane = road * 2;
-const TRAF = { gap: 6.5 };
-const carLen = lenSum / Math.max(1, driving);
+// THE RULE IS LIFTED, NOT RETYPED. This file kept its own `{ gap: 6.5 }` and its own idea of
+// how many cars drive, and a tool with a private copy of a constant is this repo's oldest
+// mistake -- `TRAF.share` landed at c179 and this table would have gone on quoting the old
+// count for ever. `share` is applied here for the same reason.
+const SRC = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const TRAF = (0, eval)('(' + SRC.match(/const TRAF = (\{[\s\S]*?\n\});/)[1] + ')');
+// AND ITS BASE COUNT ALREADY DISAGREED WITH THE GAME, WHICH IS A STATED GAP. This walks the raw
+// GLB and reads 197 candidates where `buildCity` builds 341 -- the two count something slightly
+// different and always have. **`npm run jam` prints the number the game actually has** ("cars
+// moving N") and is the authority; this table is for the SHAPE of the argument, not the count.
+const carLen = lenSum / Math.max(1, driving);   // a MEAN, so it is taken before the thinning
+// AFTER `carLen`, NEVER BEFORE IT. Halving the count first divides the total length by half
+// the cars and reports a mean car nine metres long, which is the sort of quiet arithmetic
+// error a table like this exists to avoid making.
+driving = Math.round(driving * (TRAF.share === undefined ? 1 : TRAF.share));
 console.log('road tiles', tiles.length, ' connected', tiles.filter(t=>t.nb.length).length);
 console.log('cars in the file', carsRaw.length, ' -> DRIVING', driving, ' parked/props', parked);
 console.log('centreline road', road.toFixed(0), 'm   ->', lane.toFixed(0), 'lane-metres (two lanes a slab)');

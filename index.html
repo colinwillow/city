@@ -314,7 +314,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c178</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c179</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -328,7 +328,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c178';
+const BUILD = 'c179';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -5416,6 +5416,20 @@ const TRAF = {
   slot: .5,        // seconds of headway inside which two arrivals count as a tie
   vmin: 3,         // the speed a stopped car is credited with, so its arrival time is finite
   para: .25,       // |sin| between two headings under which they are not crossing at all
+  // HOW MANY OF THE GLB'S CARS ACTUALLY DRIVE (c179). *"I think we need to significantly reduce
+  // the amount of cars, like maybe cut them in half."* 341 of them is a quarter of every lane
+  // metre in the city occupied (`npm run dens` at 341 reads 25%), four hundred bodies each
+  // asking their neighbours twice a frame, and 341 draw calls on a phone already at 24 fps.
+  // **A SKIPPED CAR IS DELETED, NOT PARKED.** Merging it into the statics where it stands is
+  // the tempting version -- it keeps the street looking full -- and it is exactly wrong: these
+  // cars are placed IN LANES, so a parked one is a permanent roadblock that `blocked` and the
+  // stuck failsafe have to solve around for ever. It is not drawn, not collided with, and not
+  // in the traffic grid.
+  // **AND WHICH ONES GO IS DETERMINISTIC, NOT RANDOM.** A coin per car is a different city on
+  // every reload, which makes `npm run jam` unrepeatable and a jam report unquotable. The
+  // Bresenham step below keeps an EVEN spread of any fraction -- at .5 it is every other car,
+  // so no district empties out and none stays full.
+  share: .5,
 };
 // WHO GOES FIRST AT A CROSSING. Pulled out as its own function because it is the whole
 // algorithm and `npm run cross` runs THIS TEXT, not a copy of it, against the standoffs.
@@ -5763,6 +5777,7 @@ function stepTraffic(dt) {
     c.box.minx = c.x - ex; c.box.maxx = c.x + ex; c.box.minz = c.z - ez; c.box.maxz = c.z + ez; c.box.miny = c.y - c.lift; c.box.maxy = c.y - c.lift + c.hh;
     c.box.yaw = c.yaw; c.box.cx = c.x; c.box.cz = c.z; c.box.hl = c.hl; c.box.hw = c.hw;
     if (Math.abs(c.x - player.pos.x) < 12 && Math.abs(c.z - player.pos.z) < 12) carHit(c);
+    copsCarHit(c);
   }
   // AND A LAST RESORT, because the rule above is a driver and drivers get it wrong. Two cars
   // that have ended up inside each other are pushed apart. Each pair is seen twice, once from
@@ -6373,9 +6388,17 @@ function buildCity(gltf, ramps) {
   }
   // cars: on a road tile -> traffic, else parked (merged with the statics)
   const _fw = new THREE.Vector3(), fix = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, CAR_FWD), new THREE.Vector3(0, -CAR_FWD, 0)));
+  let seen = 0;
   for (const pc of pendingCars) {
     const tile = tiles.find(t => pc.pos.x >= t.minx - .5 && pc.pos.x <= t.maxx + .5 && pc.pos.z >= t.minz - .5 && pc.pos.z <= t.maxz + .5);
-    if (!tile || tile.nb.length === 0 || /^tractor/.test(pc.name)) {
+    // THINNING THE TRAFFIC (`TRAF.share`). The test goes here, under the tile lookup, so it
+    // only ever thins cars that were going to DRIVE -- the parked ones and the tractors below
+    // are scenery and are not what is being complained about. Bresenham: keep the car whose
+    // running fraction has just crossed the next whole number, which spreads the survivors
+    // evenly through the file's own order rather than taking a block out of one district.
+    const drives = tile && tile.nb.length && !/^tractor/.test(pc.name);
+    if (drives && Math.floor(++seen * TRAF.share) === Math.floor((seen - 1) * TRAF.share)) continue;
+    if (!drives) {
       solids.push(pc.b); gridAdd(pc.b);
       const key = gkey(Math.floor(pc.pos.x / CH), Math.floor(pc.pos.z / CH)); let l = chunks.get(key); if (!l) chunks.set(key, l = []);
       l.push(normGeo(pc.mesh.geometry, pc.mesh.matrixWorld, pc.mesh.userData.flat)); statics++; continue;
@@ -7671,6 +7694,17 @@ const COP = {
   // not a longer flight. `punt` is what a blow lands for when he is ALREADY down: enough to
   // shove him along the road and restart the clock, not enough to re-launch a corpse.
   fly: { up: 9.6, back: 9.5, g: 20, spin: 2.6, min: .35, punt: .42, last: .55 },
+  // A CAR HITS HIM TOO (c179). *"If I shoot the cop and he's on the ground and a car drives
+  // over, nothing happens. I wanna be able to shoot people into the cars, and if they hit the
+  // car the car sends them flying just like it sends me flying."*
+  // `carV` is the speed under which a car is furniture rather than a blow -- a car crawling out
+  // of a junction must not launch a man standing beside it, which is `HIT.min`'s own argument
+  // one body over. `carRef` is the speed that scores 1.0, so a town car at 12 lands near 1.0
+  // and a highway car at 17 lands near 1.4.
+  // `carCool` is what stops a car STOPPED ON TOP OF HIM re-firing every frame -- and it is
+  // deliberately short, because being punted along the road by the next car in the queue is the
+  // thing he asked for, not a bug.
+  carV: 2.4, carRef: 12, carCool: .9,
   // OUT COLD. He used to be up half a second after the clip finished, which reads as a man
   // tripping rather than a man being knocked out. `out` is the beat he lies there, and the
   // stars are what say he is unconscious rather than merely prone -- the oldest shorthand in
@@ -7903,7 +7937,7 @@ function buildCops(gltf, gunGltf) {
     cops.push({ id: i, root, model, mixer, actions, cw: {}, key: 'cop', gun, tip,
       x: sp.x, z: sp.z, y: root.position.y, h: Math.random() * Math.PI * 2, speed: 0,
       st: 'idle', t: 0, hp: COP.hp, armed: 0, fireT: 0, shotT: 0, fired: 0, clip: '',
-      alert: 0, waitT: rnd(1, 4), tx: sp.x, tz: sp.z,
+      alert: 0, waitT: rnd(1, 4), tx: sp.x, tz: sp.z, carCool: 0,
       react: rnd(.25, 1.1),        // how long he takes to notice
       nerve: rnd(.8, 1.25),        // how close he is willing to get, and how fast he walks
       cadence: rnd(.85, 1.4),      // and how often he fires
@@ -8108,11 +8142,16 @@ function copPlough() {
     p.speed = Math.hypot(p.vel.x, p.vel.z);
   }
 }
-function copFly(c, blowH, k) {
+// `quiet` SKIPS THE HEAT, AND ONLY TRAFFIC PASSES IT (c179). `HEAT` is what each thing YOU do
+// is worth -- a car mowing an officer down across town is not something the player did, and a
+// wanted star that arrives out of nowhere is exactly the kind of thing the chip was added to
+// explain. Everything else about the launch is identical, which is why this is a flag rather
+// than a second function.
+function copFly(c, blowH, k, quiet) {
   const prone = c.st === 'down' || c.st === 'up' || c.st === 'out';
   const F = COP.fly, p = Math.max(F.min, k === undefined ? 1 : k) * (prone ? F.punt : 1);
   c.hp = 0; c.alert = 1;
-  heatAdd(HEAT.down);                                     // the knock-down half; the bolt adds its own
+  if (!quiet) heatAdd(HEAT.down);                         // the knock-down half; the bolt adds its own
   const face = Math.cos(wrapAngle(blowH - c.h)) < 0;      // true = it caught him in the front
   c.clip = (face ? COP.clips.flyB : COP.clips.flyF);
   if (!c.actions[c.clip]) {                               // no borrowed clip: the old fold
@@ -8125,6 +8164,39 @@ function copFly(c, blowH, k) {
   c.speed = 0;                                            // the walk lets go of him
   copSet(c, 'fly');
   return true;
+}
+// A CAR RUNS HIM DOWN (c179, `copsCarHit`). Called from `stepTraffic` beside `carHit`, on the
+// same frame and off the same freshly written `c.box`, because they are the same event asked
+// about two different bodies.
+// **IN THE CAR'S OWN FRAME, NEVER THE AABB.** The axis-aligned bounds of a car at 45 degrees are
+// forty per cent bigger than the car along both axes -- the phantom hit this file has a note
+// about, and `carHit`, `resolveBoxes` and the bolt all test in the car's frame for that reason.
+// The AABB is the broad phase and nothing more.
+// **AND THE DIRECTION IS `car.yaw`, WHICH IS ALREADY STORED.** At the moment of contact the man
+// and the bonnet are on top of each other, so a bearing recovered from the geometry is a small
+// noisy vector whose sign is whatever rounding says -- the mistake that once flew an officer
+// back down the barrel of the shot that hit him. The car's own heading IS the way the blow
+// travels.
+// **A PRONE MAN IS HIT TOO**, which is the whole complaint: `copFly` reads `down`/`up`/`out`
+// itself and punts rather than launching, so there is no case here at all -- c153's rule
+// arriving for free.
+function copsCarHit(car) {
+  if (!cops.length || !COP.on || car.speed < COP.carV) return;
+  const fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
+  for (const c of cops) {
+    if (c.carCool > 0) continue;
+    if (c.x < car.box.minx - COP.r || c.x > car.box.maxx + COP.r) continue;   // broad phase
+    if (c.z < car.box.minz - COP.r || c.z > car.box.maxz + COP.r) continue;
+    // he is on a roof over it, or under a bridge it is driving on
+    if (c.y > car.box.maxy + .4 || c.y + COLIN_HEIGHT * .5 < car.box.miny) continue;
+    const dx = c.x - car.x, dz = c.z - car.z;
+    if (Math.abs(dx * fx + dz * fz) > car.hl + COP.r) continue;
+    if (Math.abs(-dx * fz + dz * fx) > car.hw + COP.r) continue;
+    c.carCool = COP.carCool;
+    fxPop(c.x, c.y + COLIN_HEIGHT * .5, c.z, 'boom', 1.3);
+    snd.hit(2, c.x, c.z);
+    copFly(c, car.yaw, clamp(car.speed / COP.carRef, .6, 1.8), true);
+  }
 }
 function copHit(c, fromH) {
   // KICKED WHILE HE IS DOWN. No hit clip -- he is prone, and a `hit_*` stagger would stand him
@@ -8205,6 +8277,7 @@ function stepCops(dt) {
   heatStep(dt);
   for (const c of cops) {
     c.t += dt;
+    if (c.carCool > 0) c.carCool -= dt;
     const dx = px - c.x, dz = pz - c.z, d = Math.hypot(dx, dz) || 1;
     const toP = Math.atan2(dx, dz);
     // WHAT THIS OFFICER IS ALLOWED TO DO, WHICH IS THE WHOLE OF THE STAR SYSTEM. He engages

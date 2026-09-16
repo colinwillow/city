@@ -1198,6 +1198,79 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **HALF THE CARS, AND THE JAM WENT WITH THEM (c179, `TRAF.share`).** *"I think we need to
+  significantly reduce the amount of cars -- like maybe cut them in half."* Six hypotheses across
+  five builds had all measured the RULE and all six were wrong; the count was the thing nobody
+  had been allowed to touch, because `npm run dens` said 14% occupancy and "fewer cars" was
+  therefore obviously not it. **That table was computed against 197 and the game was building
+  341**, which this file already flagged and nobody acted on. Measured through `npm run jam`,
+  the real city, the real `stepTraffic`, same rule either side:
+      c178   341 cars   settled 43 stuck >3s   follow 43, and queues behind CROSS heads
+      c179   170 cars   settled  5 stuck >3s   follow 7, cross 0, blocked 0, EVERY head moving
+  **A SKIPPED CAR IS DELETED, NOT PARKED.** Merging it into the statics where it stands keeps the
+  street looking full and is exactly wrong: these cars are placed IN LANES, so a parked one is a
+  permanent roadblock `blocked` and the stuck failsafe have to solve around for ever. It is not
+  drawn, not collided with and not in the traffic grid -- which is also 171 draw calls off a
+  phone at 24 fps, and 171 fewer bodies asking their neighbours twice a frame.
+  **AND WHICH ONES GO IS DETERMINISTIC.** A coin per car is a different city on every reload, so
+  `npm run jam` stops being repeatable and a jam coordinate stops being quotable. A Bresenham
+  step (`floor(n*share) > floor((n-1)*share)`) keeps an even spread of any fraction, so no
+  district empties and none stays full. The test sits UNDER the tile lookup, so it only thins
+  cars that were going to DRIVE -- the parked ones and the tractors are scenery.
+  **`npm run dens` HAD ITS OWN `{ gap: 6.5 }` AND ITS OWN COUNT**, so it would have gone on
+  printing the pre-c179 table for ever. It lifts `TRAF` out of `index.html` now and applies
+  `share`. **Its base count still disagrees with the game** -- 197 candidates off the raw GLB
+  against `buildCity`'s 341 -- and that is a stated gap: **`npm run jam` prints the number the
+  game actually has** and is the authority; `dens` is for the shape of the argument.
+  **AND `share` IS APPLIED AFTER THE MEAN CAR LENGTH, NOT BEFORE.** Halving the count first
+  divides the total length by half the cars and reports a mean car **9.8 m long** -- caught in
+  the first run, and exactly the quiet arithmetic error a table like that exists to prevent.
+- **A CAR RUNS THE POLICE DOWN TOO (c179, `copsCarHit`).** *"If I shoot the cop and he's on the
+  ground and a car drives over, nothing happens. I wanna be able to shoot people into the cars,
+  and if they hit the car the car sends them flying just like it sends me flying."*
+  It could not happen: the only cop/car contact in the file was `resolveBoxes` inside the
+  WALKING branch of `stepCops`, which is a push-out and which never runs at all on a man whose
+  `speed` is 0 -- so a prone officer was scenery to four hundred cars.
+  **IT IS CALLED FROM `stepTraffic` BESIDE `carHit`**, on the same frame and off the same freshly
+  written `c.box`, because it is the same event asked about a different body.
+  **IN THE CAR'S OWN FRAME, NEVER THE AABB.** The axis-aligned bounds of a car at 45 degrees are
+  forty per cent bigger than the car along both axes -- the phantom hit, and the reason `carHit`,
+  `resolveBoxes` and (since c161) the bolt all test in the car's frame. The AABB is the broad
+  phase and nothing more.
+  **AND THE DIRECTION IS `car.yaw`, ALREADY STORED.** At contact the man and the bonnet are on
+  top of each other, so a bearing recovered from the geometry is a noisy vector whose sign is
+  rounding -- the mistake that once flew an officer back down the barrel of the shot that hit him.
+  **A PRONE MAN NEEDED NO CASE**: `copFly` reads `down`/`up`/`out` itself and punts at `fly.punt`
+  rather than launching, so c153's rule arrives here for free.
+  **`copFly` GAINED A `quiet` FLAG, AND ONLY TRAFFIC PASSES IT.** `HEAT` is what each thing YOU
+  do is worth; a car mowing an officer down across town is not something the player did, and a
+  wanted star out of nowhere is the class of thing the chip exists to explain.
+  **`carCool` IS WHAT STOPS A CAR STOPPED ON TOP OF HIM RE-FIRING EVERY FRAME**, and it is
+  deliberately short -- being punted along the road by the next car in the queue is the thing he
+  asked for, not a bug. `carV` 2.4 is the speed under which a car is furniture rather than a blow
+  (a car crawling out of a junction must not launch a man standing beside it, which is `HIT.min`'s
+  own argument one body over); `carRef` 12 is the speed that scores 1.0.
+  Driven through the shipped `stepTraffic` on a real car in the real city
+  (`JAM_PROBE=tools/probe-carcop.mjs`), one frame per case, at 9 m/s:
+      standing in the lane / at the bonnet   FLIES   up 7.3  along 7.2
+      DOWN in the lane, and getting up       PUNTED  up 3.0  along 3.0   <- the ask
+      a car length ahead                     untouched
+      level with it, 2 m to the SIDE         untouched   <- the oriented box, not the AABB
+      on a roof 4 m over it                  untouched
+      a STOPPED car sitting on him           untouched
+      a car crawling at carV - 0.4           untouched
+      held under the car for 0.5 s           1 launch, not 30
+      and HEAT never rose in any row
+  **THE OFFICER IN THAT PROBE IS FABRICATED, THE SAME STATED GAP `probe-cop3.mjs` HAS** -- no
+  skin headless, DRACO wants a Worker -- and what is under test is whether a car's own box
+  reaches him, which reads `c.x/y/z`, `c.st` and `c.carCool` and nothing else.
+  **TWO THINGS ABOUT THAT HARNESS WERE WRONG FIRST TIME AND BOTH WOULD HAVE READ AS THE FEATURE
+  FAILING.** It compared the STATE before and after -- and a man already lying in the road who is
+  punted by a car is still lying in the road afterwards, so **the one case this was built for
+  reported "untouched"**. `c.hp` is zeroed on every path `copFly` has, so that is the fact that
+  cannot be missed. And the fake carried no `actions`, so `copFly` took its no-clip FOLD -- which
+  returns before setting a velocity, and the harness read `up 0.0 along 0.0` on a launch that had
+  worked. Giving it the two flight clip NAMES is what made the numbers real.
 - **THE SECOND TAP IS THE SECOND JUMP ON THE BOARD TOO (c178, `trickFlip`, `p.jumps` in
   `stepSkate`).** *"When you have a skateboard you can't double jump like you can otherwise, and
   I want that to still be in effect, because the double tap on the right stick is still open --
