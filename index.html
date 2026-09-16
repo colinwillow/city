@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c139</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c140</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c139';
+const BUILD = 'c140';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -3926,6 +3926,9 @@ function missing() {
   if (SFX.miss.length) m += ' · NO SND ' + SFX.miss.length;
   if (CHARS.cur !== 'colin') m += ' · ' + CHARS.cur;
   if (CHARS.miss) m += ' · NO SKIN ' + CHARS.miss;
+  // He cannot get here without Colin any more -- the boot waits for him -- so this is a net
+  // rather than a report, which is what the cloud and sky lines are too.
+  if (!colin.ready) m += ' · NO COLIN GLB';
   // The same question the cloud and sky lines answer: "did that asset arrive". `cop0` and a
   // silent console warning are the same picture from a phone.
   // THE STARS. A wanted level you cannot see is a wanted level you cannot play around, and
@@ -4840,6 +4843,7 @@ const BOOT = { art: 'images/splash_screen_01.webp', png: 'images/splash_screen_0
 // it under the same filename actually arrives on a phone that has already seen the old one.
 const TITLE_ART = 'images/shredworld_title_02.png';
 const bootBar = document.getElementById('bootBar'), bootMsg = document.getElementById('bootMsg'), bootErr = document.getElementById('bootErr');
+const bootEl = document.getElementById('boot');
 {
   // STARTED HERE RATHER THAN IN `init()`, which is three awaits and fifteen megabytes of GLB
   // away: this is the first thing anybody looks at and it should be on the wire first.
@@ -4865,11 +4869,67 @@ function bootHold() {
   const left = BOOT.min * 1000 - (performance.now() - BOOT.lit);
   return left <= 0 ? Promise.resolve() : new Promise(r => setTimeout(r, left));
 }
-const setBoot = (t, p) => { bootMsg.textContent = t; if (p != null) bootBar.style.width = (p * 100).toFixed(0) + '%'; };
+// THE BAR IS THE WHOLE BOOT, AND IT IS CLAMPED (c140). "The loading screen doesn't go to
+// 100%, everything loads to some random number like 134%, 124%, 156%." Two separate faults and
+// both are here:
+//   1. `e.loaded / e.total` IS NOT A FRACTION ON A COMPRESSED TRANSFER. `total` is the
+//      Content-Length, which is the COMPRESSED size, while the stream hands back DECOMPRESSED
+//      bytes -- so a GLB that gzips to two thirds reads 150% at the end and the bar runs off
+//      the end of its own track. That is exactly the shape of the numbers he read out.
+//   2. IT WAS PER FILE, so it could never mean "the boot". Every file restarted it at zero and
+//      the last thing on screen was whichever one happened to finish last.
+// So: clamp, and spend each file inside ONE SLOT of a whole-boot bar. `total` is the number of
+// `loadGLB` calls `init()` makes; if that count ever drifts the bar is still monotone and still
+// clamped, and the `setBoot(..., 1)` at the end forces it home.
+const PROG = { done: 0, total: 10 + CLOUDS.urls.length, at: 0 };
+const setBoot = (t, p) => {
+  bootMsg.textContent = t;
+  if (p == null) return;
+  PROG.at = Math.max(PROG.at, Math.max(0, Math.min(1, p)));   // never backwards: a bar that retreats reads as a failure
+  bootBar.style.width = (PROG.at * 100).toFixed(0) + '%';
+};
+// HOW MANY GOES A FILE GETS, AND WHAT A DEAD ONE COSTS.
+const LOADT = { tries: 3, wait: 1.2, again: 8, rounds: 4 };
 const draco = new DRACOLoader(); draco.setDecoderPath('vendor/draco/'); draco.setDecoderConfig({ type: 'wasm' });
 const loader = new GLTFLoader(); loader.setDRACOLoader(draco);
-function loadGLB(url, label) {
-  return new Promise((res, rej) => loader.load(A(url), res, e => { if (e.total) setBoot(label + ' ' + ((e.loaded / e.total) * 100 | 0) + '%', e.loaded / e.total); }, rej));
+function loadOne(url, label, slot) {
+  return new Promise((res, rej) => loader.load(A(url), res, e => {
+    if (!e.total) return;
+    const f = Math.max(0, Math.min(1, e.loaded / e.total));
+    setBoot(label + ' ' + (f * 100 | 0) + '%', (slot + f) / PROG.total);
+  }, rej));
+}
+// A FAILED FETCH ON A SPOTTY CONNECTION IS NOT A MISSING FILE (c140). Every `loadGLB` in this
+// file is wrapped in a `try` whose `catch` is a `console.warn` -- which is the right shape for
+// "this asset is not in the repo" and completely wrong for "the phone lost signal for a second
+// in the middle of a ten-megabyte download". The two are indistinguishable from the call site
+// and they want opposite answers, so the transport retries and only a file that fails
+// `LOADT.tries` times in a row reaches the caller as missing.
+async function loadGLB(url, label) {
+  const slot = PROG.done;
+  for (let a = 0; ; a++) {
+    try { const g = await loadOne(url, a ? label + ' \u00b7 try ' + (a + 1) : label, slot); PROG.done = slot + 1; return g; }
+    catch (e) {
+      if (a >= LOADT.tries - 1) { PROG.done = slot + 1; throw e; }
+      setBoot(label + ' \u00b7 retrying', slot / PROG.total);
+      await new Promise(r => setTimeout(r, LOADT.wait * (a + 1) * 1000));
+    }
+  }
+}
+// AND A FAILURE YOU CANNOT ACT ON IS A HANG. A boot card that sits for ever at the text it was
+// born with is this file's oldest landmine (`npm run check:boot` exists for it); a boot card
+// that sits for ever because the network went away is the same picture, and a `console.warn` is
+// invisible on a phone. So it says what did not arrive, counts down, tries again on its own --
+// spotty service heals itself and he does nothing -- and takes a tap to go sooner.
+function bootAsk(msg) {
+  return new Promise(r => {
+    let n = LOADT.again, done = 0;
+    const say = () => { bootErr.textContent = msg + ' \u00b7 retrying in ' + n + 's \u00b7 tap to try now'; };
+    const fin = () => { if (done) return; done = 1; clearInterval(iv); bootEl.removeEventListener('pointerdown', fin); bootErr.textContent = ''; r(); };
+    const iv = setInterval(() => { if (--n <= 0) fin(); else say(); }, 1000);
+    bootEl.addEventListener('pointerdown', fin);
+    say();
+  });
 }
 const _f32 = (attr, n) => { const c = attr.count, out = new Float32Array(c * n); for (let i = 0; i < c; i++) { out[i * n] = attr.getX(i); if (n > 1) out[i * n + 1] = attr.getY(i); if (n > 2) out[i * n + 2] = attr.getZ(i); } return new THREE.BufferAttribute(out, n); };
 function normGeo(g, m, flat) {
@@ -8266,8 +8326,19 @@ function dropSkins(keep) {
 function lineFill() {
   if (!LINE.fill || !TITLE.on || !colin.ready) return;
   for (const k in CHARS.loading) if (CHARS.loading[k]) return;
+  // A FAILURE IS REMEMBERED FOR A WHILE, NOT FOR EVER (c140). Retrying a missing file every
+  // frame is a request storm that looks exactly like the file being slow -- which is why the
+  // mark exists -- but a PERMANENT mark means one bad moment on a phone with two bars costs
+  // him that character for the whole session, with only `NO SKIN 1` in the chip to say so.
+  // `loadGLB` already spends `LOADT.tries` goes on each attempt, so this is the outer loop:
+  // back off, come round again, and only give up after `LOADT.rounds` of them.
   CHARS.failed = CHARS.failed || {};
-  const next = CHARS.list.find(c => !CHARS.skins[c.key] && !CHARS.failed[c.key]);
+  const now = performance.now();
+  const next = CHARS.list.find(c => {
+    if (CHARS.skins[c.key]) return false;
+    const f = CHARS.failed[c.key];
+    return !f || (f.n < LOADT.rounds && now - f.t > LOADT.again * 1000);
+  });
   if (!next) return;
   CHARS.loading[next.key] = true;
   loadGLB(next.url, 'loading ' + next.name)
@@ -8279,7 +8350,12 @@ function lineFill() {
       // then silently never becomes `cur`. The chip lights and nothing happens.
       if (CHARS.want === next.key && CHARS.cur !== next.key) enterChar(next.key, 0, 0);
     })
-    .catch(e => { console.warn('[line] ' + next.key + ' failed', e); CHARS.failed[next.key] = 1; CHARS.miss = (CHARS.miss || 0) + 1; })
+    .catch(e => {
+      console.warn('[line] ' + next.key + ' failed', e);
+      const f = CHARS.failed[next.key] || { n: 0, t: 0 };
+      f.n++; f.t = performance.now(); CHARS.failed[next.key] = f;
+      CHARS.miss = (CHARS.miss || 0) + 1;
+    })
     .finally(() => { CHARS.loading[next.key] = false; });
 }
 // THE SHIP GOES OVER. A clone rather than the parked one: that is on a roof four hundred metres
@@ -8631,10 +8707,18 @@ frame();
 // ---------- go ----------
 (async () => {
   try {
+    // THE CITY WAITS TOO, AND FOR COLIN'S REASON ONE STEP EARLIER. It is the biggest file in
+    // the repo and the first on the wire, so it is the likeliest thing a spotty connection
+    // drops -- and the old path let the source-city fallback's rejection out of the IIFE, which
+    // painted "could not load" on the card with nothing to do about it but reload the page and
+    // fetch the fifteen megabytes that DID arrive all over again.
     let city;
-    try { city = await loadGLB('models/city.glb', 'loading shredworld'); }
-    catch (e) { console.warn('no baked city, loading the source', e); city = await loadGLB('LowPoly_City_01.glb', 'loading the source city'); }
-    setBoot('building the streets', 1);
+    for (;;) {
+      try { city = await loadGLB('models/city.glb', 'loading shredworld'); break; } catch (e) { console.warn('no baked city, loading the source', e); }
+      try { city = await loadGLB('LowPoly_City_01.glb', 'loading the source city'); break; } catch (e) { console.warn('no source city either', e); }
+      await bootAsk('the city did not arrive');
+    }
+    setBoot('building the streets');
     await new Promise(r => setTimeout(r, 30));
     let ramps = null;
     try { buildShip(await loadGLB(SHIP.url, 'parking the ship')); }
@@ -8670,8 +8754,19 @@ frame();
     let melee = null;
     try { melee = await loadGLB(MELEE.url, 'learning to fight'); }
     catch (e) { console.warn('[melee] no melee.glb -- punches and the roll will be missing', e); }
-    setBoot('waking colin', 1);
-    try { const c = await loadGLB('models/colin.glb', 'loading colin'); buildColin(c, melee && melee.animations); } catch (e) { console.warn('colin failed', e); }
+    setBoot('waking colin');
+    // COLIN IS THE ONE FILE NOTHING ELSE CAN STAND IN FOR, AND HIS FAILURE WAS SILENT (c140).
+    // *"It took a really long time and then none of the characters were rendered. It was just
+    // see-through, just nothing there."* That is this line: a `console.warn` in a `catch`, and
+    // then the boot carried on, `ready` went true, the card came up and the street was empty.
+    // AND IT TOOK THE WHOLE ROSTER WITH IT. `lineFill` is gated on `colin.ready` -- rightly,
+    // because `skinClips` builds every other character out of HIS pool -- so one failed fetch
+    // is not one missing character, it is ALL of them, and the card has nobody on it at all.
+    // There is no game without him, so this is the one load that WAITS rather than warning.
+    for (;;) {
+      try { buildColin(await loadGLB('models/colin.glb', 'loading colin'), melee && melee.animations); break; }
+      catch (e) { console.warn('colin failed', e); await bootAsk('colin did not arrive'); }
+    }
     // AND THE OFFICERS BORROW HIS AIR CLIPS, here rather than in `buildCops` -- they are built
     // three awaits earlier and `colin.clips` does not exist yet when they are.
     copsLearnFlight();

@@ -678,6 +678,39 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
     the same lift. The history is seeded at the CENTRE on pointerdown, because on an absolute
     pad a thumb slammed onto the top edge is a flick and a delta from where it landed says
     the stick never moved.
+- **A SLOW CONNECTION IS NOT A MISSING FILE, AND FOR TWENTY BUILDS THEY WERE THE SAME CODE PATH
+  (c140, `LOADT`, `bootAsk`).** *"I loaded up the game, it took a really long time and then none
+  of the characters were rendered -- it was just see-through, just nothing there."*
+  Every `loadGLB` in `init()` sits in a `try` whose `catch` is a `console.warn`. That is exactly
+  right for "this asset is not in the repo" and exactly wrong for "the phone lost signal for a
+  second in the middle of a ten-megabyte download", and **the two are indistinguishable from the
+  call site** -- one wants to carry on without the thing, the other wants to ask again.
+  **AND COLIN'S FAILURE TOOK THE WHOLE ROSTER WITH IT.** `lineFill` is gated on `colin.ready`,
+  rightly, because `skinClips` builds every other character out of HIS pool. So one dropped
+  fetch is not one missing character -- it is ALL of them, an empty street, and a boot that goes
+  on to set `ready` and lift the card as though nothing had happened.
+  So the TRANSPORT retries (`LOADT.tries` goes per file, backing off) and only a file that fails
+  all of them reaches the caller as missing; and the two loads there is no game without -- the
+  city and Colin -- **WAIT** rather than warn. `bootAsk` says what did not arrive, counts down,
+  comes round again on its own so spotty service heals with nothing done, and takes a tap to go
+  sooner. **A failure you cannot act on is a hang**, which is `check:boot`'s own argument about a
+  card stuck at the text it was born with.
+  **`CHARS.failed` IS A BACKOFF NOW, NOT A TOMBSTONE.** Retrying a missing file every frame is a
+  request storm that looks identical to the file being slow, which is why the mark exists -- but
+  a permanent one costs him that character for the session over one bad moment.
+- **THE LOADING BAR WENT PAST 100%, AND `e.loaded / e.total` IS NOT A FRACTION (c140).**
+  *"It loads to like some random number, 134%, 124%, 156%, kind of random."* Two faults:
+  1. **`total` IS THE COMPRESSED LENGTH.** It is the `Content-Length` header; the stream hands
+     back DECOMPRESSED bytes. A GLB that gzips to two thirds therefore reads 150% at the end,
+     and the bar runs off the end of its own track. Those are his numbers exactly.
+  2. **IT WAS PER FILE**, so it could never mean "the boot" -- every file restarted it at zero
+     and what stayed on screen was whichever one happened to finish last. Worse, three places
+     called `setBoot(..., 1)` mid-boot, so it hit 100% before the streets were even built.
+  Clamped, monotone (a bar that retreats reads as a failure), and each file spends its fraction
+  inside ONE SLOT of `PROG.total` -- the number of `loadGLB` calls `init()` makes. If that count
+  drifts the bar is still monotone and still clamped, and the final `setBoot('drop in', 1)`
+  forces it home.
+
 - **A STUCK STICK IS ALWAYS A MISSING `pointerup` (c138, `STICKS`, `stickWatch`).** *"Sometimes
   my joystick gets stuck, I don't know what causes this."* The thumb has gone and the pad never
   heard: `out.down` stays 1, `out.x/y` keep whatever they last were, and the game goes on
