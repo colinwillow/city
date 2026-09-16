@@ -694,6 +694,31 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   value everywhere, not only where it is drawn.**
   **The dead `Tooth` row is gone.** `PAINT.grain` has done nothing since c139 took it out of the
   shader, and a slider that moves nothing is indistinguishable from a broken one.
+- **A GREY FLOOR WITH ITS COLLIDER STILL IN IT IS A CHUNK THAT FAILED TO MERGE (c142).**
+  *"The assets aren't there, I don't know, they're like not loading. It's all grey. And I'm
+  running into invisible collider."* Every one of those is one bug, and it was mine from c141.
+  **THERE ARE TWO PLACES GEOMETRY GOES INTO A CHUNK AND I TAGGED ONE.** The statics, and every
+  PARKED CAR. So every bucket with a parked car in it held one member with a different attribute
+  set; `mergeGeometries` returns **null** for that; and `if (!merged) continue` threw away the
+  whole 64 x 64 m bucket. The COLLIDER is built earlier, off the raw meshes, so it survived
+  intact -- which is exactly why it reads as invisible walls over a grey floor rather than as a
+  missing file. The parked cars are in the residential and parking blocks, so the holes were
+  where he spawns and the distant skyline was fine, which is the picture in both screenshots.
+  **AND THE CHIP SAID NOTHING, which is the worse half.** `missing()` carries `NO CLOUD GLB`,
+  `NO COP GLB`, `NO BLASTER GLB` -- a hole in the WORLD outranks all of them and had no line.
+  `· LOST n CHUNKS` now, plus a console warn, plus `CITY.lost`.
+  **THE FIX IS WHERE, NOT WHAT.** `roadTag` is called from the MERGE LOOP, where every member of
+  every bucket goes past exactly once, and the road-ness rides on `geometry.userData.road` until
+  then. A third push site tomorrow cannot reintroduce this. **An invariant every producer has to
+  remember is not an invariant** -- the same sentence as `p.rHold` being counted inside
+  `stepFoot`, and as a protection asserted only in a comment.
+  **`npm run jam` IS WHAT PROVES IT**, because it builds the REAL city headless through the real
+  loader and the shipped `buildCity`. Neither gate can see this: `check:syntax` parses and
+  `check:boot` never gets a city to merge. **A change to `buildCity` wants `npm run jam`.**
+  Measured, c141 against c142, same file, same loader:
+      c141   35 buckets rejected by mergeGeometries   -- OVER A THIRD OF THE CITY, drawn as
+                                                         nothing, collided with as normal
+      c142    0 rejected, 96 chunks, 2808 statics     -- and a chip line if it ever happens again
 - **THE ROADS GET THEIR OWN PAINT AMOUNT (c141, `PAINT.road`, `aRoad`).** *"I don't know if I
   like the effects on the roads, but everything else looks really nice."* A road is the one
   surface in this city you see FROM ABOVE, at a shallow angle, across a hundred metres at once

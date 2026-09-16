@@ -281,7 +281,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c141</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c142</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="help">WASD move · drag to orbit · space jump · B board · R reset</div>
@@ -294,7 +294,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c141';
+const BUILD = 'c142';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -4000,6 +4000,8 @@ function missing() {
   // He cannot get here without Colin any more -- the boot waits for him -- so this is a net
   // rather than a report, which is what the cloud and sky lines are too.
   if (!colin.ready) m += ' · NO COLIN GLB';
+  // A HOLE IN THE WORLD, WHICH IS WHAT c141 SHIPPED AND COULD NOT SAY.
+  if (CITY.lost) m += ' · LOST ' + CITY.lost + ' CHUNKS';
   // The same question the cloud and sky lines answer: "did that asset arrive". `cop0` and a
   // silent console warning are the same picture from a phone.
   // THE STARS. A wanted level you cannot see is a wanted level you cannot play around, and
@@ -5030,6 +5032,16 @@ function normGeo(g, m, flat) {
 // The city is a few dozen big meshes on ONE material -- there is no object left to ask -- so a
 // per-surface dial has to ride in the geometry. Four bytes a vertex against a second material,
 // a second merge bucket and a second draw call per chunk.
+//
+// **AND IT IS CALLED FROM THE MERGE LOOP, NOT FROM THE PUSH SITES, BECAUSE c141 MISSED ONE.**
+// There are TWO places geometry goes into a chunk -- the statics, and every PARKED CAR -- and
+// tagging only the first left every bucket with a parked car in it holding one member with a
+// different attribute set. `mergeGeometries` returns null for that, `if (!merged) continue`
+// dropped the whole 64 m bucket, and what is left is a grey floor with all of its collision
+// still standing: *"the assets aren't loading, it's all grey, and I'm running into invisible
+// collider."* Every symptom, from one missed call site.
+// So it is applied where EVERY member of EVERY bucket goes past, exactly once, and the road
+// flag rides on `userData` until then. A second push site tomorrow cannot reintroduce this.
 function roadTag(g, v) {
   const n = g.attributes.position.count, a = new Float32Array(n);
   if (v) a.fill(v);
@@ -5067,6 +5079,10 @@ function rasterMesh(mesh, cap, water, precise) {
   }
 }
 let cityMat = null;
+// HOW MUCH OF THE WORLD ACTUALLY GOT DRAWN. A chunk that fails to merge is a hole with its
+// collider still in it, and a `console.warn` is invisible on a phone -- the cloud, sky and
+// blaster lines in `missing()` exist for exactly this and this one is worse than all of them.
+const CITY = { lost: 0 };
 const cityGroup = new THREE.Group(); scene.add(cityGroup);
 function buildCity(gltf, ramps) {
   const root = gltf.scene; root.updateMatrixWorld(true);
@@ -5102,14 +5118,13 @@ function buildCity(gltf, ramps) {
     // solid ceiling at head height, and a trunk is the right abstraction for a tree.
     // static geometry -> chunk
     const key = gkey(Math.floor(_v.x / CH), Math.floor(_v.z / CH)); let l = chunks.get(key); if (!l) chunks.set(key, l = []);
-    // AND EVERY CHUNK GEOMETRY CARRIES `aRoad`, 1 ON TARMAC AND 0 ON EVERYTHING ELSE, so the
-    // paint pass can hold back on the one surface he does not want it on. It has to go on ALL
-    // of them and not only the roads: `mergeGeometries` refuses a bucket whose members do not
-    // share an attribute set, and a silently dropped chunk is a hole in the city.
-    // The test is the same prefix regex `isWalk` uses, minus the land and the grass -- those
-    // are surfaces he likes the paint on, and the complaint was specifically the roads.
-    l.push(roadTag(normGeo(mesh.geometry, mesh.matrixWorld, mesh.userData.flat),
-      /^(road_|parking_area|bridge)/.test(name) ? 1 : 0)); statics++;
+    // ROAD OR NOT, AS A FLAG ONLY. The `aRoad` attribute itself is added in ONE place, down in
+    // the merge loop, where every member of every bucket goes past -- see `roadTag`. The test is
+    // the same prefix regex `isWalk` uses minus the land and the grass, which are surfaces the
+    // paint reads well on; the complaint was specifically the roads.
+    const cg = normGeo(mesh.geometry, mesh.matrixWorld, mesh.userData.flat);
+    if (/^(road_|parking_area|bridge)/.test(name)) cg.userData.road = 1;
+    l.push(cg); statics++;
   }
   // PINHOLES. A cell every surface happened to miss, ringed by cells that all found one,
   // is not a gap in the world -- it is a gap in the rasteriser, and it reads in game as
@@ -5161,12 +5176,21 @@ function buildCity(gltf, ramps) {
   // material: one palette atlas for the whole city
   if (cityMat) { cityMat.roughness = .9; cityMat.metalness = 0; cityMat.side = THREE.DoubleSide; cityMat.userData.tag = 'city'; if (cityMat.map) { cityMat.map.anisotropy = 4; } }
   else cityMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: .9 });
-  let drawn = 0;
+  let drawn = 0, lost = 0;
   for (const [, list] of chunks) {
-    const merged = mergeGeometries(list, false); for (const g of list) g.dispose(); if (!merged) continue;
+    // EVERY MEMBER GETS `aRoad` HERE AND NOWHERE ELSE (c142). See `roadTag`.
+    for (const g of list) roadTag(g, g.userData.road ? 1 : 0);
+    const merged = mergeGeometries(list, false); for (const g of list) g.dispose();
+    // AND A BUCKET THAT FAILS IS A HOLE IN THE CITY, SO IT HAS TO SAY SO. `mergeGeometries`
+    // returns null when its members disagree about anything, and `continue` alone drops sixty-
+    // four metres of world with a collider still standing in it -- which is invisible walls and
+    // a grey floor, and nothing on a phone to say why. c141 shipped exactly that.
+    if (!merged) { lost++; continue; }
     merged.computeBoundingSphere(); merged.computeBoundingBox();
     const m = new THREE.Mesh(merged, cityMat); m.castShadow = true; m.receiveShadow = true; m.matrixAutoUpdate = false; cityGroup.add(m); drawn++;
   }
+  CITY.lost = lost;
+  if (lost) console.warn('[city] ' + lost + ' chunk(s) failed to merge -- that is a hole in the world with its collider still in place');
   console.log('city: statics', statics, 'chunks', drawn, 'tiles', tiles.length, 'cars moving', cars.length,
     'solids', solids.length, '(' + COLS.split + ' meshes split into columns, the rest kept their box)');
 }
@@ -8976,7 +9000,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
