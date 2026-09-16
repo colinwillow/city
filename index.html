@@ -314,7 +314,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c174</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c175</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -328,7 +328,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c174';
+const BUILD = 'c175';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1020,6 +1020,24 @@ const WEAP = {
   // HOW FAST THE MARK FOLLOWS. Small enough that a real sweep of the thumb arrives inside a
   // tenth of a second, big enough to swallow a kerb sampled a centimetre either way.
   aimEase: .045,
+  // AND THE HEIGHT EASES FAR HARDER THAN THE BEARING (c175). *"There's like a little flicker up
+  // and down -- I don't know if it's catching onto things farther away. Maybe just ease that, or
+  // remove the up-down motion."* The remaining jitter is not noise and it is not the lock (which
+  // has been off since c136): it is REAL and it is DISCONTINUOUS. One frame the walk stops at a
+  // kerb and `y` is the kerb's foot; the next it clears and `y` is the road forty metres on. A
+  // jump in the world, so no finer probe can remove it -- only a filter can.
+  // The mark's JOB is to say where the shot lands in PLAN. Its height is a detail, and it is the
+  // only axis a pitched-down camera turns into visible bobbing, so it gets its own half-life.
+  aimEaseY: .22,
+  // HOW STEADY THE BEARING IS (c175). *"I want the aim to be a little less sensitive -- it's hard
+  // on a small device to aim really precisely."* The pad is ABSOLUTE: the thumb's bearing IS the
+  // world bearing, so at the top of a 132 px pad ten pixels sideways is nine degrees, and at
+  // forty metres that is six metres of miss. Lowering a GAIN is not available -- there is no gain,
+  // and inventing one breaks "you point where you point", which is the whole c101 mechanic.
+  // So the mapping is untouched and the RESULT is damped: the same bearing, arrived at over a
+  // breath instead of instantly. A shaky thumb stops showing; a real sweep still lands in a
+  // tenth of a second. 0 is the old behaviour exactly.
+  aimSmooth: .075,
   fireAt: .80, keepAt: .50, armT: .10, fireArc: 1.05,
   cool: .42,            // seconds between shots
   chargeT: .9,          // a full charge takes this long
@@ -1055,7 +1073,17 @@ const WEAP = {
   // NOTHING IS DELETED. `on: 1` brings the whole loop back exactly as it was -- `pickTarget`,
   // the accumulating ease, the wider keep-cone, all of it -- for the day this game has a
   // fight worth assisting in.
-  lock: { on: 0, cone: .38, range: 44, pull: 5.0, grab: .58, taper: .55, keep: .55 },
+  // BACK ON, POLICE ONLY, AND SUBTLE (c175). *"I'm toying with re-adding a small aim assist, but
+  // only on players like the cop -- no cars. It's an assist, not a complete lock: if your aim
+  // isn't super precise but you're just to the left or right of him, it'll lock onto him."*
+  // **THE CARS WERE THE WHOLE c136 COMPLAINT.** Four hundred of them inside a 44 m radius is why
+  // a 22-degree cone always contained SOMETHING and why the mark snapped between two of them at
+  // forty metres. Eight officers is a different world: `cops` only, and the cone and the range
+  // come down as well, so it helps where he is pointing and nowhere else.
+  //     cone  .38 -> .24    22 deg -> 14, about "just to the left or right of him"
+  //     range  44 -> 34     and a bolt only reaches so far anyway
+  //     grab  .58 -> .85    SEE BELOW -- this is what makes the promise keepable
+  lock: { on: 1, cops: 1, cone: .24, range: 34, pull: 4.0, grab: .85, taper: .45, keep: .55 },
   // RIDING, THE WHOLE LOOP IS LIVELIER AND IT READS AS THE AIMER ZIPPING ABOUT. Two things
   // feed it and both are speed: the camera sweeps in behind the aim while he is ALSO being
   // carried across the ground at twenty metres a second, so a target's bearing changes on its
@@ -3455,7 +3483,7 @@ function stepAim(dt) {
   p.fireT = Math.max(0, (p.fireT || 0) - dt);
   if (!has) {
     p.aim = 0; p.armT = 0; p.chg = 0; p.turning = 0; p.lock = null; p.aimAdj = 0;
-    stepChargeFx(0, dt); reticShow(null, 0); return;   // ...and the mark goes with the gun
+    stepChargeFx(0, dt); reticShow(null, 0); p.aimT = 0; return;   // ...and the mark goes with the gun
   }
   p.shotT = Math.max(0, (p.shotT || 0) - dt);
   const rx = stick.R.x, ry = stick.R.y;            // raw pad; ry is NEGATIVE for up
@@ -3493,7 +3521,13 @@ function stepAim(dt) {
       e = err * WEAP.lock.grab * (p.board ? WEAP.ride.grab : 1) * (1 - off * WEAP.lock.taper);
     }
     p.aimAdj = lerp(p.aimAdj || 0, e, Math.min(1, dt * WEAP.lock.pull * (p.board ? WEAP.ride.pull : 1)));
-    p.aimH = raw + p.aimAdj;
+    // THE BEARING IS DAMPED, NOT GEARED (c175) -- see `WEAP.aimSmooth`. The mapping stays 1:1,
+    // so he still points where he points; it just arrives over a breath. Seeded rather than
+    // eased on the first frame, `_apT`'s own rule, or the mark sweeps in from wherever the gun
+    // was last pointed.
+    const want = raw + p.aimAdj;
+    p.aimH = (p.aimT && WEAP.aimSmooth > .001) ? want - wrapAngle(want - p.aimH) * Math.exp(-Math.LN2 * dt / WEAP.aimSmooth) : want;
+    p.aimT = 1;
     // AND THE CAMERA SWINGS IN BEHIND IT. `cam.az` here IS the forward the player looks along,
     // so the target is `aimH` itself. Capped, because uncapped this feedback runs at four
     // radians a second and is unsteerable.
@@ -3528,7 +3562,18 @@ function stepAim(dt) {
   // AND THE HUM OFF THE SAME NUMBER THE BALL IS DRAWN FROM, so the sound and the picture can
   // never disagree about how full the shot is -- the slash mark's rule, one sense along.
   CHARGE.set(p.chg, !!p.aim && !TITLE.on);
-  reticShow(p.lock, !!p.aim, p.aimH, dt);
+  // THE MARK IS DRAWN FROM `p.aimH`, NEVER FROM THE TARGET (c175). *"In other games I've had
+  // this problem where the aimer locks onto them but then when you release, the character
+  // doesn't actually shoot at the aimer."* It was exactly that here: the reticle was drawn AT
+  // the locked object while the bolt left on `aimH`, which the assist only ever pulled `grab`
+  // of the way there -- so at 58% the mark sat on the man and the shot went 42% of the error
+  // wide, every time. **The mark and the shot cannot be two different numbers.**
+  // So `aimPoint(p.aimH)` is the only thing ever drawn, `shotH()` returns the same `aimH`, and
+  // the promise is kept BY CONSTRUCTION rather than by two places agreeing. `grab` went to .85
+  // to make the assist land the mark ON him rather than near him; the lock is still only the
+  // reticle's LOOK (warm and tight against cool and breathing), which is what says the gun has
+  // something -- and if a residual is ever visible it is honest, because that IS the shot.
+  reticShow(null, !!p.aim, p.aimH, dt);
 }
 // WHAT THE GUN IS POINTING AT. A cone about the aim, nearest-and-straightest first, and
 // whatever is ALREADY locked keeps it on a wider cone and a discount so the reticle does not
@@ -3553,7 +3598,9 @@ function pickTarget(h) {
   // actually pointing at, and a priority order would pull the mark off the car in front of him
   // onto an officer forty metres away and twenty degrees off.
   for (const c of cops) { if (c === held || !ok(c)) continue; const sc = targetScore(c, hx, hz, L.cone); if (sc >= 0 && sc < bs) { bs = sc; best = c; } }
-  for (const c of cars) { if (c === held || c.dead) continue; const sc = targetScore(c, hx, hz, L.cone); if (sc >= 0 && sc < bs) { bs = sc; best = c; } }
+  // NO CARS. That is his instruction and it is also c136's diagnosis: the cars are what made an
+  // assist unusable here, because there are four hundred of them and eight officers.
+  if (!L.cops) for (const c of cars) { if (c === held || c.dead) continue; const sc = targetScore(c, hx, hz, L.cone); if (sc >= 0 && sc < bs) { bs = sc; best = c; } }
   return best;
 }
 // THE RETICLE. A wanted level you cannot see is one you cannot play around, and an aim assist
@@ -3617,8 +3664,8 @@ function aimPoint(h, dt) {
   // whatever surface the last sample landed on, and a kerb edge sampled a few centimetres
   // either way flips it. A mark is a picture, so easing it costs nothing and a real swing of
   // the thumb still arrives inside a tenth of a second.
-  const e = WEAP.aimEase, d = dt || .016;
-  if (_apT && e > .001) { _ap.x = damp(_ap.x, x, e, d); _ap.y = damp(_ap.y, y, e, d); _ap.z = damp(_ap.z, z, e, d); }
+  const e = WEAP.aimEase, ey = WEAP.aimEaseY, d = dt || .016;
+  if (_apT && e > .001) { _ap.x = damp(_ap.x, x, e, d); _ap.y = damp(_ap.y, y, ey > .001 ? ey : e, d); _ap.z = damp(_ap.z, z, e, d); }
   else { _ap.x = x; _ap.y = y; _ap.z = z; _apT = 1; }
   return _ap;
 }
@@ -4746,6 +4793,9 @@ function missing() {
     // because no re-export can ever move it. Identity is silent; anything else says so.
     const g = WEAP.grip;
     if (g.x || g.y || g.z || g.rx || g.ry || g.rz || g.s !== 1) m += ' · GRIP OFF';
+  // A SAVED SETTING THAT CONTRADICTS THE FILE HAS TO BE VISIBLE, which is the whole c175 lesson:
+  // `COP.solid` sat at 0 in his `city.opt` for five builds and read as the collider being broken.
+  if (!COP.solid) m += ' · COPS GHOST';
   }
   if (kitOut('jet')) {
     const js = jetSize();
@@ -7560,7 +7610,7 @@ const COP = {
   // 0.74, and it is the lift rather than `back` that buys it -- more `back` is a longer skid,
   // not a longer flight. `punt` is what a blow lands for when he is ALREADY down: enough to
   // shove him along the road and restart the clock, not enough to re-launch a corpse.
-  fly: { up: 9.6, back: 9.5, g: 20, spin: 2.6, min: .35, punt: .42 },
+  fly: { up: 9.6, back: 9.5, g: 20, spin: 2.6, min: .35, punt: .42, last: .55 },
   // OUT COLD. He used to be up half a second after the clip finished, which reads as a man
   // tripping rather than a man being knocked out. `out` is the beat he lies there, and the
   // stars are what say he is unconscious rather than merely prone -- the oldest shorthand in
@@ -7630,6 +7680,14 @@ const COP = {
   ploughR: .6,      // how close past his own body counts as riding INTO him
   clips: { idle: 'idle_01', walk: 'walk_01', run: 'run_01', draw: 'draw_weapon', shoot: 'shoot_pistol',
            hits: ['hit_body', 'hit_head', 'hit_ribs', 'hit_stomach'],
+           // A FIGHT IS A SEQUENCE, NOT A SHUFFLE (c175). *"Are we even utilising the cop's
+           // animations -- blow to the head, blow to the body? I want those to happen when you
+           // melee: first one head, second one body, third one sends him a little bit."*
+           // We had all four and picked at RANDOM, which is why it never read as a combination:
+           // the same three punches gave a different order every time and none of them built.
+           // `hp` is 3 and always was, so the chain is exactly as long as the fight already is,
+           // and `hits` stays as the pool for anything past it (a fourth is not reachable today).
+           chain: ['hit_head', 'hit_body'],
            downF: 'knock_down_front', downB: 'knock_down_back', upF: 'get_up_front', upB: 'get_up_back',
            // BORROWED FROM COLIN UNTIL HE DRAWS HIS OWN. The officer has no air clips at all,
            // and a man launched by a plasma bolt who holds his knock-down pose all the way
@@ -7998,19 +8056,28 @@ function copHit(c, fromH) {
     copFly(c, fromH, COP.fly.min);
     return true;
   }
+  const step = COP.hp - c.hp;                // 0 on the first blow of this fight
   c.hp--;
   c.alert = 1;
   // POW, at his chest, on the frame the blow lands -- `copHit` is called from the contact
   // frame in `stepMelee`, the same line that draws the slash mark.
   fxPop(c.x, c.y + COLIN_HEIGHT * .62, c.z, 'pow', 1.4);
   snd.hit(1, c.x, c.z);
-  heatAdd(c.hp > 0 ? HEAT.punch : HEAT.down);
-  if (c.hp > 0) { c.clip = COP.clips.hits[(Math.random() * COP.clips.hits.length) | 0]; copSet(c, 'hit'); return true; }
-  // WHICH WAY HE GOES OVER IS WHICH WAY HE WAS FACING when it landed -- a punch to the face
-  // puts him on his back, one from behind puts him on his front.
-  const face = Math.cos(wrapAngle(fromH - c.h)) < 0;
-  c.clip = face ? COP.clips.downB : COP.clips.downF;
-  copSet(c, 'down');
+  if (c.hp > 0) {
+    heatAdd(HEAT.punch);
+    // HEAD, THEN BODY, in that order, with the random pool as the fallback past the chain.
+    const ch = COP.clips.chain;
+    c.clip = (ch && ch[step] && c.actions[ch[step]]) ? ch[step]
+      : COP.clips.hits[(Math.random() * COP.clips.hits.length) | 0];
+    copSet(c, 'hit'); return true;
+  }
+  // AND THE THIRD SENDS HIM (c175). *"Third one sends him a little bit or something like that."*
+  // It was a FOLD on the spot -- he dropped where he stood, which reads as a hitpoint running
+  // out rather than as the end of a fight. `copFly` already exists and already hands him to the
+  // same `down` -> `up` states the fold did, so the whole change is which function is called and
+  // how hard: `fly.last` is well under a plasma bolt's launch, which is the "a little bit".
+  // `copFly` adds `HEAT.down` itself, so this branch must NOT add it too.
+  copFly(c, fromH, COP.fly.last);
   return true;
 }
 // A PUNCH LANDS WHERE THE ARM IS, which is the same frame the slash mark is drawn on --
@@ -8733,7 +8800,24 @@ document.getElementById('sfxB').addEventListener('pointerdown', e => { e.prevent
 //     second source of truth to fall out of step -- and the console still works alongside it.
 // It remembers in localStorage under `OPT.key`, because a setting you have to re-pick after
 // every reload is a setting nobody uses twice.
-const OPT = { key: 'city.opt', on: false, el: null };
+// A SAVED SETTING OUTRANKS EVERY FUTURE DEFAULT, FOR EVER, AND THAT IS HOW c174 DID NOTHING
+// (c175). *"When I'm walking around a cop I still can't collide with him."* c174 changed
+// `COP.solid` from 0 to 1 and measured it six ways -- and his phone had `"Cops solid": false`
+// sitting in `city.opt` since c169, because `optSave` writes EVERY row on every drag and
+// `optLoad` applies it at boot. **No edit to this file could ever have reached him.**
+// That is c163's `GRIP OFF` exactly, one setting along, and the note there predicted it: a
+// saved slider can hold a thing where no export can reach it. The chip caught that one; this
+// one had no chip line, so it read as the fix simply not working.
+// **SO THE STORE CARRIES A VERSION.** When it is older than this build, the rows named in
+// `OPT_FRESH` -- and only those -- are dropped and take the file's new default; everything else
+// he has tuned is kept, which is the whole point of not just clearing the key. Bump `ver` and
+// name the row in the SAME commit that changes a default, or the change does not ship.
+const OPT = { key: 'city.opt', ver: 2, on: false, el: null };
+// Rows whose DEFAULT moved in this build. By label, because that is what the store is keyed by.
+// ONLY the rows whose default actually moved. A NEW row needs nothing -- there is no stored
+// value for it, so `optApply` skips it and the file's default stands; naming one here would
+// throw away tuning for no reason.
+const OPT_FRESH = ['Cops solid'];
 // WHICH TYPES HOLD A VALUE. `optSave` used to walk every non-heading row and CALL `r[2]()`,
 // which is a getter for the three of them and an ACTION for a preset button -- so without this
 // saving the settings would fire every preset in the panel. A row type that is not a value is
@@ -8838,6 +8922,13 @@ const OPT_ROWS = [
   ['num', 'Jet flame', () => JET.flame.len, v => { JET.flame.len = v; }, 0, 1.5, .04],
   ['num', 'Sky exposure', () => SKY.envB, v => { SKY.envB = v; }, 0, 8, .1],
   ['num', 'Aim mark ease', () => WEAP.aimEase, v => { WEAP.aimEase = v; }, .005, .2, .005],
+  ['num', 'Aim mark ease up', () => WEAP.aimEaseY, v => { WEAP.aimEaseY = v; }, .005, .6, .005],
+  ['num', 'Aim smoothing', () => WEAP.aimSmooth, v => { WEAP.aimSmooth = v; }, 0, .3, .005],
+  ['tog', 'Aim assist', () => !!WEAP.lock.on, v => { WEAP.lock.on = v ? 1 : 0; }],
+  ['tog', 'Assist police only', () => !!WEAP.lock.cops, v => { WEAP.lock.cops = v ? 1 : 0; }],
+  ['num', 'Assist cone', () => WEAP.lock.cone, v => { WEAP.lock.cone = v; }, .05, .6, .01],
+  ['num', 'Assist pull', () => WEAP.lock.grab, v => { WEAP.lock.grab = v; }, 0, 1, .02],
+  ['num', 'Assist range', () => WEAP.lock.range, v => { WEAP.lock.range = v; }, 8, 60, 1],
   // WHERE THE BLASTER SITS IN HIS HAND, ON THE PHONE. Four exports went into this and not one
   // of them could be judged without another push, which is the loop `city.slash()` ended for the
   // melee mark. Metres and radians, about `weapon_root`, and every one applies live.
@@ -8860,7 +8951,7 @@ const OPT_ROWS = [
   ['num', 'Rush blur', () => CAM.rushK, v => { CAM.rushK = v; }, 0, 1.5, .05],
   ['num', 'Rush starts', () => CAM.rush0, v => { CAM.rush0 = v; }, 0, 20, .5],
 ];
-const optGrab = () => { const o = {}; for (const r of OPT_ROWS) if (OPT_VAL[r[0]]) o[r[1]] = r[2](); return o; };
+const optGrab = () => { const o = { __v: OPT.ver }; for (const r of OPT_ROWS) if (OPT_VAL[r[0]]) o[r[1]] = r[2](); return o; };
 const optApply = o => { if (o) for (const r of OPT_ROWS) if (OPT_VAL[r[0]] && o[r[1]] !== undefined) r[3](o[r[1]]); };
 function optSave() { try { localStorage.setItem(OPT.key, JSON.stringify(optGrab())); } catch (e) {} }
 // AND A WAY TO HAND THEM OVER (c169). *"Do my preferences save when I edit something in the
@@ -8870,8 +8961,18 @@ function optSave() { try { localStorage.setItem(OPT.key, JSON.stringify(optGrab(
 // file's defaults and why the constants in this file drift out of agreement with what he is
 // actually looking at. `city.opt()` prints the live panel as JSON: paste it back and it becomes
 // what everybody starts with. `city.grip()`'s rule, applied to the whole panel.
-function optDump() { const o = optGrab(); const j = JSON.stringify(o, null, 1); console.log(j); return j; }
-function optLoad() { let o = null; try { o = JSON.parse(localStorage.getItem(OPT.key) || 'null'); } catch (e) {} optApply(o); }
+function optDump() { const o = optGrab(); delete o.__v; const j = JSON.stringify(o, null, 1); console.log(j); return j; }
+function optLoad() {
+  let o = null; try { o = JSON.parse(localStorage.getItem(OPT.key) || 'null'); } catch (e) {}
+  // A STORE FROM AN OLDER BUILD LOSES THE ROWS WHOSE DEFAULT MOVED, and nothing else.
+  if (o && o.__v !== OPT.ver) {
+    for (const k of OPT_FRESH) delete o[k];
+    o.__v = OPT.ver;
+    try { localStorage.setItem(OPT.key, JSON.stringify(o)); } catch (e) {}
+    console.log('[opt] store upgraded to v' + OPT.ver + ' -- reset: ' + OPT_FRESH.join(', '));
+  }
+  optApply(o);
+}
 // A PRESET IS THE LIVE SETTINGS UNDER A DIFFERENT KEY, and that is the whole feature -- there
 // is no second schema to keep in step with the panel, so a row added tomorrow is in every slot
 // saved after it and absent (which `optApply` skips) from every slot saved before.
@@ -11223,7 +11324,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

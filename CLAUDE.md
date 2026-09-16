@@ -1198,6 +1198,95 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **A SAVED SETTING OUTRANKS EVERY FUTURE DEFAULT, FOR EVER -- AND THAT IS HOW c174 DID NOTHING
+  (c175, `OPT.ver`, `OPT_FRESH`).** *"When I'm walking around a cop I still can't collide with
+  him."* c174 turned `COP.solid` back on, measured it six ways and shipped -- and **his phone had
+  `"Cops solid": false` sitting in `city.opt` since c169**, because `optSave` writes EVERY row on
+  every drag and `optLoad` applies the lot at boot. No edit to this file could ever have reached
+  him. He was right both times and the code was right the second time; the STORE was in the way.
+  **c163 PREDICTED THIS IN WRITING** -- *a saved slider can hold the blaster where no export can
+  reach it* -- and the answer there was a chip line, which is why that one was caught in a build
+  and this one cost five. `· COPS GHOST` now, for exactly the same reason.
+  **SO THE STORE CARRIES A VERSION.** Older than the build, and the rows named in `OPT_FRESH` --
+  and only those -- are dropped and take the file's new default; everything else he has tuned is
+  kept, which is the whole point of not simply clearing the key. **Bump `ver` and name the row in
+  the SAME commit that changes a default, or the change does not ship.**
+  **A NEW ROW NEEDS NOTHING**, because there is no stored value for it and `optApply` skips what
+  it does not find. Naming one in `OPT_FRESH` would throw away his tuning for nothing.
+- **THE STANDING FIGHT IS A SEQUENCE, NOT A SHUFFLE (c175, `COP.clips.chain`).** *"Are we even
+  utilising the cop's animations -- blow to the head, blow to the body? I want those to happen
+  when you melee: first one head, second one body, third one sends him a little bit."*
+  We had all four `hit_*` clips and picked one **at random**, which is exactly why it never read
+  as a combination: the same three punches came out in a different order every time and none of
+  them built. `COP.hp` is 3 and always was, so the chain is already as long as the fight:
+      punch 1   hit_head          state hit    hp 2
+      punch 2   hit_body          state hit    hp 1
+      punch 3   flying_backwards  state fly    hp 0     <- `copFly` at `COP.fly.last`
+  **AND THE THIRD SENDS HIM RATHER THAN FOLDING HIM.** He used to drop where he stood, which
+  reads as a hitpoint running out rather than as the end of a fight. `copFly` already existed and
+  already hands him to the same `down` -> `up` states the fold did, so the change is which
+  function is called and how hard -- `fly.last` .55 is well under a plasma bolt's launch, which
+  is the "a little bit". **It adds its own `HEAT.down`, so `copHit` must not add it twice.**
+  `hits` stays as the pool for anything past the chain, and the chain falls back to it per index,
+  so a longer `hp` tomorrow is not a crash.
+  **AND THE PROBE'S FIRST RUN LAUNCHED HIM ON PUNCH ONE**, because `p.melEntry` LATCHES and the
+  row before it had left 12 m/s there -- c174 working exactly as written, and the harness
+  forgetting to put its own state back. Reset every latch a case reads, not just the obvious ones.
+- **THE RETICLE AND THE BOLT ARE ONE BEARING NOW, AND THEY WERE NOT (c175,
+  `JAM_PROBE=tools/probe-aim2.mjs`).** *"In other games I've had this problem where the aimer
+  locks onto them but then when you release, the character doesn't actually shoot at the aimer --
+  I wanna make sure that's all working."* **It was exactly that here, by construction.**
+  `reticShow(p.lock, ...)` drew the mark AT THE LOCKED OBJECT while the bolt left on `p.aimH`,
+  which the assist only ever pulls `grab` of the way there -- so at .58 the mark sat on the man
+  and the shot went 42% of the error wide, every single time.
+  **AND THE FILE ARGUED BOTH SIDES OF IT.** c112: *the mark IS the promise, so it has to be on
+  the thing before the shot leaves.* Also c112: *the bolt leaves on the eased heading, NOT the
+  target's centre.* Those are the same sentence pointing in opposite directions, and nothing
+  reconciled them for thirteen builds.
+  **THE MARK IS DRAWN FROM `p.aimH` AND NOTHING ELSE.** `shotH()` returns the same `aimH`, so the
+  promise is kept BY CONSTRUCTION rather than by two places agreeing -- and `grab` went .58 -> .85
+  so the assist lands the mark ON him rather than near him. The lock is now only the reticle's
+  LOOK (warm and tight against cool and breathing), which is what says the gun has something.
+  Measured through the shipped `stepAim` over the real collider, five cases, **MARK vs SHOT 0.00
+  degrees in every one**, standing and riding.
+- **THE ASSIST IS BACK, POLICE ONLY, AND THE CARS WERE THE WHOLE c136 COMPLAINT (c175).**
+  *"I'm toying with re-adding a small aim assist, but only on players like the cop -- no cars. If
+  your aim isn't super precise but you're just to the left or right of him, it'll lock onto him.
+  It's an assist, not a complete lock."* c136 turned it off because *a 22-degree cone at 44 m
+  almost always contains SOMETHING* -- and that something was one of **four hundred cars**. Eight
+  officers is a different world, so `lock.cops` skips the car loop entirely and the numbers come
+  in: cone .38 -> .24 (22 deg -> 14), range 44 -> 34, pull 5.0 -> 4.0.
+  Driven both ways round -- the same run with the assist off, because on the board he covers
+  twenty metres while the aim is held and an absolute "ends N degrees off" says nothing:
+      standing,  6 deg off   ->  1.9   LOCKED
+      standing, 12 deg off   ->  5.8   LOCKED
+      standing, 25 deg off   -> 25.0   no lock   <- outside the cone, untouched
+      riding,  8 deg off     -> 14.9 deg becomes 11.6, LOCKED
+      nobody in range        ->  6.0   no lock
+  It closes about half to two thirds of a miss inside the cone and does nothing outside it, which
+  is "subtle" measured rather than asserted.
+- **THE MARK'S HEIGHT GETS ITS OWN HALF-LIFE (c175, `WEAP.aimEaseY`).** *"There's a little flicker
+  up and down -- I don't know if it's catching onto things farther away. Maybe just ease that."*
+  The remaining jitter is not noise, it is not the lock, and no finer probe can remove it: it is
+  **real and discontinuous**. One frame the walk stops at a kerb and `y` is the kerb's foot; the
+  next it clears and `y` is the road forty metres on. A jump in the world, so only a filter helps.
+  **And the mark's JOB is to say where the shot lands in PLAN.** Its height is a detail, and it is
+  the only axis a camera pitched down turns into visible bobbing, so it gets its own number while
+  the bearing keeps the quick one. Riding at 14 m/s across the real city:
+      c174  one ease (.045)    mean 0.27 cm/frame   worst 6.9 cm
+      c175  ease up (.22)      mean 0.13 cm/frame   worst 2.2 cm
+- **AND THE BEARING IS DAMPED RATHER THAN GEARED (c175, `WEAP.aimSmooth`).** *"I want the
+  sensitivity of the aim to be a little less sensitive -- it's hard on a small device to aim
+  really precisely."* The pad is ABSOLUTE: the thumb's bearing IS the world bearing, so at the top
+  of a 132 px pad ten pixels sideways is nine degrees, and at forty metres that is six metres of
+  miss. **There is no gain to lower**, and inventing one breaks "you point where you point",
+  which is c101's whole mechanic. So the mapping is untouched and the RESULT is damped: the same
+  bearing, arrived at over a breath. A shaky thumb stops showing, a real sweep still lands inside
+  a tenth of a second, and `aimSmooth: 0` is the old behaviour exactly.
+- **AND `stepAim` RETURNS ON `KIT.out.blaster` BEFORE ANYTHING ELSE, WHICH COST THE PROBE A RUN.**
+  Its first version armed nothing, locked nothing and damped nothing, and read as three separate
+  failures -- one early return. **When a harness reports several things broken at once, suspect
+  one gate above all of them.**
 - **A MAN IS A WALL UNTIL YOU ARRIVE WITH ENOUGH TO KNOCK HIM DOWN (c174, `copGhost`,
   `copPlough`, `p.melEntry`).** *"It looks like we entirely removed the collider and I don't think
   that's how it should be. It should be like a state machine... if I'm just fighting him with the

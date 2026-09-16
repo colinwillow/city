@@ -32,7 +32,7 @@ function place(ahead) {
 function reset(board, v, push) {
   P.board = board; P.rail = null; P.bar = null; P.hit = ''; P.mel = ''; P.melStep = 0; P.melT = 0;
   P.hang = 0; P.lad = 0; P.grounded = true; P.braked = 0; P.turnT = 0; P.turnRem = 0; P.copPass = 0;
-  P.pushing = false; P.pushT = 0; P.jump = 0; P.jumps = 0; P.melLock = null;
+  P.pushing = false; P.pushT = 0; P.jump = 0; P.jumps = 0; P.melEntry = 0; P.melLock = null;
   P.heading = 0; P.faceH = 0; P.pos.copy(HOME); P.vel.set(0, 0, v); P.speed = v;
   G.cam.az = 0; G.cam.el = .17;
   // NO THUMB. Held forward he accelerates into a sprint, and a sprint is past `flyV` -- which
@@ -73,8 +73,30 @@ console.log('\nARRIVING WITH SOMETHING -- he FLIES and must not bounce you back\
 const d = run('riding in at 14, no melee', { board: true, v: 14 });
 const e = run('riding in at 14 AND melee', { board: true, v: 14, melee: true });
 const f = run('on foot at 12 AND melee', { board: false, v: 12, melee: true, ahead: 2.2 });
+
+// ---- THE STANDING FIGHT IS A SEQUENCE (c175) ----
+// *"Blow to the head, blow to the body, third one sends him a little bit."* `copHit` picked from
+// all four hit clips at RANDOM, so the same three punches gave a different order every time and
+// none of them built. The clips are stubbed here (no skin headless) purely so the chain's own
+// name test passes; what is under test is the ORDER and what the third blow does.
+console.log('\nTHREE PUNCHES ON THE SPOT -- head, body, then he goes\n');
+{
+  // `p.melEntry` LATCHES AND IS NOT CLEARED BY STANDING STILL -- left over from the row
+  // above it, the first punch here read as a run-up and launched him, which is c174
+  // working exactly as written and the probe forgetting to put its own state back.
+  place(2.0); reset(false, 0); P.melEntry = 0;
+  for (const nm of COP.clips.chain) C.actions[nm] = 1;
+  for (const nm of COP.clips.hits) C.actions[nm] = 1;
+  C.actions[COP.clips.flyF] = 1; C.actions[COP.clips.flyB] = 1;
+  for (let i = 1; i <= 3; i++) {
+    G.copsPunched(P.pos.x, P.pos.z, 0);
+    console.log('  punch ' + i + '   clip ' + String(C.clip).padEnd(18) + 'state ' + String(C.st).padEnd(6) + '  hp ' + C.hp);
+  }
+}
+const chainOK = C.st === 'fly' || C.st === 'down';
+
 const ok = !a.through && !b.through && !c.through && c.hp < COP.hp
-  && d.through && d.flew && e.flew && f.flew;
+  && d.through && d.flew && e.flew && f.flew && chainOK;
 console.log('\n' + (ok
   ? 'PASS: a wall when you walk into him, a target when you arrive with something.'
   : 'FAIL: ' + JSON.stringify({ a, b, c, d, e, f })));
