@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c145</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c146</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c145';
+const BUILD = 'c146';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -1504,7 +1504,12 @@ const snd = {
   bail: () => SFX.play('crack', .55, rnd(.80, 1.00)) || SFX.noise(.22, .22, 700),
   // THE DAMAGE TIERS SOUND DIFFERENT OR THEY ARE ONE SOUND FOUR TIMES. A panel going is the
   // small file high and quiet; the car going up is the big one low and loud.
-  crunch: (x, z) => SFX.play('boom', .28, rnd(1.25, 1.45), x, z) || SFX.play('crack', .40, rnd(.9, 1.1), x, z) || SFX.noise(.16, .16, 600),
+  // METAL AND GLASS, NEVER THE EXPLOSION SAMPLE (c146). c145 built this out of `boom` pitched
+  // up, on the reasoning that a hit is a small explosion. It is not -- *"it plays an explosion
+  // sound even when you're just shooting it; it should only play an explosion when it
+  // explodes."* A panel going is a clang and a crack, and the point of the final one is that it
+  // is the FIRST time you hear that file.
+  crunch: (x, z) => { SFX.play('clang', .30, rnd(.80, .95), x, z) || SFX.noise(.12, .12, 700, x, z); SFX.play('crack', .26, rnd(1.05, 1.25), x, z); },
   boom: (x, z) => { SFX.play('boom', .85, rnd(.80, .92), x, z) || SFX.noise(.45, .40, 260); SFX.play('crack', .45, rnd(.7, .85), x, z); },
   // A LITTLE HIGHER EACH TIME, RESET BY A PAUSE -- the oldest trick in a pickup, and it is what
   // turns twenty-six identical chimes into a run you want to keep going. It is a per-key state
@@ -4092,6 +4097,13 @@ function missing() {
   if (!colin.ready) m += ' · NO COLIN GLB';
   // A HOLE IN THE WORLD, WHICH IS WHAT c141 SHIPPED AND COULD NOT SAY.
   if (CITY.lost) m += ' · LOST ' + CITY.lost + ' CHUNKS';
+  // WHAT THE WRECKS ARE DOING, because "the pieces didn't move" is three different bugs wearing
+  // one face from a phone -- the damage never registered, it registered and the shader is inert,
+  // or it worked and was too small to see. The stage and the blast clock tell them apart.
+  {
+    const live = WRECKS.filter(w => w.car);
+    if (live.length) m += ' \u00b7 WRK ' + live.map(w => w.blown ? 'B' + w.t.toFixed(1) : 'd' + w.uni.uBreak.value.toFixed(2)).join(',');
+  }
   // The same question the cloud and sky lines answer: "did that asset arrive". `cop0` and a
   // silent console warning are the same picture from a phone.
   // THE STARS. A wanted level you cannot see is a wanted level you cannot play around, and
@@ -5206,12 +5218,23 @@ const WRECK = {
   on: 1,
   hp: 4,            // shots to destroy: stop, skew, burn, gone
   max: 5,           // how many wrecks may exist at once -- this is a MATERIAL count, see below
-  skew: [0, .022, .065, .13],   // how far the panels wander at each damage stage
-  spread: 7.0,      // how hard the pieces leave on the blast, m/s
-  lift: 4.6,        // and how much of that is straight up
+  // BIGGER THAN c145's BY A FACTOR OF TWO (c146). *"It didn't look like the pieces of the car
+  // moved at all with each hit."* At .022 a panel wanders about three centimetres, which is
+  // nothing on a car ten metres away on a phone -- the effect was real and under the threshold
+  // of being an effect.
+  skew: [0, .05, .11, .20],     // how far the panels wander at each damage stage
+  // AND THE DEBRIS HAS DRAG NOW, WHICH IS THE WHOLE EXPLOSION BUG (c146). *"It never physically
+  // exploded... it did eventually disappear."* c145 threw the pieces at 7 m/s with nothing to
+  // slow them and six seconds to do it in: one second after the blast they were seven metres
+  // apart, and by two they were off the screen. The car did not appear to explode because the
+  // pieces LEFT -- what you saw was a car vanishing, then an empty road, then a fade of nothing.
+  // A piece now travels `spread / drag` metres total, which is about 1.9 m, and lands.
+  spread: 4.2,      // how hard the pieces leave on the blast, m/s
+  drag: 2.2,        // and what stops them: total travel is spread/drag, NOT spread * life
+  lift: 4.2,        // how much of the launch is straight up
   spin: 5.0,        // rad/s of tumble
-  g: 14,            // debris gravity -- UNDER the world's 20, because light panels float
-  life: 6.0,        // seconds before the debris fades out and the slot is recycled
+  g: 11,            // debris gravity -- under the world's 20, because light panels hang
+  life: 5.0,        // seconds before the debris fades out and the slot is recycled
   fade: 1.2,
   smokeEvery: .34,  // while it burns
   burnH: .55,       // where the flames sit, as a fraction of the car's height
@@ -5310,8 +5333,13 @@ function wreckPatch(sh, uni) {
         #endif
         vec3 off = aRnd * uBreak;
         if (uT > 0.0) {
-          // BALLISTIC, WITH A FLOOR -- not a solver. See the note above the constant.
-          off += (aRnd * (` + WRECK.spread.toFixed(2) + `) * uT
+          // BALLISTIC, WITH DRAG AND A FLOOR -- not a solver. See the note above the constant.
+          // The horizontal term CONVERGES: a piece covers spread/drag metres in total however
+          // long it is on screen, instead of leaving at a constant speed and never coming back.
+          // That is the difference between a car exploding and a car disappearing.
+          float travel = (` + WRECK.spread.toFixed(2) + ` / ` + WRECK.drag.toFixed(2) + `)
+                       * (1.0 - exp(-` + WRECK.drag.toFixed(2) + ` * uT));
+          off += (aRnd * travel
                 + uUp * (` + WRECK.lift.toFixed(2) + ` * uT - 0.5 * (` + WRECK.g.toFixed(2) + `) * uT * uT)) * uScl;
         }
         vec3 wp = cen + rel + off;
@@ -5408,6 +5436,24 @@ function carHurt(car, hx, hz) {
     heatAdd(HEAT.zap);
   }
   return stage;
+}
+// BLOW THE NEAREST CAR ON DEMAND (c146). Four accurate shots is a long way to go to look at an
+// effect once, and *"it never physically exploded"* is a report that needs repeating cheaply --
+// this is `city.fx('boom')`'s own rule, which is that a look-at-it decision should not need a
+// fight to reach. `city.boom()` takes it straight to the blast; `city.boom(1)` walks one stage.
+function boomNear(step) {
+  let best = null, bd = 1e9;
+  for (const c of cars) {
+    if (c.dead) continue;
+    const d = Math.hypot(c.x - player.pos.x, c.z - player.pos.z);
+    if (d < bd) { bd = d; best = c; }
+  }
+  if (!best) { console.log('[wreck] no car near enough'); return null; }
+  const n = step ? 1 : (best.hp === undefined ? WRECK.hp : best.hp);
+  for (let i = 0; i < n; i++) carHurt(best, 0, 1);
+  console.log('[wreck] car ' + best.id + ' at ' + best.x.toFixed(0) + ',' + best.z.toFixed(0)
+    + '  ' + bd.toFixed(0) + ' m away  hp ' + best.hp + (best.dead ? '  BLOWN' : ''));
+  return best;
 }
 // THE BURN AND THE DEBRIS CLOCK. Both are per-frame and neither is per-car: only the wrecks in
 // the pool can be doing anything, which is what the pool is for.
@@ -9522,7 +9568,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { WRECK, carHurt, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { WRECK, WRECKS, carHurt, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

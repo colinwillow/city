@@ -143,6 +143,16 @@ if (!G.ready) console.log('(the rest of the boot is still going -- irrelevant to
 
 const cars = G.cars, JAM = G.JAM, TRAF = G.TRAF;
 console.log(`city up: ${cars.length} cars, ${G.tiles.length} road tiles, ${G.solids.length} solid boxes`);
+// A HOOK, SO THERE IS ONE COPY OF THIS SCAFFOLDING AND NOT TWO (c146). Booting the real city
+// headless is the expensive part and it is worth reusing for any question that needs a real car,
+// a real collider or a real material -- `JAM_PROBE=tools/probe-x.mjs npm run jam` hands the
+// module's own globals to another file instead of running the traffic sim. Duplicating this
+// preamble into a second tool is the mistake `normals.mjs` made, two directories over.
+if (process.env.JAM_PROBE) {
+  globalThis.__shred = G;
+  await import(pathToFileURL(path.resolve(process.env.JAM_PROBE)).href + '?t=' + Date.now());
+  process.exit(0);
+}
 console.log(`stepping ${SECS}s of traffic at ${(1 / DT).toFixed(0)} Hz (JAM.at ${JAM.at}s, TRAF.stuck ${TRAF.stuck}s)\n`);
 console.log('    t   stuck   follow  cross  blocked  MUTUAL   worst knot');
 

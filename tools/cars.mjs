@@ -67,3 +67,28 @@ for (const [m, name] of seen) {
     + '  islands ' + String(all.length).padStart(3)
     + '  biggest ' + all.slice(0, 6).join('/'));
 }
+
+// AND THE UNITS, WHICH IS THE OTHER HALF (c146). The shatter offsets are written in the MODEL'S
+// own space, so "0.022" is only a visible dent if a model unit is roughly a metre. If these cars
+// are authored in centimetres it is two hundredths of a centimetre and nothing moves at all.
+console.log('\nunits: the mesh bbox in FILE units, and the node scale it is drawn at\n');
+const seen2 = new Map();
+for (const n of root.listNodes()) {
+  const me = n.getMesh(); if (!me || !isCar(n.getName())) continue;
+  if (seen2.has(me)) continue; seen2.set(me, n);
+}
+let q = 0;
+for (const [me, node] of seen2) {
+  if (q++ >= 6) break;
+  const pr = me.listPrimitives()[0], P = pr.getAttribute('POSITION');
+  const a = P.getArray(); let mn = [1e9,1e9,1e9], mx = [-1e9,-1e9,-1e9];
+  for (let i = 0; i < a.length; i += 3) for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], a[i+k]); mx[k] = Math.max(mx[k], a[i+k]); }
+  const sz = mx.map((v, k) => v - mn[k]);
+  // world scale, walked up the node chain the way the game's getWorldScale does
+  let s = [1,1,1], p = node;
+  while (p) { const ls = p.getScale ? p.getScale() : [1,1,1]; for (let k=0;k<3;k++) s[k] *= ls[k]; p = p.getParentNode ? p.getParentNode() : null; }
+  console.log('  ' + node.getName().padEnd(20)
+    + ' bbox ' + sz.map(v => v.toFixed(2)).join(' x ').padEnd(26)
+    + ' nodeScale ' + s.map(v => v.toFixed(3)).join(',')
+    + '   -> drawn ' + sz.map((v,k) => (v*s[k]).toFixed(2)).join(' x '));
+}

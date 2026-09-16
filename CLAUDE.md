@@ -2808,6 +2808,56 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   lever and it belongs in the composite, but shipping it alongside the paint would move two
   variables at once and neither could then be judged — which is this file's own rule about the
   badge toggles.
+- **THE CAR NEVER EXPLODED BECAUSE THE PIECES LEFT THE POSTCODE (c146, `WRECK.drag`).**
+  *"It never physically exploded... it did eventually disappear."* c145 threw the debris at 7 m/s
+  with nothing to slow it and six seconds to do it in: **one second after the blast the pieces
+  were seven metres apart and by two they were off the screen.** What you actually saw was a car
+  vanishing, then an empty road, then a fade of nothing -- which is not an explosion failing to
+  fire, it is an explosion nobody was shown. The horizontal term CONVERGES now: a piece covers
+  `spread / drag` metres in TOTAL however long it is on screen (about 1.9 m) and lands.
+  **`spread * life` IS NOT HOW FAR DEBRIS GOES, AND THAT WAS THE WHOLE ARITHMETIC ERROR.** A
+  launch speed with no drag is a number that means nothing without the clock beside it.
+  **AND THE SKEW WAS REAL AND UNDER THE THRESHOLD OF BEING AN EFFECT.** At `.022` a panel wanders
+  about three centimetres, which is nothing on a car ten metres away on a phone. Doubled.
+- **THE CRUNCH WAS THE EXPLOSION SAMPLE PITCHED UP (c146).** *"It plays an explosion sound even
+  when you're just shooting it; it should only play an explosion when it explodes."* c145 built
+  the per-hit sound out of `boom` on the reasoning that a hit is a small explosion. It is not --
+  and the entire point of the final one is that it is the FIRST time you hear that file. A panel
+  going is a clang and a crack.
+- **THREE HYPOTHESES, TWO WRONG, AND THE PROBE IS WHAT KILLED THEM (c146, `JAM_PROBE`).** Before
+  touching anything I was sure it was `customProgramCacheKey` -- three reuses a compiled program
+  across materials, so a clone of `cityMat` would get the CITY's shader and none of the shatter.
+  **The vendored source says otherwise**: `customProgramCacheKey(){return this.onBeforeCompile.toString()}`,
+  and my hook stringifies differently, so the programs were always distinct. Second guess was
+  units -- if these cars were authored in centimetres, `0.022` is two hundredths of a centimetre.
+  `npm run cars` prints the bbox and the node scale: **1.89 x 4.98 x 1.42 at scale 1.0, so a
+  model unit IS a metre.** Both dead in about two minutes, neither shipped.
+  **`JAM_PROBE=tools/probe-boom.mjs npm run jam` WALKS THE WHOLE CHAIN ON A REAL CAR.** Booting
+  the real city headless is the expensive part, so `jam.mjs` hands its globals to a probe file
+  instead of running the traffic sim -- one copy of that scaffolding, not two, which is the
+  `normals.mjs` mistake avoided rather than repeated. It checks, in order: the car carries its
+  inner mesh, a wreck slot is claimed, the material is swapped off `cityMat`, the geometry is
+  tagged, the shader declares the attribute, the splice found `#include <begin_vertex>`, the
+  uniforms are attached, **and the shader's own arithmetic re-run in JS actually moves a vertex.**
+  That last one is the point: a shader that compiles and computes a zero offset looks exactly
+  like one that never ran.
+  **WHAT IT CANNOT SEE IS THE DRIVER.** There is no GPU here, so "it compiles on the device" is
+  still unverified by construction. When every link reads intact and the phone still shows
+  nothing, the remaining suspects are the numbers -- which is what it turned out to be.
+- **`npm run glsl` PRINTS THE SHADER THAT WOULD REACH THE PHONE.** Every effect in this game is a
+  string spliced into three's source, and a string is the one thing neither gate checks:
+  `check:syntax` parses the JavaScript AROUND it, `check:boot` has no GPU and never compiles one.
+  So a broken splice is invisible here and is an object that silently does not draw there.
+  **It lifts the CONSTANTS out of the file too** -- a printer with its own copy of the numbers
+  would happily print a shader the game never builds.
+- **`city.boom()` BLOWS THE NEAREST CAR, `city.boom(1)` WALKS ONE STAGE.** Four accurate shots is
+  a long way to go to look at an effect once, and a report like this one needs repeating cheaply.
+  Same rule as `city.fx('boom')` and `city.slash()`: a look-at-it decision should not need a
+  fight to reach it.
+  **And the chip carries `WRK d0.05` / `WRK B1.4`** -- the damage stage, or the blast clock. "The
+  pieces didn't move" is three bugs wearing one face from a phone: the damage never registered,
+  it registered and the shader is inert, or it worked and was too small to see. Those three
+  characters tell them apart without another round.
 - **THE CARS ARE ALREADY BROKEN UP, AND `npm run cars` IS HOW WE KNOW (c145, `WRECK`).**
   *"Shoot it once and it stops, shoot it again and the pieces of the mesh slightly skew, two or
   three and it starts on fire, shoot again and the car actually explodes. Do you think that's
