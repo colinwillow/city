@@ -1198,6 +1198,45 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **"WHY ISN'T THE MODEL UPDATING?" -- IT DID, AND THE GUN STILL LOOKED WRONG (c158, `WEAP.grip`).**
+  *"I don't understand why the model isn't updating. The blaster is not being held correctly, so
+  I corrected all the joints -- I've done this like four times now and you're telling me they're
+  exactly the same, but they're definitely not."* He was right to push back, and the git history
+  settles it rather than either of us guessing:
+      6370ce9  "fixed colin"                 -> models/chars/colin.glb CHANGED. It landed.
+      834d408  c155                          -> copied onto models/colin.glb, which the game loads
+      1477224, 4d73add  the two after it     -> **EMPTY COMMITS. Zero files.** Nothing uploaded.
+  And the joint really did move -- measured across his fix, in armature units:
+      weapon_root   t (2.99, -11.43, 2.32) -> (2.02, 2.80, 5.11)     CHANGED
+                    r  identical, to four decimal places             NOT changed
+      weapon_tip    t and r both changed
+  **SO ONE OF HIS FOUR CORRECTIONS IS LIVE AND THE OTHERS NEVER LEFT HIS MACHINE**, and what
+  landed moved the grip's POSITION and not its ROTATION. Saying "they are identical" was true of
+  the two files on disk and false about what he had been asking, and it sent him back to Blender
+  a fourth time for a problem the repo could have answered in one command.
+  **THE REAL FAULT IS THAT HE COULD NOT JUDGE IT WITHOUT AN EXPORT.** `weapFit`'s joint path read
+  `WEAP.fit.s` and threw the other six numbers away, so the ONLY way to move the gun in his hand
+  was to re-rig, export, push, wait out the cache and look. **That is the loop `city.slash()` was
+  built to end one effect over** -- *what is being matched is what the ANIMATION looks like, and
+  there is nothing to derive.* `WEAP.grip` is a live offset, rotation and scale about
+  `weapon_root`, on seven sliders in the settings panel, with `city.grip({...})` printing the line
+  to paste back. Identity by default, so it is a dial and never a correction applied behind him.
+  **`WEAP.grip` IS NOT `WEAP.fit`, AND SHARING ONE OBJECT WOULD HAVE BEEN THE `KIT.on` BUG AGAIN.**
+  `fit` belongs to the HAND fallback and carries `ry: PI/2`, which exists only because a hand
+  joint's forward is +Z while the barrel runs along -X. Applied on the joint path that constant
+  swings the gun ninety degrees off what he is looking at -- one variable, two meanings.
+  **AND THE MOUNT ITSELF MEASURES CLEAN**, which is why this is placement and not scale:
+      npm run gun   neutralised above weapon_root -> 98.1 cm, 57% of his height, PLAUSIBLE
+      npm run joints  colin tip len 0.647 vs blaster 0.571 -- 0.096 apart, and that is the MUZZLE
+  **`weapon_tip` DOES NOT MOVE THE GUN.** It is the muzzle marker: `tipAt` reads it for the flash
+  and the charge ball, and nothing about where the gun SITS comes from it. `weapon_root`'s own
+  transform on the hand is the whole placement. Worth saying out loud, because "correct the
+  joints" naturally means both and only one of them is the grip.
+  **AND ALL 51 CLIPS KEY BOTH MARKERS** -- translation, rotation and scale, 306 channels. Checked
+  rather than assumed after c151: they drive the same values the rest pose holds, so today they
+  are inert. **They are still a loaded gun**: c151 is exactly what happens when one of them
+  disagrees, and a marker that is animated cannot be corrected by editing its rest pose. If the
+  grip ever stops answering `WEAP.grip`, strip those tracks at load before looking anywhere else.
 - **WHAT A CHARACTER WEARS RIDES HIS OWN JOINTS (c157, `CHARS.list[].wear`, `wearFit`).**
   *"I added a Senegal flag model. It's just a simple plane. I rigged it to the same spine joint
   that it would go on on Moussa -- it goes along the back of his shirt, but it should be placed

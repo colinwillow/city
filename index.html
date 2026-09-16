@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c157</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c158</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c157';
+const BUILD = 'c158';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -992,6 +992,14 @@ const WEAP = {
   // barrel runs along -X in the blaster's own file -- measured, geometry -74.9..25.0 on X --
   // and a hand joint's forward is +Z, which is the quarter turn `ry` starts at.
   fit: { x: 0, y: 0, z: 0, rx: 0, ry: Math.PI / 2, rz: 0, s: 1 },
+  // AND THE NUDGE FOR WHEN THE RIG *DOES* CARRY THE JOINT (c158). *"The blaster is not being
+  // held correctly, so I corrected all the joints -- I've done this four times now."* His fix
+  // DID land and DID move `weapon_root`; what it could not do is be judged, because the only
+  // way to move the gun was another export. Identity by default -- so this is a dial and never
+  // a correction applied behind his back -- and it is in the settings panel, because where a
+  // gun sits in a hand is a LOOK-AT-IT decision and this panel is the half of the tuning that
+  // exists for those. `city.grip()` nudges it live and prints the line to keep.
+  grip: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, s: 1 },
   // THE ARMED GAIT, AND THE HOOK IS FILLED. `clip` was a name with nothing reading it, written
   // the way `GAIT.sprint` is -- and the c96 export lands the clips: six `rifle_*` animations in
   // the same commit as the weapon joint, which is not a coincidence. A man carrying a blaster
@@ -2826,6 +2834,18 @@ function fitOne(slot, bone, want, fit) {
 // it the moment it appears -- his next export needs no code change, it just stops being
 // hand-placed. Until then `WEAP.fit` is the nudge and `WEAP.len` the size, which is the only
 // honest thing to do when nothing in either file says where the grip goes.
+// `city.grip({ ry: .2 })` -- NUDGE IT AND PRINT THE LINE TO KEEP. `city.slash()`'s rule, one
+// mount along: a placement that has to be LOOKED at should not need an export to be judged, and
+// the answer is a line to paste into `WEAP.grip` rather than a number to remember.
+function gripFit(o) {
+  if (o) for (const k in o) if (k in WEAP.grip) WEAP.grip[k] = o[k];
+  weapFit();
+  const g = WEAP.grip, r = n => Math.round(n * 1000) / 1000;
+  const line = 'grip: { x: ' + r(g.x) + ', y: ' + r(g.y) + ', z: ' + r(g.z) + ', rx: ' + r(g.rx)
+    + ', ry: ' + r(g.ry) + ', rz: ' + r(g.rz) + ', s: ' + r(g.s) + ' },';
+  console.log('[grip] ' + line);
+  return line;
+}
 function weapFit() {
   const root = colin.root && colin.model ? colin.model : null;
   if (!root) return 'no skin yet';
@@ -2842,7 +2862,23 @@ function weapFit() {
       m.position.set(0, 0, 0); m.rotation.set(0, 0, 0); m.scale.setScalar(1);
       // and its own rig's transform above `weapon_root` comes off, or it is applied twice
       if (gear.blaster.fix) m.applyMatrix4(gear.blaster.fix);
-      g.position.set(0, 0, 0); g.rotation.set(0, 0, 0); g.scale.setScalar(WEAP.fit.s || 1);
+      // **AND THE NUDGE APPLIES HERE TOO (c158).** *"The blaster is not being held correctly, so
+      // I corrected all the joints -- I've done this four times now."* The joint path took
+      // `WEAP.fit.s` and threw the other six numbers away, so the ONLY way to move the gun in
+      // his hand was to re-export the rig: push, wait for the cache, look, export again. That
+      // loop is what has cost him four rounds, and it is the one `city.slash()` was built to end
+      // one effect over -- **what is being matched is what the ANIMATION looks like, and there is
+      // nothing to derive.**
+      // **`WEAP.grip`, NOT `WEAP.fit`.** They are two different mounts and they mean different
+      // things: `fit` is the HAND fallback and carries a quarter turn (`ry`) that exists only
+      // because a hand joint's forward is +Z and the barrel runs along -X. Applied on the joint
+      // path that constant would swing the gun ninety degrees off what he is looking at now --
+      // one object with two owners, which is `KIT.on`'s bug in another room. `grip` starts at
+      // identity, so this changes nothing until it is dialled. `city.grip()` prints it.
+      const f = WEAP.grip;
+      g.position.set(f.x, f.y, f.z);
+      g.rotation.set(f.rx, f.ry, f.rz);
+      g.scale.setScalar(f.s);
       if (g.parent !== gear.mount) gear.mount.add(g);
     } else if (gear.hand) fitOne(gear.blaster, gear.hand, WEAP.len, WEAP.fit);
   }
@@ -8109,6 +8145,17 @@ const OPT_ROWS = [
   ['num', 'Jet flame', () => JET.flame.len, v => { JET.flame.len = v; }, 0, 1.5, .04],
   ['num', 'Sky exposure', () => SKY.envB, v => { SKY.envB = v; }, 0, 8, .1],
   ['num', 'Aim mark ease', () => WEAP.aimEase, v => { WEAP.aimEase = v; }, .005, .2, .005],
+  // WHERE THE BLASTER SITS IN HIS HAND, ON THE PHONE. Four exports went into this and not one
+  // of them could be judged without another push, which is the loop `city.slash()` ended for the
+  // melee mark. Metres and radians, about `weapon_root`, and every one applies live.
+  ['h', 'Blaster grip'],
+  ['num', 'Grip right', () => WEAP.grip.x, v => { WEAP.grip.x = v; weapFit(); }, -.4, .4, .005],
+  ['num', 'Grip up', () => WEAP.grip.y, v => { WEAP.grip.y = v; weapFit(); }, -.4, .4, .005],
+  ['num', 'Grip forward', () => WEAP.grip.z, v => { WEAP.grip.z = v; weapFit(); }, -.4, .4, .005],
+  ['num', 'Grip pitch', () => WEAP.grip.rx, v => { WEAP.grip.rx = v; weapFit(); }, -3.15, 3.15, .02],
+  ['num', 'Grip yaw', () => WEAP.grip.ry, v => { WEAP.grip.ry = v; weapFit(); }, -3.15, 3.15, .02],
+  ['num', 'Grip roll', () => WEAP.grip.rz, v => { WEAP.grip.rz = v; weapFit(); }, -3.15, 3.15, .02],
+  ['num', 'Grip size', () => WEAP.grip.s, v => { WEAP.grip.s = v; weapFit(); }, .3, 2.5, .02],
   ['tog', 'Air kick', () => MELEE.air, v => { MELEE.air = v; }],
   ['num', 'Air kick speed', () => MELEE.airV, v => { MELEE.airV = v; }, 4, 20, .5],
   ['num', 'Sprint x', () => MOVE.sprint, v => { MOVE.sprint = v; }, 1, 4, .05],
@@ -10255,7 +10302,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { BAR, bars, barCatch, stepBar, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, snd, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, OPT, optToggle, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, jamScan, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
