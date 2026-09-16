@@ -32,6 +32,43 @@ function put(camYaw, camEl, dist, px, pz) {
   camera.updateMatrixWorld(true); camera.updateProjectionMatrix();
 }
 const deg = r => { let d = r * 180 / Math.PI; while (d > 90) d -= 180; while (d < -90) d += 180; return d; };
+// ---------- `ground`: THE MARK LIES IN THE WORLD, FLAT (c160) ----------
+// *"They're always parallel to the camera where they should be perpendicular -- looking top-down
+// at the character's head, the swipe would be parallel to the ground."* Two claims to check, and
+// the second is the handedness this file gets backwards when it is argued:
+//   1. the plane is HORIZONTAL (its normal is world up, tipped by SLASH.tilt and no more)
+//   2. the crescent's bulge -- local +X, which is the way the texture is drawn -- points along
+//      the blow
+// The SHIPPED `slashOrient` is lifted between the SLASHO markers, never restated here.
+const mo = src.match(/\/\* SLASHO:START \*\/([\s\S]*?)\/\* SLASHO:END \*\//);
+if (!mo) { console.error('SLASHO markers not found'); process.exit(1); }
+const SL = { lay: 'ground', tilt: 0 };
+const orient = new Function('SLASH', mo[1] + '\nreturn slashOrient;')(SL);
+const o = new THREE.Object3D();
+const up = new THREE.Vector3(0, 1, 0), vx = new THREE.Vector3(), vn = new THREE.Vector3();
+console.log('\nGROUND MODE -- the mark laid flat in the world\n');
+let worstN = 0, worstB = 0;
+for (const tilt of [0, .30]) {
+  SL.tilt = tilt;
+  console.log('  tilt ' + tilt.toFixed(2) + ' rad (' + (tilt * 180 / Math.PI).toFixed(0) + ' deg off flat)');
+  for (const hd of [0, Math.PI / 2, Math.PI, -Math.PI / 2, 1.0]) {
+    orient(o, hd, 0);
+    o.updateMatrixWorld(true);
+    vn.set(0, 0, 1).transformDirection(o.matrixWorld);          // the plane's normal
+    vx.set(1, 0, 0).transformDirection(o.matrixWorld);          // where the crescent bulges
+    const offUp = Math.acos(Math.min(1, Math.abs(vn.dot(up)))) * 180 / Math.PI;
+    const bear = Math.atan2(vx.x, vx.z);
+    let db = (bear - hd) * 180 / Math.PI; while (db > 180) db -= 360; while (db < -180) db += 360;
+    worstN = Math.max(worstN, Math.abs(offUp - tilt * 180 / Math.PI));
+    worstB = Math.max(worstB, Math.abs(db));
+    console.log('    blow at ' + (hd * 180 / Math.PI).toFixed(0).padStart(4) + ' deg   normal is '
+      + offUp.toFixed(1) + ' deg off world up   bulge points ' + (db >= 0 ? '+' : '') + db.toFixed(1) + ' deg off the blow');
+  }
+}
+console.log('\n  worst tilt error ' + worstN.toFixed(2) + ' deg, worst bulge error ' + worstB.toFixed(2) + ' deg');
+if (worstN > .5 || worstB > .5) { console.log('*** the flat mark is not where it says it is'); process.exit(1); }
+console.log('  flat in the world, and pointing down the blow at every bearing.');
+console.log('\n---------- `card`: the old camera-facing look, kept as a switch ----------');
 const rows = [
   ['punch straight away from the lens', 0, 0],
   ['punch away, camera 30 deg round',  .52, 0],

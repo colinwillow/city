@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c159</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c160</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c159';
+const BUILD = 'c160';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -2605,6 +2605,25 @@ const SLASH = {
   // 2.8 m alien is .57 of that body, and 1.5 on Colin is .86 of his. Half again too big, which
   // is most of what a mark "not lined up" actually looks like.
   life: .24, r: 1.19, col: '#e7f4ff', hot: '#ffe2b6', url: null, n: 6, peak: .9,
+  // **IT LIES IN THE WORLD, FLAT, NOT ON THE GLASS (c160).** *"They're always parallel to the
+  // camera where they should be perpendicular. If you were looking at a top-down view of the top
+  // of the character's head, the swipe would be parallel to the ground. Right now they just look
+  // like they're going up forward."*
+  // c91 built it as a `THREE.Sprite`, which is camera-facing BY DEFINITION -- so the crescent
+  // always lay in the screen plane and every fix after it (c153's projected roll, and mine
+  // before that) was choosing which way a mark lay ON THE GLASS. That is the wrong axis to be
+  // arguing about: a horizontal swing is a horizontal arc IN THE WORLD, seen in perspective,
+  // and no amount of rolling a billboard produces one.
+  // **AND c91'S OWN LESSON WAS HALF RIGHT.** Its note says a `RingGeometry` turned by his
+  // heading puts the NORMAL along the swing, which is edge-on and reads as nothing -- true, and
+  // the answer to it was never "make it a billboard", it was **lay it FLAT**: normal along world
+  // UP, yawed about Y so the crescent's bulge points where the fist is going.
+  // `card` keeps the old one, because a look is his call and nothing here is deleted.
+  lay: 'ground',    // 'ground' = flat in the world  |  'card' = the camera-facing sprite
+  // AND HOW FAR OFF HORIZONTAL IT IS TIPPED. The play camera sits about 12 degrees above the
+  // mark, so a perfectly flat card is foreshortened to a fifth of its height -- a few degrees of
+  // tip is what keeps it reading as an arc rather than as a line, without standing it up again.
+  tilt: .30,
   flat: .05,       // below this much NDC travel the blow has no direction on screen
   spread: 1.1,     // and how far the roll is scattered when it does not
   // Which way the mark lies on screen, per clip. Radians, 0 is horizontal. Matched by eye to
@@ -2705,27 +2724,59 @@ function slashScreenRoll(x, y, z, dx, dz, roll) {
   return tl >= sl ? Math.atan2(ty, tx) + roll
                   : Math.atan2(sy, sx) + roll;
 }
-function slashArc(x, y, z, roll, size, hot) {
+// `h` IS THE WORLD HEADING OF THE BLOW and `roll` the per-clip offset about it. The mark is a
+// PLANE, not a sprite: laid flat (`rotation.x = -PI/2`, normal along world up) and yawed so the
+// crescent -- which is drawn bulging along +X in the canvas -- points where the fist is going.
+// With Euler `YXZ` the X term lays it down first and the Y term then swings it round, which is
+// the same ordering the title card's board needs and for the same reason.
+// **THE YAW IS `h - PI/2`, AND THAT IS ARITHMETIC RATHER THAN A GUESS.** Laid flat, the card's
+// local +X maps to world +X; `Ry(a)` then takes it to `(cos a, 0, -sin a)`, and forward here is
+// `(sin h, cos h)`. Solve and `a = h - PI/2`. Written down because this file gets handedness
+// backwards half the time when it is argued instead of solved.
+// WHICH ANGLE THE MARK WANTS, so no caller has to know which mode it is in. The `ground` mark
+// is placed by the world heading and the offset is a yaw about it; the `card` mark still wants
+// `slashScreenRoll`'s projected screen angle. One function, one place that knows.
+function slashAim(x, y, z, hx, hz, roll) {
+  return SLASH.lay === 'card' ? slashScreenRoll(x, y, z, hx, hz, roll) : roll;
+}
+/* SLASHO:START */
+// LAID FLAT AND YAWED ONTO THE BLOW. Its own function so `npm run slash` measures the SHIPPED
+// arithmetic rather than a restatement of it -- the handedness here is exactly the kind this
+// file gets backwards half the time when it is argued instead of solved.
+function slashOrient(m, h, roll) {
+  m.rotation.order = 'YXZ';
+  m.rotation.set(-Math.PI / 2 + SLASH.tilt, h - Math.PI / 2 + roll, 0);
+}
+/* SLASHO:END */
+function slashArc(x, y, z, h, roll, size, hot) {
   if (!_slashPool) {
     _slashPool = [];
     const tex = slashTex();
+    const geo = new THREE.PlaneGeometry(1, 1);
     for (let i = 0; i < SLASH.n; i++) {
-      const m = new THREE.Sprite(new THREE.SpriteMaterial({
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
         map: tex, color: new THREE.Color(SLASH.col), transparent: true, opacity: 0,
+        side: THREE.DoubleSide,        // it is flat in the world now, so it has a back
         // NOT ADDITIVE. Additive over a lit street has nowhere to go but white: the mark
         // saturates, clears `POST.bloomTh` and comes back out of the bloom chain as a glowing
         // lump. A drawn mark sits ON the picture at its own opacity, which is normal blending,
         // and that is also what stops it lighting the road it is drawn over.
         depthWrite: false, fog: false }));
       m.visible = false; m.renderOrder = 3; m.userData.noHole = 1; m.frustumCulled = false;
+      m.rotation.order = 'YXZ';
       scene.add(m); _slashPool.push(m);
     }
   }
   const m = _slashPool.find(q => !q.visible) || _slashPool[0];
   m.visible = true; m.userData.t = 0; m.userData.size = size || SLASH.r;
   m.material.color.set(hot ? SLASH.hot : SLASH.col);
-  m.material.rotation = roll;                    // already screen-relative; see slashScreenRoll
   m.position.set(x, y, z);
+  if (SLASH.lay === 'card') {
+    // THE OLD LOOK, KEPT: billboard it and roll it in screen space, which is what a `Sprite`
+    // did for free. `roll` is the screen angle there -- see `slashScreenRoll`.
+    m.quaternion.copy(camera.quaternion);
+    m.rotateZ(roll);
+  } else slashOrient(m, h, roll);
   m.scale.setScalar((size || SLASH.r) * .6);
 }
 // `city.slash({roll: .3, r: .9, y: .6, size: 1.5})` -- FIRE ONE AND LOOK AT IT.
@@ -2744,10 +2795,11 @@ function slashTry(o) {
   const R = MELEE.fxR * COLIN_HEIGHT, hx = Math.sin(h), hz = Math.cos(h);
   const nm = o.clip || 'melee_punch_01';
   const tx = p.pos.x + hx * R, ty = p.pos.y + COLIN_HEIGHT * MELEE.fxY, tz = p.pos.z + hz * R;
-  slashArc(tx, ty, tz, slashScreenRoll(tx, ty, tz, hx, hz, SLASH.roll[nm] !== undefined ? SLASH.roll[nm] : -.4),
+  slashArc(tx, ty, tz, h, slashAim(tx, ty, tz, hx, hz, SLASH.roll[nm] !== undefined ? SLASH.roll[nm] : -.4),
     o.size || .94, !!o.hot);
   return { clip: nm, roll: SLASH.roll[nm], 'MELEE.fxR': MELEE.fxR, 'MELEE.fxY': MELEE.fxY,
-           note: 'roll is SCREEN-space radians, 0 = horizontal. fxR/fxY are fractions of his height.' };
+           lay: SLASH.lay, tilt: SLASH.tilt,
+           note: "in 'ground' the roll is a YAW about the blow; in 'card' it is screen-space. fxR/fxY are fractions of his height." };
 }
 function stepSlash(dt) {
   if (!_slashPool) return;
@@ -8172,6 +8224,8 @@ const OPT_ROWS = [
   ['seg', 'Effect style', () => FX.style, v => { FX.style = v; }, [['cards', 'Cards'], ['glow', 'Glow'], ['both', 'Both']]],
   ['seg', 'Muzzle flash', () => WEAP.flash, v => { WEAP.flash = v; }, [['plasma', 'Plasma'], ['tight', 'Tight'], ['card', 'Card'], ['both', 'Both']]],
   ['seg', 'Jet exhaust', () => JET.look, v => { JET.look = v; }, [['flame', 'Flame'], ['cards', 'Cards'], ['glow', 'Glow'], ['both', 'Both']]],
+  ['seg', 'Slash mark', () => SLASH.lay, v => { SLASH.lay = v; }, [['ground', 'Flat'], ['card', 'Card']]],
+  ['num', 'Slash tilt', () => SLASH.tilt, v => { SLASH.tilt = v; }, 0, 1.2, .02],
   ['num', 'Impact size', () => FX.impact, v => { FX.impact = v; }, .2, 1.5, .05],
   ['num', 'Jet flame width', () => JET.flame.wide, v => { JET.flame.wide = v; }, .02, .4, .005],
   ['num', 'Card fps', () => FX.fps, v => { FX.fps = v; }, 4, 24, 1],
@@ -9057,12 +9111,12 @@ function stepMelee(dt, ride) {
     const y = p.pos.y + COLIN_HEIGHT * (p.mel === MELEE.slide ? .26 : MELEE.fxY);
     const roll = (SLASH.roll[p.mel] !== undefined ? SLASH.roll[p.mel] : -.4) + (Math.random() - .5) * .24;
     const sx = p.pos.x + hx * R, sz = p.pos.z + hz * R;
-    slashArc(sx, y, sz, slashScreenRoll(sx, y, sz, hx, hz, roll),
+    slashArc(sx, y, sz, p.melH, slashAim(sx, y, sz, hx, hz, roll),
       p.mel === MELEE.slide ? 1.13 : .94, p.mel === MELEE.chain[2]);
     // A second, thinner, a beat behind and turned further: one line is a line, two is a slash.
     if (p.mel === MELEE.chain[2]) {
       const bx = p.pos.x + hx * R * 1.05, bz = p.pos.z + hz * R * 1.05;
-      slashArc(bx, y + .2, bz, slashScreenRoll(bx, y + .2, bz, hx, hz, roll - .32), .81, 1);
+      slashArc(bx, y + .2, bz, p.melH, slashAim(bx, y + .2, bz, hx, hz, roll - .32), .81, 1);
     }
     // AND THE BLOW LANDS ON THE SAME FRAME THE MARK IS DRAWN ON. They are one event; firing
     // the damage on the input instead puts the consequence a third of a second before the

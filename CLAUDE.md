@@ -1198,6 +1198,41 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE SLASH MARK LIES IN THE WORLD, FLAT -- AND FOR FOUR BUILDS I WAS ARGUING ABOUT THE WRONG
+  AXIS (c160, `SLASH.lay`, `slashOrient`).** *"They're always parallel to the camera where they
+  should be perpendicular. If you were looking at a top-down view of the top of the character's
+  head, the swipe would be parallel to the ground. Right now they just look like they're going up
+  forward."*
+  **c91 BUILT IT AS A `THREE.Sprite`, WHICH IS CAMERA-FACING BY DEFINITION.** So the crescent
+  always lay in the SCREEN plane, and every fix after it -- c153's projected roll, c91's own
+  per-clip constants, and the tool I wrote to measure them -- was choosing which way a mark lay
+  **on the glass**. That is the wrong question. A horizontal swing is a horizontal arc **in the
+  world**, seen in perspective, and no amount of rolling a billboard will ever produce one.
+  Three rounds of this were spent making a flat sticker point in a better direction.
+  **AND c91'S OWN LESSON WAS HALF RIGHT, WHICH IS WHY IT SURVIVED SO LONG.** Its note says a
+  `RingGeometry` turned by his heading puts the NORMAL along the swing -- edge-on, reads as
+  nothing -- and that is true. The answer to it was never *make it a billboard*; it was **lay it
+  FLAT**: normal along world UP, yawed about Y so the crescent's bulge points where the fist is
+  going. It is a `Mesh` on a `PlaneGeometry` now, not a sprite.
+  **THE YAW IS `h - PI/2`, SOLVED RATHER THAN GUESSED.** Laid flat, the card's local +X maps to
+  world +X; `Ry(a)` takes it to `(cos a, 0, -sin a)`, and forward in this game is `(sin h, cos h)`.
+  Solve: `cos a = sin h`, `-sin a = cos h`, so `a = h - PI/2`. Written down because this file gets
+  handedness backwards half the time when it is argued, and `npm run slash` now confirms it
+  against the shipped `slashOrient`:
+      normal 0.0 deg off world up at every bearing; bulge 0.00 deg off the blow
+      at `tilt` .30 the normal reads 17.2 deg, which is the tip and nothing else
+  **`SLASH.tilt` EXISTS BECAUSE THE PLAY CAMERA IS ONLY 12 DEGREES ABOVE THE MARK.** Perfectly
+  flat, the arc foreshortens to about a fifth of its height and reads as a line; a few degrees of
+  tip keeps it an arc without standing it back up. It is a dial in the settings panel, beside a
+  `Flat | Card` switch -- a look is his call and nothing is deleted, which is `FX.style`'s rule.
+  **AND `slashAim` IS WHY NO CALLER KNOWS WHICH MODE IT IS IN.** The flat mark is placed by the
+  world heading and its per-clip `roll` becomes a YAW about the blow; the card mark still wants
+  `slashScreenRoll`'s projected screen angle. One function decides, in one place, so the three
+  call sites are identical in both modes.
+  **The material had to stay tone-mapped.** A `SpriteMaterial` tone-maps by default and so does a
+  `MeshBasicMaterial`; setting `toneMapped: false` on the way past would have made this a change
+  of BRIGHTNESS as well as of orientation, and then neither could be judged -- the badge cycle's
+  own rule about moving one variable at a time.
 - **HE SKATED OUT OF EVERY TACKLE, AND `accFall` WAS GATING THE BRAKES (c159).** *"There's a
   thing that happens when I melee -- if he slides it gives him a bit of velocity, and then when
   I'm running he's sliding around like he's ice-skating afterwards. I don't mind him getting a
