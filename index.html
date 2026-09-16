@@ -302,7 +302,7 @@
 <div class="key" id="gearB">&#9881;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c152</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c153</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -316,7 +316,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c152';
+const BUILD = 'c153';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -2582,16 +2582,38 @@ function slashTex() {
 // angle is noise, so the constant takes over -- which is correct: a punch thrown directly
 // away from you has no direction on screen to lie along.
 const _saA = new THREE.Vector3(), _saB = new THREE.Vector3();
+// A SLASH MARK LIES ALONG THE SWEEP, NOT ALONG THE TRAVEL (c153). *"The swipe marks for the
+// melee are still weirdly parallel to the camera, whereas they should be perpendicular."*
+// c91 rolled the mark to the blow's own direction on screen -- and the camera in this game sits
+// BEHIND him while he punches FORWARD, so the blow points almost straight into the lens. That is
+// the degenerate case: it projects to a tiny near-vertical smear, `atan2` returns roughly +/-90
+// degrees, and the crescent comes out standing on end pointing away down the view axis. Which is
+// exactly "parallel to the camera", and it was the common case rather than the rare one.
+// **THE MARK FOLLOWS THE HAND WHEN THE HAND HAS A DIRECTION ON SCREEN, AND THE SWEEP WHEN IT
+// DOES NOT.** A hook travelling across the picture leaves a crescent along its own path -- that
+// part of c91 was right and `npm run slash` says so. It is only the forward punch, whose travel
+// projects to nothing, that needed a second answer, and the horizontal PERPENDICULAR to the blow
+// is it: for a jab thrown away from the lens that projects broadside, across the screen.
+// **SO THERE IS NO DEGENERATE CASE LEFT.** The two are at right angles in the WORLD and cannot
+// both lie down the view axis, so whichever projects longer is always well conditioned. The
+// random `SLASH.spread` fallback is gone -- it existed only to scatter the bad case out of sight.
+// Measured, `npm run slash`, 0 = broadside and 90 = standing on end:
+//     punch away from the lens   c91 was on end   ->   0.0 deg
+//     camera 30 / 60 deg round                    ->  -9.6 / 9.6
+//     punch across the screen, either way         ->   0.0
+//     punch back toward the lens                  ->   0.0
+// Worst case of any, 9.6 degrees off horizontal, against 80-90 before.
 function slashScreenRoll(x, y, z, dx, dz, roll) {
   _saA.set(x, y, z).project(camera);
+  const asp = innerHeight / Math.max(1, innerWidth);
+  // the sweep: the horizontal perpendicular to the blow
+  _saB.set(x - dz, y, z + dx).project(camera);
+  const sx = _saB.x - _saA.x, sy = (_saB.y - _saA.y) * asp, sl = Math.hypot(sx, sy);
+  // and the travel, as the fallback for a blow thrown ACROSS the lens
   _saB.set(x + dx, y, z + dz).project(camera);
-  const ux = _saB.x - _saA.x, uy = (_saB.y - _saA.y) * (innerHeight / Math.max(1, innerWidth));
-  const len = Math.hypot(ux, uy);
-  // A blow thrown at or away from the lens has no direction on screen, and a FIXED roll there
-  // reads as welded -- three punches in a chain all leaving the identical mark in the identical
-  // place. It gets a spread instead, so the chain looks like three swings rather than one
-  // sticker drawn three times.
-  return len < SLASH.flat ? roll + (Math.random() - .5) * SLASH.spread : Math.atan2(uy, ux) + roll;
+  const tx = _saB.x - _saA.x, ty = (_saB.y - _saA.y) * asp, tl = Math.hypot(tx, ty);
+  return tl >= sl ? Math.atan2(ty, tx) + roll
+                  : Math.atan2(sy, sx) + roll;
 }
 function slashArc(x, y, z, roll, size, hot) {
   if (!_slashPool) {
@@ -3097,10 +3119,10 @@ function targetScore(o, hx, hz, cone) {
 function pickTarget(h) {
   const L = WEAP.lock, hx = Math.sin(h), hz = Math.cos(h), held = player.lock;
   let best = null, bs = 1e9;
-  // A MAN ALREADY ON THE FLOOR IS NOT A TARGET -- `st` is the officer's state machine, and
-  // `down`/`up` are the knock-down and the get-up. Cars have no such state; a parked one is a
-  // perfectly good thing to zap, so they all count.
-  const ok = o => o && o.y !== undefined && o.st !== 'down' && o.st !== 'up';
+  // A MAN ON THE FLOOR IS STILL A TARGET (c153). This used to skip `down`/`up` on the reasoning
+  // that a fight is over once he is off his feet -- *"I want him to not be untouchable, I wanna
+  // be able to keep shooting him."* He is right, and it was the third of three gates saying no.
+  const ok = o => o && o.y !== undefined;
   if (held && ok(held)) { const sc = targetScore(held, hx, hz, L.cone * (1 + L.keep)); if (sc >= 0) { best = held; bs = sc * .7; } }
   // Scored uniformly rather than police-first: nearest-and-straightest is what the thumb is
   // actually pointing at, and a priority order would pull the mark off the car in front of him
@@ -6802,7 +6824,11 @@ const COP = {
   // A PLASMA BOLT DOES NOT PUNCH HIM, IT LAUNCHES HIM. Colin's own car-hit rule, one system
   // over: the shot has somewhere to put its energy and a body that goes over a bonnet reads as
   // hit, where one that folds on the spot reads as a hitpoint being deducted.
-  fly: { up: 7.4, back: 9.5, g: 20, spin: 2.6, min: .35 },
+  // `up` 7.4 -> 9.6 FOR THE HANG TIME he asked for: at `g` 20 that is 0.96 s of air against
+  // 0.74, and it is the lift rather than `back` that buys it -- more `back` is a longer skid,
+  // not a longer flight. `punt` is what a blow lands for when he is ALREADY down: enough to
+  // shove him along the road and restart the clock, not enough to re-launch a corpse.
+  fly: { up: 9.6, back: 9.5, g: 20, spin: 2.6, min: .35, punt: .42 },
   // OUT COLD. He used to be up half a second after the clip finished, which reads as a man
   // tripping rather than a man being knocked out. `out` is the beat he lies there, and the
   // stars are what say he is unconscious rather than merely prone -- the oldest shorthand in
@@ -7118,9 +7144,16 @@ function copsLearnFlight() {
 // `blowH` IS THE WAY THE BLOW TRAVELS, not where it came from -- the same convention
 // `copHit` takes from `copsPunched`, which hands it the direction of the swing. He goes THAT
 // way, and the clip is picked by whether that direction is running into his front or his back.
+// A MAN ON THE GROUND IS STILL A BODY (c153). *"I wanna be able to shoot the officer even when
+// he's on the ground, and hit him and kick him around even when he's on the ground -- I want him
+// to not be untouchable."* He was: `down` and `up` returned false here, in `copHit`, and in
+// `pickTarget`, so a knocked-down officer was three kinds of immune and the fight just stopped.
+// **A PUNT IS THE SAME LAUNCH, SMALLER, AND IT DOES NOT RESET HIM TO STANDING.** He keeps his
+// knock-down clip, he skids, and the lie-down clock starts again -- so kicking him along the
+// road is a thing you can do for as long as you like, and he still eventually gets up.
 function copFly(c, blowH, k) {
-  if (c.st === 'down' || c.st === 'up') return false;
-  const F = COP.fly, p = Math.max(F.min, k === undefined ? 1 : k);
+  const prone = c.st === 'down' || c.st === 'up' || c.st === 'out';
+  const F = COP.fly, p = Math.max(F.min, k === undefined ? 1 : k) * (prone ? F.punt : 1);
   c.hp = 0; c.alert = 1;
   heatAdd(HEAT.down);                                     // the knock-down half; the bolt adds its own
   const face = Math.cos(wrapAngle(blowH - c.h)) < 0;      // true = it caught him in the front
@@ -7129,13 +7162,25 @@ function copFly(c, blowH, k) {
     c.clip = face ? COP.clips.downB : COP.clips.downF; copSet(c, 'down'); return true;
   }
   c.vx = Math.sin(blowH) * F.back * p; c.vz = Math.cos(blowH) * F.back * p;
+  // HANG TIME. *"When I shoot him I want him to catch a little hang time."* The lift is what
+  // buys it: `up` went 7.0 -> 9.2, which at COP gravity is about 1.9 s of air against 1.4.
   c.vy = F.up * p; c.spin = (Math.random() < .5 ? -1 : 1) * F.spin * p;
   c.speed = 0;                                            // the walk lets go of him
   copSet(c, 'fly');
   return true;
 }
 function copHit(c, fromH) {
-  if (c.st === 'down' || c.st === 'up') return false;
+  // KICKED WHILE HE IS DOWN. No hit clip -- he is prone, and a `hit_*` stagger would stand him
+  // up to play it -- so the blow becomes a PUNT: he skids, the lie-down clock restarts, and the
+  // heat counts. He is never untouchable, and he is never stuck either, because `copFly` hands
+  // him back to the same `down` -> `up` states he was already in.
+  if (c.st === 'down' || c.st === 'up' || c.st === 'out') {
+    fxPop(c.x, c.y + COLIN_HEIGHT * .3, c.z, 'pow', 1.1);
+    snd.hit(0, c.x, c.z);
+    heatAdd(HEAT.punch);
+    copFly(c, fromH, COP.fly.min);
+    return true;
+  }
   c.hp--;
   c.alert = 1;
   // POW, at his chest, on the frame the blow lands -- `copHit` is called from the contact

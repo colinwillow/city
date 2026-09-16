@@ -2209,6 +2209,40 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   punch thrown directly away from you has no direction on screen to lie along, and a FIXED roll
   there reads as welded: three punches in a chain leaving the identical mark in the identical
   place.
+- **THE MELEE MARK STOOD ON END, AND IT WAS THE COMMON CASE (c153, `npm run slash`).** *"The
+  swipe marks are still weirdly parallel to the camera, whereas they should be perpendicular."*
+  c91 rolled the mark to the BLOW'S own direction on screen -- and the camera in this game sits
+  BEHIND him while he punches FORWARD, so the blow points almost straight into the lens. That is
+  the degenerate branch: it projects to a tiny near-vertical smear, `atan2` returns about +/-90
+  degrees, and the crescent comes out standing on end pointing away down the view axis. **The
+  case c91 treated as rare is the one that happens every time.**
+  **THE MARK FOLLOWS THE HAND WHEN THE HAND HAS A DIRECTION ON SCREEN, AND THE SWEEP WHEN IT DOES
+  NOT.** A hook travelling across the picture does leave a crescent along its own path -- that
+  half of c91 was right. Only the forward punch needed a second answer, and the horizontal
+  PERPENDICULAR to the blow is it. **The two are at right angles in the WORLD and cannot both lie
+  down the view axis**, so whichever projects longer is always well conditioned and there is no
+  degenerate case left. The random `SLASH.spread` fallback is gone: it existed only to scatter
+  the bad case out of sight.
+  **`npm run slash` PUTS A REAL CAMERA BEHIND HIM AND READS THE ANGLE**, 0 = broadside and
+  90 = on end. It also caught my FIRST fix, which flipped the rule the other way and made every
+  sideways hook stand on end instead -- traded one broken case for another, and I would have
+  shipped it. Third time this mark has been wrong and the first time it was measured:
+      punch away from the lens    c91 stood on end   ->   0.0 deg
+      camera 30 / 60 deg round                       ->  -9.6 / 9.6
+      punch across the screen, either way            ->   0.0
+      worst case of any  9.6 deg, against 80-90 before
+- **A MAN ON THE GROUND IS STILL A BODY (c153).** *"I wanna be able to shoot the officer even
+  when he's on the ground, and hit him and kick him around -- I want him to not be untouchable."*
+  He was untouchable in **three** separate places: `copFly`, `copHit` and `pickTarget` all
+  returned early on `down`/`up`, so a knocked-down officer could not be shot, punched or even
+  locked onto, and the fight simply stopped.
+  **A BLOW ON A PRONE MAN IS A PUNT, NOT A STAGGER.** No `hit_*` clip -- that would stand him up
+  to play it -- so it reuses `copFly` at `COP.fly.punt`: he skids, keeps his knock-down pose, and
+  the lie-down clock restarts, which means kicking him along the road works for as long as you
+  like and he still eventually gets up. Nothing new was invented; the existing `down` -> `up`
+  states carry it, which is the same reason the bolt's knock-down reused the car's.
+  **AND THE HANG TIME IS `fly.up`, NOT `fly.back`.** 7.4 -> 9.6, which at `fly.g` 20 is 0.96 s of
+  air against 0.74. More `back` is a longer skid, not a longer flight.
 - **AND THE SIZES NEEDED THE .625 TOO, WHICH c91 FORGOT.** `SLASH.r` is a LENGTH IN WORLD
   UNITS, so copying Plutopia's 1.9 verbatim put a 2 m crescent beside a 1.75 m man. Its 1.6 is
   .57 of its 2.8 m alien; 1.5 on Colin is .86 of him — **half again too big**, which is most of
