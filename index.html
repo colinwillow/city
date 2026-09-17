@@ -255,9 +255,19 @@
   #map.open{width:min(86vw,86vh);height:min(86vw,86vh);border-radius:18px;
     top:50%;right:50%;transform:translate(50%,-50%);border-color:rgba(157,247,255,.55);
     box-shadow:0 10px 50px rgba(0,0,0,.6)}
-  #mapScrim{position:fixed;inset:0;z-index:3;background:rgba(6,10,24,.55);backdrop-filter:blur(2px);
-    -webkit-backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .22s}
-  #mapScrim.on{opacity:1;pointer-events:auto}
+  /* **A FULL-SCREEN `backdrop-filter` THAT IS ALWAYS IN THE DOCUMENT IS ALWAYS PAID FOR (c188).**
+     c186 shipped this scrim with the blur on the BASE rule and only the opacity on `.on`, which
+     reads as free and is not: WebKit gives any element with a backdrop-filter its own compositing
+     layer and captures the backdrop behind it, and `opacity: 0` does not reliably stand that
+     down. A full-viewport blur layer over a full-viewport WebGL canvas, held for the whole
+     session, is exactly the kind of extra surface that tips a phone already at its ceiling on
+     the title card (c135) -- and iOS does not throw, it kills the tab, which comes back as the
+     game reloading. The blur lives on `.on` now and the element is `visibility: hidden` while
+     it is closed, so there is no layer at all until the map is actually open. */
+  #mapScrim{position:fixed;inset:0;z-index:3;background:rgba(6,10,24,.55);
+    opacity:0;visibility:hidden;pointer-events:none;transition:opacity .22s,visibility 0s .22s}
+  #mapScrim.on{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .22s;
+    backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
   #mapHint{position:fixed;left:50%;transform:translateX(-50%);z-index:5;pointer-events:none;
     bottom:calc(6vh + env(safe-area-inset-bottom));opacity:0;transition:opacity .22s;
     font:600 11px/1.3 var(--ui);letter-spacing:.09em;text-transform:uppercase;color:var(--ink);text-align:center}
@@ -366,7 +376,7 @@
 <div id="mapScrim"></div>
 <canvas id="map" hidden></canvas>
 <div id="mapHint">tap the map to drop a waypoint &middot; tap outside to close</div>
-<div class="chip" id="build"><b id="buildN">c187</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c188</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -380,7 +390,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c187';
+const BUILD = 'c188';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -5302,6 +5312,9 @@ function missing() {
   if (!colin.ready) m += ' · NO COLIN GLB';
   // A HOLE IN THE WORLD, WHICH IS WHAT c141 SHIPPED AND COULD NOT SAY.
   if (CITY.lost) m += ' · LOST ' + CITY.lost + ' CHUNKS';
+  // AND A BOOT STEP THAT THREW (c188). It no longer takes the card down with it, so it has to
+  // say so somewhere -- a feature silently absent is the thing every other line here exists for.
+  if (BOOTFAIL.length) m += ' · BOOT FAIL ' + BOOTFAIL.join('+');
   // AND WHETHER THE COLLIDER VIEW IS ON. Asked for three times, so "did the toggle take" must
   // not be a thing he has to infer from whether wire boxes appeared -- if it says COLLIDERS and
   // he still sees none, that is a different bug from the switch not working.
@@ -6360,7 +6373,7 @@ function stepTraffic(dt) {
 // asset that is first on the wire and the first thing anybody looks at. `png` is the fallback
 // and it is worth the two lines: a phone that cannot decode WebP would otherwise show a blank
 // card for the whole load, and "blank" is indistinguishable from a bug.
-const BOOT = { art: 'images/splash_screen_01.webp', png: 'images/splash_screen_01.png', min: 1.5, lit: 0 };
+const BOOT = { art: 'images/splash_screen_01.webp', png: 'images/splash_screen_01.png', min: 1.5, lit: 0, watch: 20, every: 4 };
 // HIS WORDMARK. `shredworld_title_01.png` is the other cut of it -- `city.TITLE.art` and a
 // reload swaps them, or set it here. Loaded through `A()` like everything else, so repainting
 // it under the same filename actually arrives on a phone that has already seen the old one.
@@ -6430,6 +6443,34 @@ const setBoot = (t, p) => {
   PROG.at = Math.max(PROG.at, Math.max(0, Math.min(1, p)));   // never backwards: a bar that retreats reads as a failure
   bootBar.style.width = (PROG.at * 100).toFixed(0) + '%';
 };
+// **A BOOT CARD THAT SITS THERE HAS TO SAY WHERE IT GOT TO (c188).** *"It's stuck on the
+// loading screen."* That is the whole report, and it is the whole problem: this file has THREE
+// ways to sit on that card -- a fetch that never settles, a throw caught by the IIFE, and a tab
+// iOS killed and reloaded -- and from where he is standing all three are one picture. Every gate
+// and every harness passes the boot, so the next report has to carry more than the sentence.
+// It writes how many files are done and the label the last `setBoot` was given, so "stuck" stops
+// being one word. It never overwrites `bootAsk`'s own countdown, which is a message with
+// an action attached and outranks this one. Same rule as `missing()` in the fps chip: put the
+// thing that tells the cases apart where he can see it, because a console is invisible on a phone.
+// AND ONE STEP OF THE BOOT MUST NOT BE ABLE TO KILL THE WHOLE BOOT (c188). Every line between
+// `buildCity` and `ready = true` used to sit bare inside the IIFE, so a throw in the LADDERS,
+// the bars, the cash, the HUD gutter or the map took the card down with it and the game was
+// unreachable -- for a feature none of which the game needs to be playable. `buildCity` and
+// `buildColin` are the two there is no game without, and they already wait; everything else is
+// a thing that can simply be absent, which is `loadGLB`'s own split between "not in the repo"
+// and "the network went away", one level up. A step that fails names itself in the chip.
+const BOOTFAIL = [];
+function bootStep(name, fn) {
+  try { fn(); } catch (e) { BOOTFAIL.push(name); console.warn('[boot] ' + name + ' failed', e); }
+}
+const BOOTTAG = 'still loading';
+setTimeout(function bootWatch() {
+  if (ready) return;
+  const cur = bootErr.textContent;
+  if (!cur || cur.indexOf(BOOTTAG) === 0)
+    bootErr.textContent = BOOTTAG + ' \u00b7 ' + PROG.done + '/' + PROG.total + ' files \u00b7 ' + (bootMsg.textContent || '?');
+  setTimeout(bootWatch, BOOT.every * 1000);
+}, BOOT.watch * 1000);
 // HOW MANY GOES A FILE GETS, AND WHAT A DEAD ONE COSTS.
 const LOADT = { tries: 3, wait: 1.2, again: 8, rounds: 4 };
 const draco = new DRACOLoader(); draco.setDecoderPath('vendor/draco/'); draco.setDecoderConfig({ type: 'wasm' });
@@ -12529,12 +12570,11 @@ frame();
     // NOT `weapFit()` HERE. Colin has not loaded yet at this point -- he is three awaits
     // further down -- so there is no hand to hang anything on. `wear` calls `gearRehome` for
     // the first skin and for every change after it, which is the one place that knows.
-    buildCity(city, ramps);
-    buildLadders();
-    barsFrom();       // after the solids exist: a bar IS one of them
-    barDraw();
-    buildCash();      // after the collider: every strap's height is read off the ground
-    if (copGlb) buildCops(copGlb, gunGlb);
+    buildCity(city, ramps);                                   // no city, no game: this one may throw
+    bootStep('ladders', buildLadders);
+    bootStep('bars', () => { barsFrom(); barDraw(); });        // after the solids exist: a bar IS one of them
+    bootStep('cash', buildCash);                               // after the collider: a strap's height is read off the ground
+    if (copGlb) bootStep('police', () => buildCops(copGlb, gunGlb));
     {
       const got = [];
       for (const u of CLOUDS.urls) { try { got.push(await loadGLB(u, 'loading the sky')); } catch (e) { /* that one is not here */ } }
@@ -12568,13 +12608,11 @@ frame();
     }
     // AND THE OFFICERS BORROW HIS AIR CLIPS, here rather than in `buildCops` -- they are built
     // three awaits earlier and `colin.clips` does not exist yet when they are.
-    copsLearnFlight();
+    bootStep('cop flight', copsLearnFlight);
     const sg = groundAt(player.pos.x, player.pos.z, 60, 0);
     player.pos.y = sg.hit ? sg.floor : hmAt(player.pos.x, player.pos.z); player.safe.copy(player.pos);
-    hudGutter();                 // the chip may have whatever the key row is not using
-  mapStart();
-  marksLoad();                 // his own points, before the base canvas is drawn from them
-    buildMap();
+    bootStep('hud', hudGutter);  // the chip may have whatever the key row is not using
+    bootStep('map', () => { mapStart(); marksLoad(); buildMap(); });   // his own points first: the canvas is drawn from them
     // AFTER the collider exists, because it is what the search reads.
     try { titleAimClear(); } catch (e) { console.warn('[title] aim search failed', e); }
     ready = true;

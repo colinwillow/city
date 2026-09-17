@@ -1198,6 +1198,48 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **"IT'S STUCK ON THE LOADING SCREEN" -- AND EVERY GATE AND EVERY HARNESS PASSES THE BOOT (c188).**
+  That sentence is the whole report, and this file has **three** ways to produce it that are one
+  picture from where he is standing: a fetch that never settles, a throw the IIFE catches, and a
+  tab iOS killed that came back as a reload (c133's own finding). Measured before touching
+  anything, on the shipped c187 tree:
+      npm run check              both gates pass -- the module evaluates and `init()` runs
+      npm run jam                39196 collider triangles, 96 chunks, 2808 statics, 489 tiles,
+                                 170 cars, 7 ladders, 67 bars, 26 straps -- the real city, built
+      npm run title              **ready: true** -- `init()` runs to its end with a real fetch
+      every referenced asset     on disk; the ASSETS hashes are all current
+      every loop added c185-c187 bounded; `LOADT` is 3 tries then 4 rounds, not `for(;;)`
+  **So the cause is not reproducible here and is not claimed to be found.** What follows is one
+  candidate with a real mechanism, plus two changes that make the NEXT report actionable -- which
+  is the honest shape of this and is worth more than a fourth guess shipped as a fix.
+  **THE CANDIDATE IS c186's MAP SCRIM, AND IT IS THE ONE THING THAT ONLY EXISTS ON A DEVICE.**
+      #mapScrim{position:fixed;inset:0;backdrop-filter:blur(2px);opacity:0;...}
+  The blur was on the BASE rule and only the opacity on `.on`, which reads as free and is not:
+  **WebKit gives any element carrying a `backdrop-filter` its own compositing layer and captures
+  the backdrop behind it, and `opacity: 0` does not reliably stand that down.** That is a
+  full-viewport blur surface over a full-viewport WebGL canvas, held for the entire session --
+  and the title card is already the heaviest moment in the game (c135: every skin loaded, the
+  ship clone, `lineFill` pulling the next one down). iOS does not throw when that tips over, it
+  kills the tab, and the tab comes back as the game reloading. **No harness in this repo has a
+  compositor**, so this is invisible to all of them by construction, which is exactly the shape
+  of a bug that survives a clean sweep. The blur lives on `.on` now and the element is
+  `visibility: hidden` while it is closed, so there is no layer at all until the map is open.
+  **AND THE CARD SAYS WHERE IT GOT TO (`BOOT.watch`, `BOOTTAG`).** After 20 s with `ready` still
+  false it writes the file count and the label the last `setBoot` was given, refreshed every 4 s
+  -- so "stuck" stops being one word and the next message carries which of the three it is. It
+  never overwrites `bootAsk`'s countdown, which is a message with an ACTION attached and outranks
+  a report. `missing()`'s rule, one screen earlier: put the thing that tells the cases apart where
+  he can see it, because a console is invisible on a phone.
+  **AND ONE STEP OF THE BOOT CAN NO LONGER KILL THE WHOLE BOOT (`bootStep`, `BOOT FAIL`).** Every
+  line between `buildCity` and `ready = true` sat bare inside the IIFE, so a throw in the LADDERS,
+  the bars, the cash, the police, the HUD gutter or the map took the card down with it and the
+  game was unreachable -- over a feature the game does not need to be playable. `buildCity` and
+  `buildColin` are the two there is no game without and they already wait; everything else is now
+  a thing that can simply be absent and names itself in the chip. That is `loadGLB`'s own split
+  between "not in the repo" and "the network went away", one level up.
+  **WHAT IS STILL UNTESTED BY ANYTHING IS `buildShip`**, because `alien_ship_orange.glb` is draco
+  and headless has no Worker -- so c187's `buildPadMark` has never run outside a browser. It is
+  inside `buildShip`'s own `try`, so it cannot hang the boot; it could only ever cost the ship.
 - **THE SHIP MOVED TO HIS ROOF, AND HIS OWN CHIP IS WHAT IDENTIFIED IT (c187).** *"You could put
   the ship on this roof. It's completely flat, there's plenty of room. It's like two buildings over
   from where the ship currently is. I'll have to put a ladder up to it. Might work better to put
