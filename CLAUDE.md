@@ -1198,6 +1198,87 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE SHIP FLIES (c183, `PILOT`, `shipBoard`, `shipPilot`, `shipJoints`).** *"To be able to
+  fly, it would be nice... you just need to look at Plutopia on how the ship works. It's got full
+  flying mechanisms, landing gear, the jets articulate with movement, there's flames that come
+  out of them. I can't remember if we put a claw in -- don't need that part."* No claw, and no
+  sortie autopilot either: the ship lives where you leave it and does nothing on its own.
+  **THE SHAPE IS PLUTOPIA'S AND THE NUMBERS ARE CITY'S**, which is the rule three separate ported
+  constants have each cost a build to learn (the see-through hole's radius, the jetpack's palette,
+  the aim assist's cone). Everything is an ACCELERATION or a RATE, never a speed set directly,
+  because weight is the whole brief -- but top speed is `thrust/drag`, and Plutopia's 107 across
+  a kilometre of city is nine seconds wide. 6.5/.118 tops out near **55 m/s**, against a board at
+  24 and a charged sprint at 17.6: plainly the fastest thing in the game and still a city.
+  **TWO DRAGS, BECAUSE ONE NUMBER CANNOT DO BOTH JOBS.** Top speed is thrust over drag, so the
+  same constant sets how fast it goes AND how long it takes to stop -- at .118 the time constant
+  is eight and a half seconds and letting go at cruise leaves it doing 40 a second later. Drag is
+  what it is while the throttle is IN and `coast` times that while it is out. **Braking is a
+  thing you do.** Measured: 49.8 -> 4.4 m/s in six seconds of coasting, where the cruise drag
+  alone would still have it at 24.5.
+  **THE PADS ARE READ RAW, AND THAT IS THE ONE THING THAT COULD NOT BE COPIED FROM ANY OTHER
+  CONTROL IN THIS FILE.** Every stick here goes through `stickWorld` and is CAMERA-RELATIVE by
+  design. Thrust is along the ship's own nose and the camera has nothing to say about it, so
+  `shipPilot` reads `stick.L/R` directly. Left pad thrust and strafe, right pad turn and climb --
+  Plutopia's own mobile mapping, and it uses both thumbs completely.
+  **`P.g` IS THE GAME'S OWN GRAVITY AND NOT A SECOND NUMBER.** The vertical term is
+  `g*power - g + up*climb*power`, which at full power with no input is exactly zero -- a hover --
+  whatever `g` is. It only shows during the spool, which is the point: a ship whose jets are not
+  up yet falls.
+  **HE RIDES INSIDE IT, WHICH IS WHY THE CAMERA NEEDED ALMOST NOTHING.** `player.pos` IS the ship
+  while aboard, so `stepCam`, the map arrow and everything else that follows him follows the hull
+  with no second case -- c154's answer for the bar, pointed the other way. What did have to move
+  is the BOOM (a 4.4 m ship at 55 m/s wants to be further off than a man at 9) and the bearing,
+  which follows the nose the way the board's auto-follow does, for the board's own reason: a ship
+  goes where it points.
+  **AND `stepShip` HAD TO MOVE ABOVE `stepCam` IN THE FRAME.** It sat at the bottom with the other
+  props, which is right for a thing that only bobs and exactly wrong for one the lens is
+  following: the camera would read last frame's position and the shot would trail the hull by a
+  frame at 55 m/s. `stepJet`'s ordering rule, one system along.
+  **THE CITY IS SOLID TO IT THROUGH `resolveBoxes`, THE PLAYER'S OWN RESOLVER.** A ship-shaped
+  second physics path is a second physics path to keep in step with the first -- the sentence
+  `stepCops` is written under. Driven downtown at 40 m/s it stops against the buildings rather
+  than passing through them.
+  **FOUR THINGS ARE GATED ON `p.ship` AND EACH ONE WOULD HAVE BEEN A BUG:** the jetpack (it would
+  burn inside the cockpit and write `p.vel.y`), the blaster (the right pad IS the climb stick, so
+  every ascent would arm the trigger), `boardFlick` (both pads are flying it, so a correction
+  would throw a punch) and `carHit` (a car cannot hit a man who is inside a spaceship).
+  **AND THE PROBE FOUND A REAL FAULT THAT NO AMOUNT OF READING WOULD HAVE.** `alt` -- which feeds
+  BOTH the flare and the landing gear -- was read from `groundAt`/`hmAt`. **The triangle collider
+  is roads, land, grass, bridge and courts; every BUILDING is a solid box whose top is a floor
+  only to `resolveBoxes`.** So sitting over hotel_a the ship believed it was seventeen metres up
+  while its feet were about to touch: **no flare and no gear over any roof in the city**, which is
+  the one place this ship actually lives. `blobFloor` already answers exactly that question, takes
+  both, and is READ-ONLY (`groundUnder` cannot be used -- it PUSHES what it is handed). Before and
+  after, dropping 40 m onto the roof:
+      before   TOUCHDOWN -13.4 m/s, gear demand still 1   -- it arrived, it did not land
+      after    TOUCHDOWN  -2.61 m/s, gear down 1.4 s out
+  Driven through the shipped `shipPilot`/`stepShip` over the real city
+  (`JAM_PROBE=tools/probe-fly.mjs`):
+      boarding        refused at 40 m, taken at 2 m, and he goes invisible
+      lift-off        unsticks at 2.20 s, which is `spoolT` exactly; 52 m up in the next four
+      thrust          5 m/s at 0.8 s, 30 at 6.7 s, 49.8 of a theoretical 55 in twenty
+      turning         0.88 rad/s, 98 degrees in two seconds, still 15 deg/s a second after
+      the city        40 m/s downtown -> stopped against it, not through it
+      landing         touchdown -2.61 m/s, and it LIVES where you put it (`SHIP.at`, and the
+                      map dot moves with it -- a mark on the roof it left points at nothing)
+      leaving         out beside the hull, visible, on his feet
+  **THE HULL IN THAT PROBE IS FABRICATED AND IT IS A STATED GAP.** `alien_ship_orange.glb` is
+  draco-compressed and `jam.mjs` decompresses only `city.glb`, so `buildShip` never runs headless.
+  What cannot be tested there is the JOINTS -- gear, nozzles, hatch, flames -- because there are
+  no bones to turn; they degrade to no-ops by construction and belong on the device.
+  **THE FLAMES ARE GEOMETRY, NOT CARDS**, which is c126's lesson arriving a third time: a card is
+  a drawing that plays once and dies, a jet is ON for as long as the motor burns. An open cone
+  standing off the nozzle, additive, white-hot at the throat falling to red, with shock diamonds
+  in it -- Plutopia's shader whole, because it is right and because it is the same ship. Parented
+  to `back_jet_L/R_flame` and `side_jet_L/R`, so where a flame sits is the rig's business.
+  **A JET PUSHES THE SHIP THE WAY IT IS NOT POINTING**, so a climb swings the nozzles DOWN and the
+  vectoring has to OVER-correct the attitude -- the hull is already nose-down in a run, and a
+  tenth of vectoring leaves the exhaust pointing up. That is `c.pitch`'s .75 term and it is
+  Plutopia's, written down there after it shipped backwards once.
+  **THE BOARD KEY EXISTS ONLY WHEN IT DOES SOMETHING**, which is the whole reason it can sit in
+  the middle of the screen: a prompt that is always visible is a HUD element, and a HUD element in
+  the play area eats a thumb. It is painted from `stepShip`, so it cannot disagree with the state
+  it describes.
 - **THE LADDERS AND THE LEDGE HANGS WERE ONLY EVER REACHABLE BY BEING HIT BY A CAR (c182).**
   *"I still can't use the ladders. I thought the whole point was we put the climbing animations
   in there so you could climb ladders -- can't figure out how to climb the ladders, but I did jet

@@ -231,6 +231,14 @@
      this row at top 62, so the two cannot meet; on a 390 px phone held portrait the far key
      still ends 144 px from the left edge. */
   #danceB{top:calc(14px + env(safe-area-inset-top));right:calc(206px + env(safe-area-inset-right));width:40px;height:40px;font-size:17px}
+  /* A CONTEXTUAL PROMPT BELONGS WHERE THE EYE IS, NOT IN THE SETTINGS ROW. It exists only when
+     it is usable -- near the ship on foot, or aboard -- so it can afford the middle of the
+     screen, and the gap between the two pads at the bottom is the one place on a phone that is
+     always empty. Centred on the viewport rather than on either pad, so it lands in that gap
+     at every width. */
+  #actB{left:50%;transform:translateX(-50%);bottom:calc(30px + env(safe-area-inset-bottom));
+    width:auto;min-width:96px;padding:0 16px;height:40px;font-size:13px;letter-spacing:.08em}
+  #actB.on{color:var(--hot)}
   #opt{position:fixed;z-index:9;top:calc(62px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));
     width:min(280px,calc(100vw - 28px));max-height:calc(100vh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;
@@ -318,9 +326,10 @@
 <div class="key on" id="sfxB">&#128266;</div>
 <div class="key" id="gearB">&#9881;</div>
 <div class="key" id="danceB">&#128378;</div>
+<div class="key" id="actB" hidden>BOARD</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c182</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c183</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -334,7 +343,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c182';
+const BUILD = 'c183';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -644,7 +653,57 @@ const SHIP = {
   // `gear` is 0 down and 1 up; parked it is 0, which is the pose he is looking at.
   gear: { leg_L: ['z', 1.2], leg_R: ['z', -1.2], leg_back: ['x', 1.2] },
   gearK: 0, gearRest: null, bones: null,
+  hatch: -.95,      // signed rotation about hatch_pivot's own x, which is the hinge. Plutopia
+                    // measured this on the 2317 vertices the hatch owns: negative LIFTS the
+                    // canopy, and it is the same file, so it is the same number.
+  hatchRest: 0, open: 0,
+  near: 7,          // close enough for the BOARD key to appear
+  rad: 2.4,         // what the hull bumps into, and what it is pushed out of
+  // THE FLAMES, in metres: the mouth radius and how far the cone stands off the nozzle.
+  // Plutopia's, scaled by .625 for the same reason every borrowed LENGTH in this file is --
+  // its alien is 2.8 m and Colin is 1.75, and a jet that reads right beside one does not
+  // beside the other. Counts and fractions come over raw; lengths never do.
+  // Vectoring at full input, in radians, measured off the `*_direction` bones over there: a rear
+  // nozzle's x tips the flame up and down, its y swings it outward.
+  yawOut: .62,
+  jet: { rad: .25, len: 1.9 },
+  side: { rad: .14, len: .69 },
+  pos: null, vel: null, heading: 0, yawRate: 0, roll: 0, nose: 0,
+  grounded: 1, power: 0, air: 0, flames: null, sm: null, ctl: null,
   g: null, box: null, size: 0,
+};
+// FLYING IT. Everything here is an ACCELERATION or a RATE, never a speed set directly, because
+// weight is the whole brief: the ship takes seconds to get going and seconds to stop, turns by
+// building up a yaw rate, and answers the stick with a lean before it answers with motion.
+// That sentence is Plutopia's and so is the shape; the NUMBERS are City's, because a ported
+// constant is only as good as the world it was tuned in (the see-through hole's radius, the
+// jetpack's palette and the aim assist's cone have each cost a build learning that).
+//   top speed is thrust/drag, so 6.5/.118 tops out near 55 m/s -- against a board at 24 and a
+//   sprint at 17.6, which makes it plainly the fastest thing in the game without making a
+//   kilometre of city nine seconds wide.
+const PILOT = {
+  thrust: 6.5, reverse: 4.1, drag: .118,        // forward: tops out near 55 m/s
+  // AND IT SHEDS IT WHEN YOU LET GO. Top speed is thrust over drag, so ONE drag cannot give a
+  // ship that reaches 55 and also pulls up in a reasonable distance -- at .118 the time
+  // constant is eight and a half seconds, and letting go at cruise still leaves it doing 40 a
+  // second later. So drag is what it is while the throttle is IN and multiplied while it is
+  // out: top speed untouched, coasting on a two-and-a-half second constant, and pulling back
+  // puts the reverse thrust on top of that. Braking is a thing you do.
+  coast: 3.4,
+  strafe: 4.4,
+  climb: 9.0, vdrag: .62, g: MOVE.g,            // vertical: hover is neutral, push to go up or down
+  // **`g` IS THE GAME'S OWN GRAVITY AND NOT A SECOND NUMBER.** The vertical term is
+  // `g*power - g + up*climb*power`, so at full power with no input it is exactly zero -- a
+  // hover -- whatever `g` is. It only shows during the spool, which is the point: a ship that
+  // has not got its jets up yet falls.
+  yawA: 1.18, yawDrag: 1.2,                     // turning builds and carries on for a beat
+  spoolT: 2.2, cool: 2.1,                       // seconds for the jets to come up, and to die
+  bank: .55, nose: .26, noseV: .012,
+  gearUpAt: 6, gearDownAt: 9,                   // above the ground, going up and coming down
+  camR: 17, camEl: .30, camLag: 2.6,            // the chase view: further back and lower
+  flareAt: 8,                                   // inside this the descent is bled off: it settles
+  land: 5,                                      // faster than this into a surface and it bounces
+  hop: 1.2,                                     // how far it unsticks on lift-off
 };
 const LAD = {
   // The tool also found the three 51 m skyscrapers and they are deliberately left out: a
@@ -3450,7 +3509,16 @@ function buildShip(gl) {
   }
   const miss = Object.keys(SHIP.gear).filter(n => !SHIP.gearRest[n]);
   if (miss.length) console.warn('[ship] no gear bones: ' + miss.join(', '));
+  for (const n of ['back_jet_L', 'back_jet_R'])
+    if (SHIP.bones[n]) SHIP.gearRest[n] = { hip: SHIP.bones[n].rotation.clone(), pad: null };
+  SHIP.hatchRest = SHIP.bones.hatch_pivot ? SHIP.bones.hatch_pivot.rotation.x : 0;
   shipGear(SHIP.gearK);
+  SHIP.pos = new THREE.Vector3(SHIP.at[0], SHIP.at[1], SHIP.at[2]);
+  SHIP.vel = new THREE.Vector3();
+  SHIP.heading = SHIP.yaw;
+  SHIP.ctl = { throttle: 0, yaw: 0, pitch: 0, strafe: 0, gear: 0 };
+  SHIP.sm = { throttle: 0, yaw: 0, pitch: 0, strafe: 0, gear: 0 };
+  shipFlames();
   SHIP.g = g; SHIP.size = long * k;
   const hx = _shv.x * k * .5, hz = _shv.z * k * .5, hy = _shv.y * k;
   SHIP.box = { minx: 0, maxx: 0, minz: 0, maxz: 0, miny: 0, maxy: 0, hl: Math.max(hx, hz), hw: Math.min(hx, hz), hh: hy };
@@ -3459,6 +3527,65 @@ function buildShip(gl) {
   // be drawn for a ship whose GLB failed to arrive.
   mapMark(SHIP.at[0], SHIP.at[2], '#ff6197', 4.5, 'ship');
   console.log('[ship] ' + (long).toFixed(2) + ' in file units -> x' + k.toFixed(2) + ' = ' + SHIP.size.toFixed(2) + ' m, on the roof at ' + SHIP.at.join(', ') + '  -- city.ship() puts you beside it');
+}
+// A JET IS A SOLID THING WITH A SHAPE, NOT A CLOUD OF DOTS -- Plutopia's sentence, and its
+// geometry and shader come over whole because they are right and because this is the same ship.
+// An open cone standing off the nozzle mouth, additive, white-hot at the throat and falling to
+// red down its length, with shock diamonds standing in it the way they do in a real nozzle.
+// A unit cone growing along -Z from the origin, so it parents straight to a nozzle bone and is
+// sized with `scale.set(radius, radius, length)`.
+// **NOT `fxPop`, AND THAT IS c126's LESSON ARRIVING AGAIN.** The card sheet is a drawing that
+// plays once and dies; a jet is ON for as long as the motor burns, which is the same argument
+// that made the jetpack's flame a sprite stack and the blaster's charge a looping source.
+let _flameGeo = null;
+function flameGeo() {
+  if (!_flameGeo) {
+    _flameGeo = new THREE.CylinderGeometry(.34, 1, 1, 12, 1, true);
+    _flameGeo.translate(0, -.5, 0); _flameGeo.rotateX(Math.PI / 2);
+  }
+  return _flameGeo;
+}
+// `uK` is how hard it is running and it is the only thing that changes per frame.
+function flameMat(hot, cool) {
+  return new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: { uT: { value: 0 }, uK: { value: 0 },
+      uHot: { value: new THREE.Color(hot) }, uCool: { value: new THREE.Color(cool) } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: [
+      'uniform float uT, uK; uniform vec3 uHot, uCool; varying vec2 vUv;',
+      'void main(){',
+      '  float m = vUv.y;',                               // 1 at the mouth, 0 at the tail
+      '  float core = pow(m, 1.7);',
+      '  float dia = 0.55 + 0.45 * sin(m * 34.0 - uT * 3.0);',
+      '  float flick = 0.82 + 0.18 * sin(uT * 47.0 + vUv.x * 12.0);',
+      '  float a = core * dia * flick * uK;',
+      '  if (a < 0.004) discard;',
+      '  gl_FragColor = vec4(mix(uCool, uHot, pow(m, 2.2)) * (0.6 + core * 1.5), a);',
+      '}'].join('\n'),
+  });
+}
+// THE FOUR NOZZLES, PARENTED TO THE BONES THE FILE ALREADY HAS. `back_jet_L/R_flame` and
+// `side_jet_L/R` are in the export (all 33 nodes checked), so where a flame sits and which way
+// it points is the rig's business and not this code's -- `weapFit`'s rule, one vehicle along.
+function shipFlames() {
+  const b = SHIP.bones; if (!b) return;
+  const cone = (parent, sz, hot, cool, ry) => {
+    if (!parent) return null;
+    const m = new THREE.Mesh(flameGeo(), flameMat(hot, cool));
+    m.scale.set(sz.rad, sz.rad, sz.len);
+    if (ry) m.rotation.y = ry;
+    m.frustumCulled = false;
+    m.userData.noHole = 1; m.userData.noPaint = 1;   // it is light, not paint, and never dithered
+    parent.add(m); return m;
+  };
+  SHIP.flames = {
+    L: cone(b.back_jet_L_flame, SHIP.jet, '#fff0c6', '#ff5a12'),
+    R: cone(b.back_jet_R_flame, SHIP.jet, '#fff0c6', '#ff5a12'),
+    sL: cone(b.side_jet_L, SHIP.side, '#eaf6ff', '#2f7dff', -Math.PI / 2),
+    sR: cone(b.side_jet_R, SHIP.side, '#eaf6ff', '#2f7dff', Math.PI / 2),
+  };
 }
 // 0 is down and locked, 1 is folded up under the rim. Smoothstepped, because a leg that moves
 // linearly reads as a lever being cranked rather than as a mechanism.
@@ -3475,15 +3602,196 @@ function shipGear(k) {
   }
   return SHIP.gearK;
 }
+// CLIMB IN. He rides along inside it -- his position IS the ship's from here -- which is what
+// makes `stepCam`, the map arrow and everything else that follows him follow the ship instead,
+// with no second case anywhere. Plutopia's own answer, and it is the same one c154 reached for
+// the bar: do not teach the camera about a new subject, move the subject it already has.
+function shipBoard() {
+  const p = player;
+  if (!SHIP.g || p.ship || p.hit) return false;
+  if (Math.hypot(SHIP.pos.x - p.pos.x, SHIP.pos.z - p.pos.z) > SHIP.near) return false;
+  if (p.board) dropBoard();
+  p.ship = 1; p.dance = ''; p.bar = null; p.hang = 0; p.lad = 0; p.mel = ''; p.rollT = 0;
+  p.vel.set(0, 0, 0); p.speed = 0;
+  colin.root.visible = false;
+  SHIP.grounded = 1; SHIP.power = 0; SHIP.vel.set(0, 0, 0); SHIP.yawRate = 0;
+  actPaint();
+  console.log('[ship] aboard. LEFT pad thrust and strafe, RIGHT pad turn and climb. Hold up to lift off.');
+  return true;
+}
+function shipLeave() {
+  const p = player;
+  if (!p.ship) return false;
+  p.ship = 0;
+  colin.root.visible = true;
+  // OUT BESIDE IT, NEVER INSIDE IT. He is put a hull's width off the nose and dropped: the
+  // ordinary collider then does the rest, which is the whole reason not to invent a dismount.
+  const fx = Math.sin(SHIP.heading), fz = Math.cos(SHIP.heading);
+  p.pos.set(SHIP.pos.x + fx * (SHIP.rad + .8), SHIP.pos.y + .2, SHIP.pos.z + fz * (SHIP.rad + .8));
+  p.vel.set(0, 0, 0); p.speed = 0; p.grounded = false; p.jumps = 1; p.air = ''; p.coyote = 0;
+  actPaint();
+  return true;
+}
+// THE FLIGHT. Read the pads RAW, not through `stickWorld`: thrust is along the ship's OWN nose
+// and the camera has nothing to say about it. That is the one thing that could not be copied
+// from any other control in this file, all of which are camera-relative by design.
+//   LEFT pad   forward/back is thrust and reverse, left/right is the side jets
+//   RIGHT pad  left/right turns, up/down climbs and descends
+// which is Plutopia's own mobile mapping, and it uses both thumbs completely.
+function shipPilot(dt) {
+  const P = PILOT, c = SHIP.ctl;
+  const L = stick.L, R = stick.R;
+  const fwd = L.down ? clamp(-L.y, -1, 1) : 0, str = L.down ? clamp(L.x, -1, 1) : 0;
+  const yaw = R.down ? clamp(R.x, -1, 1) : 0, up = R.down ? clamp(-R.y, -1, 1) : 0;
+  // ---- on the ground: the jets spool with the hull trembling, and it unsticks all at once ----
+  if (SHIP.grounded) {
+    SHIP.power = Math.min(1, SHIP.power + dt / P.spoolT);
+    if (SHIP.power >= 1 && up > .3) {
+      SHIP.grounded = 0; SHIP.vel.set(0, P.hop, 0);
+      fxPop(SHIP.pos.x, SHIP.pos.y + .4, SHIP.pos.z, 'puff', 2.2);
+    }
+    c.throttle = SHIP.power * .5; c.yaw = 0; c.pitch = up * .4 * SHIP.power; c.strafe = 0; c.gear = 0;
+    return;
+  }
+  SHIP.power = Math.min(1, SHIP.power + dt / .8);
+  const sh = Math.sin(SHIP.heading), ch = Math.cos(SHIP.heading);
+  const fx = sh, fz = ch, lx = ch, lz = -sh;                  // forward and left, in the world
+  const aF = fwd > 0 ? fwd * P.thrust : fwd * P.reverse, aS = str * P.strafe;
+  SHIP.vel.x += (fx * aF - lx * aS) * dt; SHIP.vel.z += (fz * aF - lz * aS) * dt;
+  SHIP.vel.y += (P.g * SHIP.power - P.g + up * P.climb * SHIP.power) * dt;
+  const dg = P.drag * (fwd > .12 ? 1 : P.coast);
+  SHIP.vel.x *= Math.max(0, 1 - dg * dt); SHIP.vel.z *= Math.max(0, 1 - dg * dt);
+  SHIP.vel.y *= Math.max(0, 1 - P.vdrag * dt);
+  // THE FLARE. Inside the last few metres the descent is bled off against how much is left, so
+  // coming down anywhere near a surface SETTLES onto the feet instead of arriving on them.
+  // **AND `alt` HAS TO KNOW ABOUT ROOFS, WHICH `groundAt` DOES NOT.** The triangle collider is
+  // roads, land, grass, bridge and courts; every BUILDING is a solid box and its top is a floor
+  // only to `resolveBoxes`. So the first version read `groundAt`/`hmAt` alone and, sitting over
+  // hotel_a, believed it was seventeen metres up while its feet were about to touch -- which
+  // meant **no flare and no landing gear over any roof in the city**, the one place this ship
+  // actually lives. The probe read `worst descent -13.4 m/s` and `gear demand 1` at touchdown
+  // and that is what it was saying. `blobFloor` already answers exactly this question, takes
+  // both, and is READ-ONLY -- `groundUnder` cannot be used because it PUSHES what it is handed.
+  const floor = blobFloor(SHIP.pos.x, SHIP.pos.z, SHIP.pos.y);
+  const alt = SHIP.pos.y - floor;
+  if (SHIP.vel.y < 0 && alt < P.flareAt) {
+    const cap = -(.55 + Math.max(0, alt) * .30);
+    if (SHIP.vel.y < cap) SHIP.vel.y = lerp(SHIP.vel.y, cap, Math.min(1, dt * 5));
+  }
+  SHIP.yawRate += yaw * P.yawA * dt; SHIP.yawRate *= Math.max(0, 1 - P.yawDrag * dt);
+  SHIP.heading += SHIP.yawRate * dt;
+  SHIP.pos.x += SHIP.vel.x * dt; SHIP.pos.y += SHIP.vel.y * dt; SHIP.pos.z += SHIP.vel.z * dt;
+  // ---- the city is solid to it, and THROUGH THE PLAYER'S OWN RESOLVER ----
+  // `resolveBoxes` takes a position, the boxes near it and pushes the position out of them. A
+  // ship-shaped second physics path is a second physics path to keep in step with the first --
+  // the same sentence `stepCops` is written under, and the reason a cop walks on this too.
+  const before = _shipTmp.copy(SHIP.pos);
+  gridQuery(SHIP.pos.x, SHIP.pos.z, SHIP.rad + 1, _shipBox);
+  const r = resolveBoxes(SHIP.pos, SHIP.rad, SHIP.box.hh, .6, _shipBox, null, 0);
+  if (r.hitWall) {
+    const px = SHIP.pos.x - before.x, pz = SHIP.pos.z - before.z, pl = Math.hypot(px, pz);
+    if (pl > 1e-4) {
+      const nx = px / pl, nz = pz / pl, into = SHIP.vel.x * nx + SHIP.vel.z * nz;
+      if (into < 0) { SHIP.vel.x -= nx * into * 1.3; SHIP.vel.z -= nz * into * 1.3; }
+    }
+  }
+  // ---- the floor. It rests with its feet at ground height, so that is the line ----
+  const fl = Math.max(floor, r.floor > -Infinity ? r.floor : floor);
+  if (SHIP.pos.y <= fl) {
+    if (SHIP.vel.y < -P.land) {                     // too hard: it bounces rather than lands
+      SHIP.pos.y = fl; SHIP.vel.y = Math.abs(SHIP.vel.y) * .28;
+      SHIP.vel.x *= .7; SHIP.vel.z *= .7;
+      fxPop(SHIP.pos.x, fl + .4, SHIP.pos.z, 'hit', 1.6); snd.hit(1, SHIP.pos.x, SHIP.pos.z);
+    } else {                                        // touchdown -- and here is where it lives now
+      SHIP.pos.y = fl; SHIP.grounded = 1; SHIP.power = 1; SHIP.yawRate *= .2;
+      SHIP.vel.set(0, 0, 0);
+      SHIP.at[0] = SHIP.pos.x; SHIP.at[1] = fl; SHIP.at[2] = SHIP.pos.z; SHIP.yaw = SHIP.heading;
+      // AND THE MAP DOT GOES WITH IT. You flew it here, so here is where it lives -- a mark left
+      // on the roof it took off from is a mark pointing at nothing, which is worse than none.
+      const mk = MAP.marks.find(m => m.tag === 'ship');
+      if (mk) { mk.x = SHIP.pos.x; mk.z = SHIP.pos.z; if (MAP.base) buildMap(); }
+      fxPop(SHIP.pos.x, fl + .4, SHIP.pos.z, 'puff', 1.6);
+    }
+  }
+  // ---- what the joints are told ----
+  const sp = Math.hypot(SHIP.vel.x, SHIP.vel.z);
+  c.throttle = clamp(.32 + .68 * Math.max(fwd, 0) + Math.max(up, 0) * .25 + sp / 55, 0, 1);
+  c.yaw = clamp(SHIP.yawRate / .8, -1, 1);
+  // NOZZLE VECTORING, STATED AS A DEMAND ON THE JETS RATHER THAN AN ANGLE: positive swings the
+  // nozzles DOWN, which is what pushes the ship up. It has to OVER-correct the attitude -- the
+  // hull is already nose-down in a run, and a tenth of vectoring leaves the exhaust pointing up.
+  c.pitch = clamp(up * .8 + SHIP.vel.y * .04 + Math.max(0, fwd) * .75, -1, 1);
+  c.strafe = str;
+  c.gear = (alt > P.gearUpAt && SHIP.vel.y > -.5 && !(alt < P.gearDownAt && SHIP.vel.y < .5)) ? 1
+    : (alt < P.gearDownAt ? 0 : SHIP.sm.gear > .5 ? 1 : 0);
+  // THE LEAN COMES OFF THE YAW RATE AND THE STRAFE, NEVER THE STICK. Rolling about the ship's
+  // own forward axis, positive drops the right side -- so a left turn wants negative and a
+  // strafe to the right wants positive. The nose pitches DOWN under positive X, so it noses
+  // into the run and lifts as it climbs.
+  SHIP.roll = lerp(SHIP.roll, -SHIP.yawRate * P.bank + aS * .05, Math.min(1, dt * 3));
+  SHIP.nose = lerp(SHIP.nose, clamp(fwd * P.nose - SHIP.vel.y * P.noseV, -.42, .42), Math.min(1, dt * 2.5));
+}
+const _shipTmp = new THREE.Vector3(), _shipBox = [], _shipE = new THREE.Euler();
 function stepShip(dt) {
   const g = SHIP.g; if (!g) return;
-  const t = FX.t;
-  g.position.y = SHIP.at[1] + SHIP.lift + Math.sin(t / SHIP.bobT * Math.PI * 2) * SHIP.bob;
-  g.rotation.z = Math.sin(t / (SHIP.bobT * 1.7) * Math.PI * 2) * SHIP.roll;
+  const t = FX.t, p = player;
+  if (p.ship) shipPilot(dt);
+  else {
+    // PARKED. No bob and no hover -- a ship standing on its legs is standing on them (c182).
+    SHIP.pos.set(SHIP.at[0], SHIP.at[1] + SHIP.lift, SHIP.at[2]);
+    SHIP.grounded = 1; SHIP.heading = SHIP.yaw;
+    SHIP.power = Math.max(0, SHIP.power - dt / PILOT.cool);
+    const c = SHIP.ctl; c.throttle = 0; c.yaw = 0; c.pitch = 0; c.strafe = 0; c.gear = 0;
+    SHIP.roll = lerp(SHIP.roll, 0, Math.min(1, dt * 2)); SHIP.nose = lerp(SHIP.nose, 0, Math.min(1, dt * 2));
+  }
+  g.position.copy(SHIP.pos);
+  // ---- the joints never snap: one damp over every control, gear slower than the rest ----
+  const sm = SHIP.sm, c = SHIP.ctl;
+  for (const k in c) sm[k] = lerp(sm[k], c[k], Math.min(1, dt * (k === 'gear' ? 1.6 : 5)));
+  // ---- attitude: level on the pad, leaning in the air ----
+  SHIP.air = lerp(SHIP.air, SHIP.grounded ? 0 : 1, Math.min(1, dt * (SHIP.grounded ? 1.4 : 1.1)));
+  _shipE.set(SHIP.nose * SHIP.air, SHIP.heading, SHIP.roll * SHIP.air, 'YXZ');
+  g.quaternion.setFromEuler(_shipE);
+  shipJoints(dt, t);
+  // the hull rides with him, so everything that follows the player follows the ship
+  if (p.ship) { p.pos.copy(SHIP.pos); p.faceH = p.heading = SHIP.heading; p.speed = Math.hypot(SHIP.vel.x, SHIP.vel.z); }
   const b = SHIP.box, hx = b.hl, hz = b.hw;
   b.minx = g.position.x - hx; b.maxx = g.position.x + hx;
   b.minz = g.position.z - hz; b.maxz = g.position.z + hz;
   b.miny = g.position.y; b.maxy = g.position.y + b.hh;
+  actPaint();
+}
+// GEAR, NOZZLES, HATCH AND FLAMES -- every one of them read off a bone the export already has.
+function shipJoints(dt, t) {
+  const b = SHIP.bones, sm = SHIP.sm, P = PILOT; if (!b) return;
+  shipGear(sm.gear);
+  // A JET PUSHES THE SHIP THE WAY IT IS NOT POINTING, so a climb swings the nozzles DOWN and a
+  // descent swings them up. Getting that backwards reads as the ship being blown about rather
+  // than flying itself, which is what Plutopia shipped first and then wrote down.
+  const breathe = (1 - SHIP.air) * (1 - SHIP.power) * Math.sin(t * .7) * .03;
+  const yo = SHIP.yawOut === undefined ? .62 : SHIP.yawOut, pt = .5;
+  if (b.back_jet_L && SHIP.gearRest.back_jet_L) {
+    const g0 = SHIP.gearRest.back_jet_L.hip;
+    b.back_jet_L.rotation.x = g0.x - sm.pitch * pt + breathe;
+    b.back_jet_L.rotation.y = g0.y - Math.max(0, sm.yaw) * yo;
+  }
+  if (b.back_jet_R && SHIP.gearRest.back_jet_R) {
+    const g0 = SHIP.gearRest.back_jet_R.hip;
+    b.back_jet_R.rotation.x = g0.x - sm.pitch * pt + breathe;
+    b.back_jet_R.rotation.y = g0.y + Math.max(0, -sm.yaw) * yo;
+  }
+  // THE HATCH IS OPEN WHEN HE IS BESIDE IT ON FOOT and shut the moment he is inside or away.
+  const p = player;
+  const nearIt = !p.ship && !p.hit && SHIP.grounded
+    && Math.hypot(SHIP.pos.x - p.pos.x, SHIP.pos.z - p.pos.z) < SHIP.near;
+  SHIP.open = lerp(SHIP.open, nearIt ? 1 : 0, Math.min(1, dt * 3));
+  if (b.hatch_pivot) b.hatch_pivot.rotation.x = SHIP.hatchRest + smooth(0, 1, SHIP.open) * SHIP.hatch;
+  const F = SHIP.flames; if (!F) return;
+  const k = SHIP.power * sm.throttle;
+  const setK = (m, v) => { if (m) { m.material.uniforms.uK.value = v; m.material.uniforms.uT.value = t; m.visible = v > .01; } };
+  setK(F.L, k); setK(F.R, k);
+  setK(F.sL, Math.max(0, -sm.strafe) * SHIP.power);
+  setK(F.sR, Math.max(0, sm.strafe) * SHIP.power);
 }
 function gearShow() {
   if (gear.blaster) gear.blaster.g.visible = !!kitOut('blaster');
@@ -3553,7 +3861,7 @@ function stepAim(dt) {
   // ON THE BOARD TOO. The gun is a held object and riding is a locomotion mode, so there is no
   // reason they cannot happen at once -- the one thing that has to give is the STEERING, see
   // where `p.heading` is written below.
-  const has = KIT.out.blaster && !p.hit && !p.mel && !p.hang && !p.lad;
+  const has = KIT.out.blaster && !p.hit && !p.mel && !p.hang && !p.lad && !p.ship;
   // OUTSIDE the armed gate: a recoil that only ticks while the gun is out welds itself on at
   // full weight the moment he stows it mid-shot.
   p.fireT = Math.max(0, (p.fireT || 0) - dt);
@@ -4199,7 +4507,7 @@ function stepJet(dt) {
   // And a hover landing is safe because a skate landing does not BAIL -- it scrubs speed on a
   // sideways or half-finished one and hands him back. Checked before enabling this rather
   // than after: a hoverboard that drops the deck every time you set down is not a hoverboard.
-  const on = KIT.out.jet && !p.hit && !p.hang && !p.lad && !p.mel;
+  const on = KIT.out.jet && !p.hit && !p.hang && !p.lad && !p.mel && !p.ship;
   if (p.fuel === undefined) p.fuel = 1;
   // ARMED ABOVE THE EARLY RETURN, because `jetWas` is edge detection and an edge detector that
   // stops running goes stale: equip the pack mid-hold and it would see no new press, so the
@@ -4809,6 +5117,8 @@ function missing() {
   // that look identical from a phone. `init()` catches the load with a `console.warn`, and a
   // console warn is invisible there. `NO COP GLB`'s rule, one prop along.
   if (ready && !SHIP.g) m += ' · NO SHIP GLB';
+  if (player.ship) m += ' · FLYING ' + Math.round(Math.hypot(SHIP.vel.x, SHIP.vel.z)) + 'm/s '
+    + Math.round(SHIP.pos.y - (groundAt(SHIP.pos.x, SHIP.pos.z, SHIP.pos.y, 1.5).floor || 0)) + 'm up';
   if (CHARS.miss) m += ' · NO SKIN ' + CHARS.miss;
   // "HIS FLAG ISN'T THERE" IS FOUR BUGS WEARING ONE FACE, and they are identical from a phone:
   // the file never arrived, it arrived unrigged, it is rigged to a joint this character has not
@@ -5613,7 +5923,7 @@ function clipLen(name, fb) {
 // A DODGE ROLL IS THE ONLY THING IN THIS GAME THAT MAKES HIM UNHITTABLE, and it is the whole
 // reason to have one: without i-frames a roll is a slower walk with a nicer clip.
 function carHit(c) {
-  if (player.melI) return;
+  if (player.melI || player.ship) return;
   const p = player;
   if (p.hitCool > 0) return;
   if (p.hit && p.hit !== 'fly') return;                      // already down; leave him there
@@ -8944,6 +9254,7 @@ bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
 bindStick(document.getElementById('stkR'), stick.R, null, boardFlick, true, far => { if (far < .42) player.jump = 1; });
 function boardFlick(dx, dy) {
   const p = player;
+  if (p.ship) return;        // both pads are flying it
   // ON A BAR THE SWIPE IS THE LAUNCH (c164), and it outranks everything else on this pad --
   // he is not on a board, not on his feet and not aiming, so nothing below can apply.
   if (p.bar) { if (!p.barRel) barLetGo(); return; }
@@ -8998,6 +9309,20 @@ function boardFlick(dx, dy) {
 }
 document.getElementById('resetB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); respawn(); });
 document.getElementById('danceB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); danceGo(); });
+document.getElementById('actB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (player.ship) shipLeave(); else shipBoard(); });
+// THE KEY IS ONLY THERE WHEN IT DOES SOMETHING, which is the whole reason it can sit in the
+// middle of the screen: a prompt that is always visible is a HUD element, and a HUD element in
+// the play area is one that eats a thumb. Painted from `stepShip`, so it cannot disagree with
+// the state it is describing.
+function actPaint() {
+  const el = document.getElementById('actB'); if (!el) return;
+  const p = player;
+  const near = SHIP.g && SHIP.pos && !p.hit && !p.ship && SHIP.grounded
+    && Math.hypot(SHIP.pos.x - p.pos.x, SHIP.pos.z - p.pos.z) < SHIP.near;
+  const show = !!(p.ship || near);
+  el.hidden = !show || TITLE.on;
+  if (show) { el.textContent = p.ship ? 'LEAVE' : 'BOARD'; el.classList.toggle('on', !!p.ship); }
+}
 // ---------- the kit key ----------
 // IS THE THING IN HIS HAND OUT? The board's answer is `player.board` and nothing else --
 // deriving it rather than mirroring it is the whole fix for c84's worst bug.
@@ -9024,7 +9349,7 @@ function kitOut(k) { return k === 'board' ? (player.board ? 1 : 0) : (KIT.out[k]
 // away (the board, a knock-down, a strike, a ledge, a ladder) hands the gait back.
 function gunOut() {
   const p = player;
-  return !!(KIT.out.blaster && !p.board && !p.hit && !p.mel && !p.hang && !p.lad);
+  return !!(KIT.out.blaster && !p.board && !p.hit && !p.mel && !p.hang && !p.lad && !p.ship);
 }
 // ONE TAP, AND IT MEANS THE OBVIOUS THING. Press the key for what you want: if it is already
 // what you are holding, the press puts it away or takes it back out; if it is not, the press
@@ -9423,10 +9748,10 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushSync: 0, pushNm: '', pushOff: 9, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, melHit: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, dance: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, copPass: 0, melEntry: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushSync: 0, pushNm: '', pushOff: 9, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, melHit: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, dance: '', ship: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, copPass: 0, melEntry: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
-function respawn() { player.dance = ''; player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
+function respawn() { if (player.ship) shipLeave(); player.dance = ''; player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
   // left stick -> world direction, relative to the camera azimuth
@@ -10902,6 +11227,10 @@ function stepPlayer(dt) {
   player.ladCool = Math.max(0, player.ladCool - dt);
   if (player.melWin <= 0 && !player.mel) player.melStep = 0;
   player.airT = player.grounded ? 0 : player.airT + dt;
+  // ABOARD, THE SHIP IS THE BODY. `stepShip` has already flown it and copied its position onto
+  // him this frame, so there is nothing here left to do -- and every branch below would fight
+  // it for `p.pos`, which is the two-writers bug this file has paid for four times.
+  if (player.ship) { player.jump = 0; return; }
   danceStep();
   if (player.hit) { player.hang = 0; player.climbT = 0; player.lad = 0; stepHit(dt); return; }
   // THE BAR OWNS THE BODY, BOARD OR NOT, so it is tested above the branch rather than inside one
@@ -11564,8 +11893,18 @@ function stepCam(dt) {
   // And the bearing is LATCHED (`p.barAz`, set on the catch) rather than followed: the pad still
   // nudges it -- his "little bit of aim" -- but a nudge moves the latch, so it stays where it is
   // put instead of being dragged back the instant the thumb comes off.
+  // THE SHIP HAS ITS OWN SHOT TOO, AND IT IS THE BAR'S ARGUMENT WITH A DIFFERENT SUBJECT. He
+  // rides inside the hull, so `player.pos` IS the ship and everything below works unchanged --
+  // what has to move is the BOOM (a 4.4 m ship at 55 m/s needs to be further away than a man at
+  // 9) and the BEARING, which follows the nose the way the board's auto-follow does. A ship goes
+  // where it points, which is the whole reason that rule exists.
+  const camS = player.ship && SHIP.pos;
+  if (camS) cam.az += wrapAngle(SHIP.heading - cam.az) * Math.min(1, PILOT.camLag * dt);
   const camB = player.bar;
-  if (camB) {
+  if (camS) {
+    cam.el = PILOT.camEl;
+    cam.tgt.set(player.pos.x, player.pos.y + 1.2, player.pos.z);
+  } else if (camB) {
     // THE CATCH OWNS THE BEARING, THEN THE ORBIT DOES (c164). *"I actually think the camera
     // should still be able to orbit."* It could not before, because the pump read a
     // CAMERA-RELATIVE thumb and a free lens would have changed what "forward" meant every
@@ -11583,20 +11922,24 @@ function stepCam(dt) {
   const ce = Math.cos(cam.el);
   // the direction the boom points, so the distance along it is the only thing collision moves
   const bx = -Math.sin(cam.az) * ce, by = Math.sin(cam.el), bz = -Math.cos(cam.az) * ce;
-  const want = camB ? BAR.camDist : CAM.dist + sp * CAM.distV;
+  const want = camS ? PILOT.camR + Math.min(9, sp * .26) : camB ? BAR.camDist : CAM.dist + sp * CAM.distV;
   const free = camFree(cam.tgt.x, cam.tgt.y, cam.tgt.z, bx, by, bz, want);
   // SNAP IN, EASE OUT. Coming in has to be immediate or the lens spends those frames inside
   // the wall; going back out is eased, or every doorway and lamp post makes the shot lurch.
   cam.dist = free < (cam.dist || want) ? free : damp(cam.dist || want, free, CAM.outHL, dt);
   const wx = cam.tgt.x + bx * cam.dist, wy = cam.tgt.y + by * cam.dist, wz = cam.tgt.z + bz * cam.dist;
   if (cam.pos.lengthSq() === 0) cam.pos.set(wx, wy, wz);
-  const camHL = camB ? BAR.camHL : CAM.half;
+  const camHL = camS ? CAM.half * 1.6 : camB ? BAR.camHL : CAM.half;
   cam.pos.x = damp(cam.pos.x, wx, camHL, dt); cam.pos.y = damp(cam.pos.y, wy, camHL, dt); cam.pos.z = damp(cam.pos.z, wz, camHL, dt);
   // THE REAL COLLIDER, AND CAPPED AT HIS OWN HEIGHT. `groundAt` knows what is BELOW something;
   // `hmAt` does not, and that is the whole of "the camera stays up on the bridge".
   const cg = groundAt(cam.pos.x, cam.pos.z, cam.pos.y, .6);
   const floor = (cg.hit ? cg.floor : hmAt(cam.pos.x, cam.pos.z)) + CAM.clear;
-  if (cam.pos.y < floor) cam.pos.y = Math.min(floor, cam.tgt.y + CAM.rise);
+  // `CAM.rise` caps how far the lens may be lifted above the look point, which is right for a
+  // man -- it is what stopped the camera sitting on the bridge he had just walked off. A ship
+  // flying at height is the one case where the floor under the LENS is legitimately far below
+  // the subject, so the cap has to grow with it or the shot is shoved back down every frame.
+  if (cam.pos.y < floor) cam.pos.y = Math.min(floor, cam.tgt.y + (camS ? PILOT.camR : CAM.rise));
   camera.position.copy(cam.pos); camera.lookAt(cam.tgt);
   cam.rush = damp(cam.rush, clamp((sp - CAM.rush0) / CAM.rushSpan, 0, 1), .25, dt);
   camera.fov = CAM.fov + cam.rush * CAM.fovRush; camera.updateProjectionMatrix();
@@ -11665,6 +12008,11 @@ function frame() {
   // BEFORE `stepPlayer`, so a thumb holding a charge is not also read as a sprint.
   if (!TITLE.on) { stepAim(dt); stepJet(dt); }
   if (TITLE.on) titleFrame(dt); else stepPlayer(dt);
+  // **ABOVE `stepCam`, BECAUSE THE SHIP WRITES `player.pos` WHILE HE IS ABOARD.** It sat at the
+  // bottom of the frame with the other props, which is right for a thing that only bobs and
+  // exactly wrong for one the lens is following: the camera would read last frame's position
+  // and the whole shot would trail the hull by a frame at 55 m/s. `stepJet`'s ordering rule.
+  stepShip(dt);
   stepBolts(dt);
   stepTraffic(dt);
   stepShots(dt);
@@ -11691,7 +12039,6 @@ function frame() {
   stickWatch(dt);
   stepWrecks(dt);
   stepCash(dt);
-  stepShip(dt);
   jamScan(dt);
   drawMap(dt);
   aimUntwist();                       // BEFORE: take last frame's edit off, or it compounds
@@ -11805,7 +12152,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { shipGear, stickWorld, ladGrab, DANCE, dance: danceGo, mark: markHere, marks: MAP.marks, ship: shipGo, mapMark, BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { shipGear, stepShip, shipPilot, PILOT, board: shipBoard, leave: shipLeave, stickWorld, ladGrab, DANCE, dance: danceGo, mark: markHere, marks: MAP.marks, ship: shipGo, mapMark, BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
