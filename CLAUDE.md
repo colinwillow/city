@@ -1198,6 +1198,39 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE BUILD CHIP ATE TWO KEYS, AND THE RESERVE WAS A TYPED NUMBER (c184, `hudGutter`).**
+  *"I don't see the dance button, also you've like removed the debug menu."* **One bug, not two.**
+  `#build` carried `max-width: calc(100vw - 190px)` -- a gutter hand-sized for the THREE keys that
+  were up there when it was written -- and c181 added a fourth and a fifth to the same row without
+  touching it. The arithmetic, off his own screenshot:
+      five keys at a 48 px pitch need   14 + 4*48 + 40 = 246 px reserved
+      the chip reserved                                  190
+      -> 56 px of keys UNDER the chip: the dance key ENTIRELY and 16 px of the gear
+  And the chip is the one element in the HUD that GROWS -- `missing()` had just gained `BAR ...`,
+  `JET OUT` and `JET57CM`, which is what pushed it over them. This file already had the note
+  pointing the other way (*"the top-left gutter belongs to the build chip, and anything added to
+  `missing()` has to stay readable there"*); nobody wrote the converse down.
+  **A CONSTANT SOMEBODY HAS TO REMEMBER TO UPDATE WHEN A KEY IS ADDED IS NOT A MECHANISM**, which
+  is the asset hashes' own sentence applied to a layout. `hudGutter` measures the real keys --
+  they are all `position: fixed`, so the browser already knows where they are -- and writes
+  `--chipW`. Adding a key can never hide anything again. It runs on load, on resize and on
+  orientation change, and skips a key with a zero rect so a hidden prompt cannot shrink the chip.
+  **AND FIVE KEYS IS TOO MANY FOR ONE ROW ON A PHONE**, which is what made the typed number wrong
+  rather than merely stale: 246 px of a 390 px edge leaves the chip 130. Two rows, grouped by what
+  the keys ARE rather than by the order they were added:
+      row 1, top 14   the PLAYER verbs      reset, dance
+      row 2, top 62   settings and audio    music, effects, gear
+      and the map drops from top 62 to top 110, under both
+  The chip's gutter is then set by the deeper row (gear at `right: 110`, so 150 px), and it comes
+  out **wider than it was before** -- 214 px against 200 on a 390 px phone -- so nothing else had
+  to move and the wrap is unchanged.
+  **`.key` GOES TO `z-index: 6` AS BELT AND BRACES.** Both were 4 and the chip is later in the
+  DOM, so it painted over them AND took their taps. Even a mis-measured gutter now leaves a key
+  visible and pressable.
+  **CHECKED AS RECTANGLES, NOT BY EYE**: every HUD box on a 390 px portrait phone -- five keys,
+  the map, a two-line chip, the speedo and the bank -- pairwise, **0 overlaps**. Placing a control
+  by eye off a screenshot is how you get one under a chip, which is `npm run spots`' own rule
+  applied to the HUD.
 - **THE SHIP FLIES (c183, `PILOT`, `shipBoard`, `shipPilot`, `shipJoints`).** *"To be able to
   fly, it would be nice... you just need to look at Plutopia on how the ship works. It's got full
   flying mechanisms, landing gear, the jets articulate with movement, there's flames that come
