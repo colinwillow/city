@@ -366,7 +366,7 @@
 <div id="mapScrim"></div>
 <canvas id="map" hidden></canvas>
 <div id="mapHint">tap the map to drop a waypoint &middot; tap outside to close</div>
-<div class="chip" id="build"><b id="buildN">c186</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c187</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -380,7 +380,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c186';
+const BUILD = 'c187';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -670,7 +670,17 @@ const CASH = {
 };
 const SHIP = {
   url: 'models/alien_ship_orange.glb',
-  at: [298.2, 17.1, -13.1], yaw: -.85,
+  // **HIS ROOF, AND HIS OWN CHIP IS WHAT IDENTIFIED IT (c187).** *"You could put the ship on this
+  // roof. It's completely flat, there's plenty of room. It's like two buildings over from where
+  // the ship currently is. I'll have to put a ladder up to it."*
+  // Reading a position off a screenshot is how you get a half pipe inside a bank, so it was
+  // MEASURED: the chip in that shot reads `BAR 43M@213,-57`, which puts him exactly 43 m from
+  // that bar. Sweeping 190 x 160 m of the district against the real collider turned up ten flat
+  // patches over 6 m up, and **exactly one of them is 43 m from that bar** -- and it is also 57 m
+  // from the old roof, which is "two buildings over". It is 15 x 14 m and flat to **0.000**,
+  // against hotel_a's 11 x 11 flat to 0.030 with plant housings on it.
+  //     243,-26   y 11.83   15 x 14 m   flat 0.000   57 m from the ship   43 m from that bar
+  at: [243, 11.83, -26], yaw: -.85,
   // **AND THE PAD IS SEARCHED, NOT TYPED (c185).** *"The ship is still off the top of the tower,
   // probably because the tower is not flat -- it has like little boxes. It kind of just looks
   // like it's flying above the thing."* Right on both counts: `at[1]` was a typed 17.1 taken off
@@ -766,6 +776,12 @@ const LAD = {
   //   { x: 246.5, y: .46, z: 169.9, top: 51,   rot: 1.571 },   // skyscraper_c_002
   //   { x: 189.2, y: .41, z: 173.3, top: 49.7, rot: 0 },       // skyscraper_a_001
   spots: [
+    // **THE ONE THAT GOES TO THE SHIP (c187).** Measured, not placed: the roof's north wall is
+    // 7.5 m out from its centre, and the ground at 1.6 / 3.0 / 4.5 m beyond it reads y 0.10 and
+    // flat to 0.00 at every distance -- street level, open, which is the whole test
+    // `npm run ladders` exists to apply. Rise 11.7 m, and a charge jump into a double tops out
+    // at 10.2, so this roof genuinely needs one rather than merely deserving one.
+    { x: 243, y: .10, z: -18.5, top: 11.83, rot: 0 },         // the ship's roof
     { x: 290.8, y: .41, z: -13.1, top: 17.1, rot: -1.571 },   // hotel_a
     { x: 279.2, y: .45, z: 222.3, top: 13.8, rot: 0 },        // travel_agency_001
     { x: -214.3, y: .5, z: 31,    top: 11.1, rot: 0 },        // house_05_012
@@ -776,7 +792,8 @@ const LAD = {
   rung: .34, wide: .44, bar: .045,   // the geometry: spacing, width, and how thick the stock is
   hold: .36,
   deck: 4,           // how far under the bbox top a man ON HIS FEET counts as "up, and done"
-  cool: 1.1,         // and how long the ladder is locked out after a mantle -- long enough to land        // how far his body sits off the rungs
+  cool: 1.1,         // and how long the ladder is locked out after a mantle -- long enough to land
+  reach: 3.2,        // how far in from the wall a mantle will look for actual roof        // how far his body sits off the rungs
   speed: 3.8,       // m/s up and down -- the hotel is 4.5 s, a house 2.9
   grab: 1.05,       // how close to latch on
   lip: 1.25,        // how far below the top he stops climbing and mantles instead
@@ -3577,6 +3594,7 @@ function buildShip(gl) {
     SHIP.at[0] = pad.x; SHIP.at[1] = pad.y; SHIP.at[2] = pad.z;
     g.position.set(SHIP.at[0], SHIP.at[1] + SHIP.lift, SHIP.at[2]);
   }
+  buildPadMark(SHIP.at[0], SHIP.at[1], SHIP.at[2]);
   SHIP.pos = new THREE.Vector3(SHIP.at[0], SHIP.at[1], SHIP.at[2]);
   SHIP.vel = new THREE.Vector3();
   SHIP.heading = SHIP.yaw;
@@ -3650,6 +3668,36 @@ function shipFlames() {
     sL: cone(b.side_jet_L, SHIP.side, '#eaf6ff', '#2f7dff', -Math.PI / 2),
     sR: cone(b.side_jet_R, SHIP.side, '#eaf6ff', '#2f7dff', Math.PI / 2),
   };
+}
+// **A LANDING PAD, BECAUSE A SHIP ON A BARE ROOF IS A SHIP SOMEBODY LEFT THERE (c187).** *"Might
+// work better to put like a little landing pad up here or something."* Procedural and merged, the
+// ladders' own rule -- one draw call, on an ordinary `MeshStandardMaterial` so it takes the toon
+// ramp, the palette and the paint from the prototype hook without being told.
+// **NOT IN THE COLLIDER.** It stands ten centimetres proud of the deck, and a ten-centimetre lip
+// across a roof you are meant to run onto is a thing to trip over. Same call as the ladders.
+const PAD = { r: 4.6, ring: .42, up: .06, on: 1, g: null };
+function buildPadMark(x, y, z) {
+  if (!PAD.on) return;
+  const g = new THREE.Group();
+  const deck = new THREE.Mesh(new THREE.CylinderGeometry(PAD.r, PAD.r, PAD.up, 26),
+    new THREE.MeshStandardMaterial({ color: 0x2b3550, roughness: .95, metalness: 0 }));
+  deck.position.y = PAD.up * .5;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(PAD.r - PAD.ring, PAD.r - .06, 40),
+    new THREE.MeshStandardMaterial({ color: 0xffd76a, roughness: .7, metalness: 0,
+      emissive: 0xffd76a, emissiveIntensity: .35, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = PAD.up + .012;
+  g.add(deck); g.add(ring);
+  // four marks on the axes, which is what says PAD rather than "a disc somebody drew"
+  for (let i = 0; i < 4; i++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(.3, .02, 1.5),
+      new THREE.MeshStandardMaterial({ color: 0xffd76a, roughness: .7, emissive: 0xffd76a, emissiveIntensity: .3 }));
+    const a = i / 4 * Math.PI * 2;
+    m.position.set(Math.cos(a) * (PAD.r - 1.5), PAD.up + .014, Math.sin(a) * (PAD.r - 1.5));
+    m.rotation.y = -a; g.add(m);
+  }
+  g.position.set(x, y, z);
+  g.traverse(o => { if (o.isMesh) { o.receiveShadow = true; o.frustumCulled = false; } });
+  cityGroup.add(g); PAD.g = g;
 }
 // THE FLATTEST PATCH OF ROOF NEAR A POINT. `blobFloor` is the one function that answers "what is
 // the real surface here" for BOTH the triangle collider and the solid boxes -- and a building's
@@ -10339,7 +10387,22 @@ function stepLadder(dt) {
     // it, and `ladCool` closes the door on the way out regardless.
     p.lad = 0; p.hang = 1; p.climbT = HANG.climb;
     p.cx0 = p.pos.x; p.cy0 = p.pos.y; p.cz0 = p.pos.z;
-    p.cx1 = L.x - L.nx * HANG.inset; p.cz1 = L.z - L.nz * HANG.inset; p.cy1 = L.y1;
+    // **THE MANTLE WALKS IN UNTIL IT FINDS THE ROOF, RATHER THAN STEPPING A TYPED `inset` (c187).**
+    // `HANG.inset` is 0.55 m, which is right for a LEDGE -- a wall top you pull yourself onto, one
+    // box thick. A building has a PARAPET, and half a metre in from the wall is still on top of
+    // it: the mantle put him there, `settle` found no roof under him, and he fell eleven metres
+    // into the street. That is c186's stated gap ("four of six ladders mantle and then fall"),
+    // reproduced on a fresh roof the moment the ship moved to it -- **climbed with the stick
+    // held, he ended at y 0.75, 38 m away.**
+    // So the target is MEASURED: step inward from the wall and take the first point whose floor
+    // agrees with the ladder's own top. Nothing typed, and a parapet of any thickness is walked
+    // over rather than landed on. `LAD.reach` is only how far in it is worth looking.
+    let inx = HANG.inset;
+    for (let d = HANG.inset; d <= LAD.reach; d += .45) {
+      const tx = L.x - L.nx * d, tz = L.z - L.nz * d;
+      if (Math.abs(blobFloor(tx, tz, L.y1 + .5) - L.y1) < .6) { inx = d; break; }
+    }
+    p.cx1 = L.x - L.nx * inx; p.cz1 = L.z - L.nz * inx; p.cy1 = L.y1;
     snd.jump();
     return;
   }
@@ -12524,7 +12587,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { shipGear, shipPad, actScan, WAY, wayAdd, mapOpen, stepWay, stepShip, shipPilot, PILOT, board: shipBoard, leave: shipLeave, stickWorld, ladGrab, DANCE, dance: danceGo, mark: markHere, marks: MAP.marks, ship: shipGo, mapMark, BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { shipGear, shipPad, blobFloor, actScan, WAY, wayAdd, mapOpen, stepWay, stepShip, shipPilot, PILOT, board: shipBoard, leave: shipLeave, stickWorld, ladGrab, DANCE, dance: danceGo, mark: markHere, marks: MAP.marks, ship: shipGo, mapMark, BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

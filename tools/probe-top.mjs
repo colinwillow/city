@@ -26,11 +26,14 @@ for (let i = 0; i < LADDERS.length; i++) {
   for (let k = 0; k < 60 && !P.grounded; k++) step();
   cam.az = Math.atan2(-L.nx, -L.nz);
   stick.L.down = 1; stick.L.x = 0; stick.L.y = -1; stick.L.mag = 1;   // and it is NEVER released
-  let onLad = 0, relatch = 0, wasLad = 0, topped = 0;
+  // THE STICK IS RELEASED WHEN THE MANTLE ENDS (see probe-newpad): held for the whole run he
+  // walks straight off the far edge of the roof, which is him obeying the harness, not a bug.
+  let onLad = 0, relatch = 0, wasLad = 0, topped = 0, held = 1;
   for (let k = 0; k < Math.round(25 / DT); k++) {
     step();
     if (P.lad && !wasLad) { onLad++; if (topped) relatch++; }
     if (!P.lad && wasLad) topped = 1;
+    if (topped && held && !P.hang) { held = 0; stick.L.down = 0; stick.L.x = stick.L.y = 0; stick.L.mag = 0; }
     wasLad = P.lad ? 1 : 0;
   }
   const deck = G.blobFloor ? 0 : 0;

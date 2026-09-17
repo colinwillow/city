@@ -1198,6 +1198,38 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE SHIP MOVED TO HIS ROOF, AND HIS OWN CHIP IS WHAT IDENTIFIED IT (c187).** *"You could put
+  the ship on this roof. It's completely flat, there's plenty of room. It's like two buildings over
+  from where the ship currently is. I'll have to put a ladder up to it. Might work better to put
+  like a little landing pad up here."*
+  **READING A POSITION OFF A SCREENSHOT IS HOW YOU GET A HALF PIPE INSIDE A BANK**, so it was
+  measured instead -- and the chip in his own shot is what made that possible. It reads
+  `BAR 43M@213,-57`, which puts him **exactly 43 m** from that bar. Sweeping 190 x 160 m of the
+  district against the real collider (`JAM_PROBE=tools/probe-roofs.mjs`, flood-filling level cells
+  and keeping patches over 9 m across) turned up ten flat roofs, and exactly one is 43 m from that
+  bar:
+      243,-26   y 11.83   15 x 14 m   flat to 0.000   57 m from the ship   43 m from that bar
+      298,-13   y 15.73   11 x 11 m   flat to 0.030   -- hotel_a, where it was, with plant on it
+  57 m is "two buildings over" and 0.000 is "completely flat". **A tool that can rank every roof
+  in a district beats an opinion about which one is in the picture.**
+  **THE LADDER IS MEASURED TOO** (`probe-pad.mjs`): the north wall is 7.5 m out from the roof's
+  centre, and the ground at 1.6 / 3.0 / 4.5 m beyond it reads y 0.10, flat to 0.00 at every
+  distance -- street level and open, which is the whole test `npm run ladders` exists to apply.
+  The west face has no edge within 30 m and the south face is a 2.13 m canopy, so it is the north
+  one. Rise 11.7 m, and a charge jump into a double tops out at 10.2, so this roof **needs** a
+  ladder rather than merely deserving one.
+  **AND THE MANTLE WALKS IN UNTIL IT FINDS ROOF (`LAD.reach`).** `HANG.inset` is 0.55 m, which is
+  right for a LEDGE -- a wall top one box thick -- and wrong for a building, where half a metre in
+  from the wall can still be on the PARAPET. The target is stepped inward now until `blobFloor`
+  agrees with the ladder's own top, so a parapet of any thickness is walked over rather than
+  landed on. Nothing typed.
+  **THE PAD IS PROCEDURAL AND NOT IN THE COLLIDER**, the ladders' own rule: one group, an ordinary
+  `MeshStandardMaterial` so it takes the toon ramp, the palette and the paint from the prototype
+  hook without being told, and no box -- a ten-centimetre lip across a roof you are meant to run
+  onto is a thing to trip over.
+  Verified end to end (`probe-newpad.mjs`): `shipPad` settles at 243, 11.83, -26 with **0.000 m**
+  of disagreement under the hull and no correction needed, the ladder builds 7.5 m from it, and a
+  climb with the stick held lands him **on the roof at y 11.83, grounded, 6.9 m from the pad.**
 - **THE LADDER-TOP LOOP WAS A 40 cm WINDOW AND A COOLDOWN THAT HAD ALREADY EXPIRED (c186).**
   *"At the top of the ladder he gets stuck in a loop of trying to climb over it, then being on the
   ladder, then trying to climb over it."* Two halves, and the first fix only closed one:
@@ -1219,12 +1251,14 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   at the start.** My first attempt set it where the ladder hands over, which is `HANG.climb`
   seconds earlier, so it had run out by the time he was let go and the probe read the same 26.
       after   latched 1x on all six, 0 of 6 loop
-  **AND THE PROBE FOUND SOMETHING ELSE, LEFT OPEN AND STATED.** Four of the six (the `house_05`
-  pair at 11.1 m) end the mantle and then fall to the STREET -- `ended y 0.5`, on his feet, at
-  ground level. Only hotel_a lands him on a roof (15.0). So `HANG.inset` is not carrying him far
-  enough over the parapet on those four, and "climb the ladder, mantle, fall off the building" is
-  a real fault that is NOT the loop he reported. Do not widen `inset` blindly -- it is shared with
-  every ledge hang in the city.
+  **AND THE "HE FALLS OFF THE ROOF" IT ALSO REPORTED WAS THE HARNESS (corrected at c187).** Four
+  of the six ended at street level, and I wrote that up as a real fault. It is not: **the probe
+  held the stick forward for the whole 25 seconds**, so he topped out and then walked straight off
+  the far side of the roof, obeying it. A player holds the stick to climb and lets go when he is
+  up; released at the mantle he lands on the deck and stays there (`ended y 11.83, grounded, 6.9 m
+  from the pad`). **A harness that keeps driving after the thing under test has finished is
+  measuring its own input**, which is this repo's oldest mistake wearing a new hat -- and it is
+  the second time in two builds that a "bug" here was the probe's placement rather than the game.
 - **A TAP JUMPS; A HOLD AND A RELEASE NO LONGER DOES (c186, `MOVE.tapT`).** *"When you press the
   right stick and hold and then release he does a jump -- we're just gonna get rid of that since
   we have the double jump and the jetpack, because now when I'm trying to adjust the camera and
