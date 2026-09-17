@@ -376,7 +376,7 @@
 <div id="mapScrim"></div>
 <canvas id="map" hidden></canvas>
 <div id="mapHint">tap the map to drop a waypoint &middot; tap outside to close</div>
-<div class="chip" id="build"><b id="buildN">c188</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c189</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -390,7 +390,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c188';
+const BUILD = 'c189';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -6373,7 +6373,7 @@ function stepTraffic(dt) {
 // asset that is first on the wire and the first thing anybody looks at. `png` is the fallback
 // and it is worth the two lines: a phone that cannot decode WebP would otherwise show a blank
 // card for the whole load, and "blank" is indistinguishable from a bug.
-const BOOT = { art: 'images/splash_screen_01.webp', png: 'images/splash_screen_01.png', min: 1.5, lit: 0, watch: 20, every: 4 };
+const BOOT = { art: 'images/splash_screen_01.webp', png: 'images/splash_screen_01.png', min: 1.5, lit: 0, watch: 8, every: 4 };
 // HIS WORDMARK. `shredworld_title_01.png` is the other cut of it -- `city.TITLE.art` and a
 // reload swaps them, or set it here. Loaded through `A()` like everything else, so repainting
 // it under the same filename actually arrives on a phone that has already seen the old one.
@@ -6468,7 +6468,8 @@ setTimeout(function bootWatch() {
   if (ready) return;
   const cur = bootErr.textContent;
   if (!cur || cur.indexOf(BOOTTAG) === 0)
-    bootErr.textContent = BOOTTAG + ' \u00b7 ' + PROG.done + '/' + PROG.total + ' files \u00b7 ' + (bootMsg.textContent || '?');
+    bootErr.textContent = BOOTTAG + ' \u00b7 ' + BUILD + ' \u00b7 ' + PROG.done + '/' + PROG.total
+      + ' files \u00b7 ' + (bootMsg.textContent || '?');
   setTimeout(bootWatch, BOOT.every * 1000);
 }, BOOT.watch * 1000);
 // HOW MANY GOES A FILE GETS, AND WHAT A DEAD ONE COSTS.
@@ -12429,6 +12430,21 @@ function optStart() {
   try { optLoad(); } catch (e) { console.warn('[opt] stored settings ignored', e); }
   optBuild();
 }
+// **AND THERE HAS TO BE A WAY BACK IN (c189, `?fresh`).** Every stored key this game has is
+// applied at boot, before anything is drawn -- 88 settings rows, the kit, the character and his
+// marks -- and c175 is the build that proved a store can hold the game somewhere no edit to this
+// file can reach. `npm run check:opt` now boots the module against a full store, an old one and a
+// junk one and all three come up, so it is not the cause today; but "clear it and try again" was
+// a thing only a console could do, and there is no console on a phone.
+// **It is a URL rather than a gesture on purpose**: a stuck card is exactly when a gesture cannot
+// be explained, and a link can be sent. It clears and reloads to a clean URL, so it cannot loop.
+try {
+  if (/(^|[?&])fresh(=|&|$)/.test(location.search)) {
+    for (const k of [OPT.key, KIT.key, CHARS.key, MAP.key]) { try { localStorage.removeItem(k); } catch (e) {} }
+    console.log('[opt] store cleared');
+    location.replace(location.pathname);
+  }
+} catch (e) {}
 optStart(); kitStart();
 let fpsT = 0, fpsN = 0, fps = 0;
 buildNEl.textContent = BUILD; buildEl.classList.add('fresh');
@@ -12602,9 +12618,21 @@ frame();
     // loop that never yields an answer, and the headless harnesses sat in it for ever flooding
     // the log. After `LOADT.rounds` the boot goes on and the chip says `NO COLIN GLB`, which is
     // a game you can at least look at and a report that names itself.
+    // **AND THE RETRY IS THE TRANSPORT'S, NEVER THE BUILD'S (c189).** This loop wrapped BOTH the
+    // fetch and `buildColin` -- so a THROW inside the build re-downloaded a ten-megabyte GLB and
+    // sat out an eight-second countdown, four times over, before giving up. Re-fetching bytes
+    // that arrived perfectly cannot fix code, and on a phone that is a minute or two of sitting
+    // on the loading card with the message not moving: **"stuck on the loading screen", exactly,
+    // and from a cause no gate here can reach** (no harness can build a skin -- draco wants a
+    // Worker). `loadGLB` already owns the transport retry; this loop only ever meant to cover
+    // the case c140 wrote it for, which is the network going away.
     for (let round = 0; round < LOADT.rounds; round++) {
-      try { buildColin(await loadGLB('models/colin.glb', 'loading colin'), melee && melee.animations); break; }
-      catch (e) { console.warn('colin failed', e); if (round < LOADT.rounds - 1) await bootAsk('colin did not arrive'); }
+      let glb = null;
+      try { glb = await loadGLB('models/colin.glb', 'loading colin'); }
+      catch (e) { console.warn('colin did not arrive', e); if (round < LOADT.rounds - 1) await bootAsk('colin did not arrive'); continue; }
+      try { buildColin(glb, melee && melee.animations); }
+      catch (e) { console.warn('colin arrived and the build threw', e); BOOTFAIL.push('colin'); }
+      break;                                   // the bytes came: retrying them says nothing new
     }
     // AND THE OFFICERS BORROW HIS AIR CLIPS, here rather than in `buildCops` -- they are built
     // three awaits earlier and `colin.clips` does not exist yet when they are.

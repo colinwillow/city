@@ -1198,6 +1198,50 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **STILL STUCK -- SO THE RETRY WAS THE SUSPECT, AND `npm run check:opt` KILLED THE OTHER ONE
+  (c189).** c188 shipped one candidate and two reporting changes and it was not enough. Two more
+  hypotheses measured here, one dead and one REAL:
+  **DEAD: HIS `localStorage`.** `optStart(); kitStart();` run at MODULE SCOPE, above the `init()`
+  IIFE, and `optLoad` calls the setter of EVERY saved row -- so a throw there is `init()` never
+  running and a card stuck for ever at the text it was born with, which is precisely the failure
+  `check:boot` exists for. **And `check:boot` stubs `localStorage` EMPTY**, so `optApply` applies
+  nothing and that path -- the one his phone takes on every single boot, with 88 rows in it -- had
+  never once been executed by a gate. c175 is the build that proved a store can hold the game
+  somewhere no edit to this file can reach, so this was a good suspect. It is not the cause:
+      empty store (the old gate)   module up
+      his store, all 88 rows       module up      <- read off the live panel, not invented
+      an OLD store, wrong types    module up      <- plus `city.kit` as a bare pre-c113 string,
+                                                     a character that no longer exists, and
+                                                     `city.marks` set to text that is not JSON
+  `npm run check:opt` is in `npm run check` now, so it can never go untested again.
+  **AND THE HARNESS READ THE WRONG HALF OF `optDump` ON ITS FIRST RUN.** That function PRINTS the
+  panel and returns nothing, so the capture fell back to an empty key and both interesting cases
+  tested a store with nothing in it -- and said "ok". **A harness that measures the wrong half of
+  a function measures nothing**, this repo's oldest mistake, caught only because 88 rows reading
+  as 0 was too round a number. It parses the printed text now and EXITS 1 if it cannot.
+  **REAL: THE COLIN RETRY RE-DOWNLOADED TEN MEGABYTES TO FIX A CODE FAULT.** The loop wrapped BOTH
+  the fetch and `buildColin`:
+      for (round...) { try { buildColin(await loadGLB('models/colin.glb', ...)) ; break; }
+                       catch { ... await bootAsk('colin did not arrive'); } }
+  So a THROW INSIDE THE BUILD -- not a dropped fetch -- re-fetched the whole GLB and sat out an
+  eight-second countdown, **four times over**, before giving up. On a phone that is a minute or two
+  of the loading card not moving, which is "stuck on the loading screen" told exactly. And it is
+  from a cause **no gate here can reach**, because no harness in this repo can build a skin (draco
+  wants a Worker) -- so `buildColin`, `buildSkin`, `buildCops`, `buildShip` and `weapFit` are the
+  whole remaining surface.
+  **THE RETRY BELONGS TO THE TRANSPORT AND NOTHING ELSE**, which is what c140 wrote it for: bytes
+  that arrived perfectly cannot be fixed by fetching them again. A failed LOAD retries; a failed
+  BUILD breaks the loop and says `BOOT FAIL colin` in the chip.
+  **AND `?fresh` IS THE WAY BACK IN.** Clearing the store was a thing only a console could do and
+  there is no console on a phone. **A URL rather than a gesture on purpose**: a stuck card is
+  exactly when a gesture cannot be explained, and a link can be sent. It clears all four keys and
+  reloads to a clean path, so it cannot loop.
+  **AND THE WATCHDOG CARRIES THE BUILD NUMBER AND FIRES AT 8 s.** `still loading · c189 · 3/13
+  files · loading colin` is a sentence I can act on; "stuck on the loading screen" is three
+  different bugs. **Which build he is actually looking at is half the question** -- Pages caches
+  `index.html` for ten minutes and an iOS home-screen app caches it harder, so a fix that has not
+  arrived and a fix that did not work are the same picture from where he is standing, and that has
+  cost this file rounds before under the asset-hash note.
 - **"IT'S STUCK ON THE LOADING SCREEN" -- AND EVERY GATE AND EVERY HARNESS PASSES THE BOOT (c188).**
   That sentence is the whole report, and this file has **three** ways to produce it that are one
   picture from where he is standing: a fetch that never settles, a throw the IIFE catches, and a

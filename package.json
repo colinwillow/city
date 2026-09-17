@@ -25,7 +25,7 @@
     "dens": "node tools/dens.mjs",
     "cop": "node tools/cop.mjs",
     "check:boot": "node tools/boot.mjs",
-    "check": "npm run check:syntax && npm run check:boot",
+    "check": "npm run check:syntax && npm run check:boot && npm run check:opt",
     "joints": "node tools/joints.mjs",
     "gunpose": "node tools/gunpose.mjs",
     "gun": "node tools/gun.mjs",
@@ -41,7 +41,8 @@
     "sfx": "node tools/sfx.mjs",
     "push": "node tools/push.mjs",
     "bar": "node tools/bar.mjs",
-    "slash": "node tools/slash.mjs"
+    "slash": "node tools/slash.mjs",
+    "check:opt": "node tools/optboot.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.0",
