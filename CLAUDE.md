@@ -1198,6 +1198,92 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE LADDER-TOP LOOP WAS A 40 cm WINDOW AND A COOLDOWN THAT HAD ALREADY EXPIRED (c186).**
+  *"At the top of the ladder he gets stuck in a loop of trying to climb over it, then being on the
+  ladder, then trying to climb over it."* Two halves, and the first fix only closed one:
+      the gate was `p.pos.y > L.y1 - .4`, and `y1` is the building's BOUNDING-BOX top out of
+      `LAD.spots` -- on hotel_a the roof you stand on is 1.9 m under it (the same gap that had the
+      ship floating, c185). So the mantle set him down at `y1`, he FELL to the real deck, and on
+      the way he passed back through a window only 40 cm deep -- **with the stick still held into
+      the wall, because that is the thumb that just climbed it.**
+  Measured, stick never released, 25 s per ladder: **26 re-grabs on all six.**
+  **MEASURING THE DECK AT BUILD TIME WAS TRIED AND DID NOT HELP**, which is worth writing down:
+  `HANG.inset` lands the probe on the PARAPET, which IS the bbox top, so `blobFloor` came back
+  agreeing with the number it was meant to correct. The real deck is further in and how much
+  further is a property of each building's plan. The measurement is reverted -- an inert
+  measurement is noise, and the question that matters is not "where is the roof" but "is he UP,
+  standing on something".
+  So: falling, the window stays tight (catching one in mid-air is the fire-escape jump and it is
+  deliberate); **GROUNDED, it opens to `LAD.deck`** -- a man on his feet within a few metres of
+  the top of a ladder has finished with it. **And `LAD.cool` is set at the END of the mantle, not
+  at the start.** My first attempt set it where the ladder hands over, which is `HANG.climb`
+  seconds earlier, so it had run out by the time he was let go and the probe read the same 26.
+      after   latched 1x on all six, 0 of 6 loop
+  **AND THE PROBE FOUND SOMETHING ELSE, LEFT OPEN AND STATED.** Four of the six (the `house_05`
+  pair at 11.1 m) end the mantle and then fall to the STREET -- `ended y 0.5`, on his feet, at
+  ground level. Only hotel_a lands him on a roof (15.0). So `HANG.inset` is not carrying him far
+  enough over the parapet on those four, and "climb the ladder, mantle, fall off the building" is
+  a real fault that is NOT the loop he reported. Do not widen `inset` blindly -- it is shared with
+  every ledge hang in the city.
+- **A TAP JUMPS; A HOLD AND A RELEASE NO LONGER DOES (c186, `MOVE.tapT`).** *"When you press the
+  right stick and hold and then release he does a jump -- we're just gonna get rid of that since
+  we have the double jump and the jetpack, because now when I'm trying to adjust the camera and
+  then I let go, he jumps."* The charge jump was a wind-up and a release BY DESIGN, so `onRel`
+  fired whatever the hold had been: **every camera drag that ended near the middle was a jump.**
+  `p.rHold` is already how long that pad has been down, so a tap is `rHold < MOVE.tapT`.
+  **THE SPRINT IS UNTOUCHED** -- it rides the same hold, and holding the pad is still how you run;
+  it just no longer launches him when you stop. `p.charge` still counts, because it is what
+  `GAIT.windUp` is a hook for and what the crouch blends on. `MOVE.chargeUp`/`chargeOut` stay as
+  constants (the jump tables in this file were measured against them) and **nothing reads them**:
+  `p.vel.y = MOVE.jump`, one height, by construction.
+  **AND THE PROBE FOR THIS WAS DELETED RATHER THAN TRUSTED.** Its first version RE-IMPLEMENTED the
+  tap test to drive it, which is measuring a rule the game does not have -- this repo's oldest
+  mistake, and it duly reported a "super jump" that was its own sampling noise. The gate lives in
+  the pad binding and belongs on the device; what can be stated without restating anything is that
+  there is no charge term left in the jump.
+- **THE SHIP'S STEERING WAS INVERTED, AND ITS CAMERA WAS FIGHTING THE RUDDER (c186).**
+  *"The steering is inverted on the right stick. Also the camera still rotates when you're in the
+  ship -- it can't rotate, it just stays behind the ship, that way you can steer with the right
+  stick."* Two lines, and the second is the bug two writers on `cam.az` always are: `stepCam`'s
+  drag reads `stick.R.x` and c183's chase follow reads `SHIP.heading`, so the same thumb was
+  swinging the lens AND the hull and they fought every frame. `p.turning`'s own rule -- the aim
+  owns the pad while it is live -- one vehicle along.
+  The sign is **negated on his report rather than derived**: heading grows +Z toward +X, so a
+  positive yaw rate turns toward +X, which is his LEFT. This file has the identical note about the
+  air spin, in the same words, because the handedness argument comes out backwards half the time.
+- **THE SPOOL BLOWS THE PAD ABOUT (c186).** *"We need some explosive particles when it's taking
+  off, under the ship and the jets, so it really looks eventful when it's going up."* It is a
+  RHYTHM rather than one card -- the jetpack's own lesson (`JET.every`): a single puff is a
+  sticker, a run of them coming out from under the hull is a machine blowing the roof about. The
+  interval tightens as the spool builds, so the last second before it unsticks is the loudest,
+  which is what makes the lift-off read as the END of something. Then a ring of nine thrown
+  outward plus the `jet` bank at each nozzle -- `jet` starts at frame 0 of the sheet, the CRACK,
+  which is the whole difference between a bang and a breath. The touchdown gets the same, smaller.
+- **WAYPOINTS, AND THE MAP OPENS (c186, `WAY`, `mapOpen`, `stepWay`).** *"Make the map get bigger
+  if you click it and make it so you can set waypoints on it that show up in the actual physical
+  world. Once you run through the waypoint they go away... semi-transparent background so it
+  overlays the screen, and then you can click out of it."*
+  **ONE CANVAS IN TWO CSS SIZES, NOT A SECOND MAP.** The map is already the whole city at a fixed
+  scale, so opening it is a class and `drawMap` never learns it happened -- and the projection it
+  uses inverts directly, so a tap at (u,v) of the element IS a world point. There is no second
+  scale to keep in step, which is the entire reason it is done this way.
+  **A WAYPOINT IS A MARK (c181) WITH A BEAM ON IT, AND IT IS CONSUMED.** The map side needed
+  nothing new. What is new is the column, and it is a BEAM rather than a flag for one reason: from
+  the street you cannot see a marker on the ground two blocks away, so it has to beat a building.
+  90 m tall, unlit, `depthWrite: false`, `noHole`/`noPaint` -- it is a direction, not scenery.
+  **SPENT IN PLAN, NEVER IN 3D.** A waypoint on a roof you are standing under has not been
+  reached; one at the far end of a bridge you are on has -- and the height you arrive at is not
+  something the person who dropped it chose.
+  **AND IT STANDS ON THE GROUND, WHICH IS NOT "THE HIGHEST THING HERE".** `blobFloor` takes any box
+  top under the y it is given, so passing four thousand put the first one on whatever roof was
+  nearest -- the probe read **6.76 m at a spawn whose street is at zero**. The terrain is the
+  reference and a box may only raise it by a step or two (a bridge deck, a forecourt).
+  A tap on an existing one takes it back, so a misplaced waypoint costs a tap rather than a run
+  across the city. `WAY.max` 8, because more than a handful is a christmas tree, not a direction.
+  Measured: dropped at street level (0.10 m), one map mark, still there at 4.7 m, **gone at 1.6 m
+  with its map mark**, and 11 dropped keeps 8.
+  **AND THE PROBE HAD TO CALL `stepWay`**: it is in the FRAME loop, not in `stepPlayer`, so the
+  first run measured a game with no waypoints in it and reported one that would not die.
 - **INTERACTION IS THE STICK LIGHTING UP, NOT A BUTTON (c185, `ACT`, `actScan`, `actTake`).**
   *"The button to get into the ship is always on screen. It doesn't even need its own button --
   the way I do this in all my games, the right stick lights up, there's a halo around it, a ring,

@@ -242,8 +242,26 @@
   #musicB{top:calc(62px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));width:40px;height:40px;font-size:15px}
   #sfxB{top:calc(62px + env(safe-area-inset-top));right:calc(62px + env(safe-area-inset-right));width:40px;height:40px;font-size:14px}
   #map{position:fixed;top:calc(110px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));
-    width:116px;height:116px;border-radius:14px;z-index:4;pointer-events:none;
-    border:1.5px solid rgba(157,247,255,.30);box-shadow:0 4px 16px rgba(0,0,0,.45)}
+    width:116px;height:116px;border-radius:14px;z-index:4;pointer-events:auto;cursor:pointer;
+    border:1.5px solid rgba(157,247,255,.30);box-shadow:0 4px 16px rgba(0,0,0,.45);
+    transition:width .22s cubic-bezier(.16,1,.3,1),height .22s cubic-bezier(.16,1,.3,1),
+      top .22s cubic-bezier(.16,1,.3,1),right .22s cubic-bezier(.16,1,.3,1),border-radius .22s}
+  /* OPEN: THE SAME CANVAS, BIGGER (c186). *"Make the map get bigger if you click it... it has a
+     semi-transparent background so it just overlays over the screen, it's a little bigger, and
+     then you can click out of it."* One element in two sizes rather than a second map to keep in
+     step -- the canvas is already the whole city at a fixed scale, so opening it is CSS and the
+     drawing code never learns it happened. It is SQUARE at both sizes, which is what lets one
+     projection serve both: `min(86vw, 86vh)` cannot exceed either axis on any phone. */
+  #map.open{width:min(86vw,86vh);height:min(86vw,86vh);border-radius:18px;
+    top:50%;right:50%;transform:translate(50%,-50%);border-color:rgba(157,247,255,.55);
+    box-shadow:0 10px 50px rgba(0,0,0,.6)}
+  #mapScrim{position:fixed;inset:0;z-index:3;background:rgba(6,10,24,.55);backdrop-filter:blur(2px);
+    -webkit-backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .22s}
+  #mapScrim.on{opacity:1;pointer-events:auto}
+  #mapHint{position:fixed;left:50%;transform:translateX(-50%);z-index:5;pointer-events:none;
+    bottom:calc(6vh + env(safe-area-inset-bottom));opacity:0;transition:opacity .22s;
+    font:600 11px/1.3 var(--ui);letter-spacing:.09em;text-transform:uppercase;color:var(--ink);text-align:center}
+  #mapHint.on{opacity:.8}
   /* ---- the settings panel ---- */
   #gearB{top:calc(62px + env(safe-area-inset-top));right:calc(110px + env(safe-area-inset-right));width:40px;height:40px;font-size:17px}
   /* NEXT TO THE RESET KEY, IN THE TOP ROW (c184). *"I don't see the dance button."* It was at
@@ -345,8 +363,10 @@
 <div class="key" id="gearB">&#9881;</div>
 <div class="key" id="danceB">&#128378;</div>
 <div id="opt" hidden></div>
+<div id="mapScrim"></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c185</b><i id="perf">···</i></div>
+<div id="mapHint">tap the map to drop a waypoint &middot; tap outside to close</div>
+<div class="chip" id="build"><b id="buildN">c186</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -360,7 +380,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c185';
+const BUILD = 'c186';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -403,6 +423,7 @@ const MOVE = {
   // a sprint AND a charge, and letting go is a jump scaled by how long you held it. One input
   // doing two things that belong together -- you run at something and leap it.
   chargeMax: .9,     // seconds to a full wind-up
+  tapT: .32,         // longer than this on the right pad is a HOLD, and a hold is not a jump
   sprint: 3.0,       // top speed multiplier at full charge: 9 -> 27 m/s, 97 km/h. HIS pick,
                      // off the panel, once the acceleration could actually reach it.
   chargeUp: .42,     // extra jump SPEED at full charge, as a fraction
@@ -753,7 +774,9 @@ const LAD = {
     { x: 524.2, y: .45, z: 147.4, top: 11.1, rot: 1.571 },    // house_05_009
   ],
   rung: .34, wide: .44, bar: .045,   // the geometry: spacing, width, and how thick the stock is
-  hold: .36,        // how far his body sits off the rungs
+  hold: .36,
+  deck: 4,           // how far under the bbox top a man ON HIS FEET counts as "up, and done"
+  cool: 1.1,         // and how long the ladder is locked out after a mantle -- long enough to land        // how far his body sits off the rungs
   speed: 3.8,       // m/s up and down -- the hotel is 4.5 s, a house 2.9
   grab: 1.05,       // how close to latch on
   lip: 1.25,        // how far below the top he stops climbing and mantles instead
@@ -3703,13 +3726,47 @@ function shipPilot(dt) {
   const P = PILOT, c = SHIP.ctl;
   const L = stick.L, R = stick.R;
   const fwd = L.down ? clamp(-L.y, -1, 1) : 0, str = L.down ? clamp(L.x, -1, 1) : 0;
-  const yaw = R.down ? clamp(R.x, -1, 1) : 0, up = R.down ? clamp(-R.y, -1, 1) : 0;
+  // **NEGATED, AND MEASURED ON THE DEVICE RATHER THAN DERIVED (c186).** *"The steering is
+  // inverted on the right stick."* Heading grows from +Z toward +X, so a positive yaw rate turns
+  // him toward +X -- which is his LEFT. This file has the same note about the air spin, in the
+  // same words, for the same reason: the handedness argument comes out backwards half the time,
+  // so the thumb is what settles it.
+  const yaw = R.down ? -clamp(R.x, -1, 1) : 0, up = R.down ? clamp(-R.y, -1, 1) : 0;
   // ---- on the ground: the jets spool with the hull trembling, and it unsticks all at once ----
   if (SHIP.grounded) {
+    const was = SHIP.power;
     SHIP.power = Math.min(1, SHIP.power + dt / P.spoolT);
+    // **THE SPOOL BLOWS THE PAD ABOUT (c186).** *"We need some explosive particles when it's
+    // taking off, under the ship and the jets, so it really looks eventful when it's going up."*
+    // It is a RHYTHM rather than one card, which is the jetpack's own lesson (`JET.every`): a
+    // single puff is a sticker, and a run of them coming out from under the hull is a machine
+    // blowing the roof about. It builds with the spool, so the last second before it unsticks is
+    // the loudest -- which is what makes the lift-off read as the END of something.
+    SHIP.blow = (SHIP.blow || 0) - dt;
+    if (up > .3 && SHIP.blow <= 0) {
+      SHIP.blow = lerp(.13, .045, SHIP.power);
+      const a = Math.random() * 6.283, r = SHIP.size * (.25 + Math.random() * .55);
+      fxPop(SHIP.pos.x + Math.cos(a) * r, SHIP.pos.y + .25, SHIP.pos.z + Math.sin(a) * r,
+        'puff', SHIP.size * (.28 + .34 * SHIP.power),
+        Math.cos(a) * 4.5, .7, Math.sin(a) * 4.5);
+    }
+    if (SHIP.power >= 1 && was < 1) snd.hit(1, SHIP.pos.x, SHIP.pos.z);   // the jets come up
     if (SHIP.power >= 1 && up > .3) {
       SHIP.grounded = 0; SHIP.vel.set(0, P.hop, 0);
-      fxPop(SHIP.pos.x, SHIP.pos.y + .4, SHIP.pos.z, 'puff', 2.2);
+      // THE UNSTICK ITSELF: a ring of cards thrown out from under the hull, plus the ignition
+      // bank at each nozzle. `jet` starts at frame 0 of the sheet -- the crack -- which is what
+      // the jetpack's first puff uses and is the whole difference between a bang and a breath.
+      for (let i = 0; i < 9; i++) {
+        const a = i / 9 * 6.283 + Math.random() * .5, r = SHIP.size * (.3 + Math.random() * .5);
+        fxPop(SHIP.pos.x + Math.cos(a) * r, SHIP.pos.y + .3, SHIP.pos.z + Math.sin(a) * r,
+          'puff', SHIP.size * .55, Math.cos(a) * 9, 1.4, Math.sin(a) * 9);
+      }
+      for (const n of ['back_jet_L_flame', 'back_jet_R_flame']) {
+        const b = SHIP.bones && SHIP.bones[n]; if (!b) continue;
+        b.getWorldPosition(_shipTmp);
+        fxPop(_shipTmp.x, _shipTmp.y, _shipTmp.z, 'jet', SHIP.size * .5);
+      }
+      snd.hit(2, SHIP.pos.x, SHIP.pos.z);
     }
     c.throttle = SHIP.power * .5; c.yaw = 0; c.pitch = up * .4 * SHIP.power; c.strafe = 0; c.gear = 0;
     return;
@@ -3771,7 +3828,11 @@ function shipPilot(dt) {
       // on the roof it took off from is a mark pointing at nothing, which is worse than none.
       const mk = MAP.marks.find(m => m.tag === 'ship');
       if (mk) { mk.x = SHIP.pos.x; mk.z = SHIP.pos.z; if (MAP.base) buildMap(); }
-      fxPop(SHIP.pos.x, fl + .4, SHIP.pos.z, 'puff', 1.6);
+      for (let i = 0; i < 7; i++) {
+        const a = i / 7 * 6.283 + Math.random() * .5, r = SHIP.size * (.28 + Math.random() * .45);
+        fxPop(SHIP.pos.x + Math.cos(a) * r, fl + .3, SHIP.pos.z + Math.sin(a) * r,
+          'puff', SHIP.size * .45, Math.cos(a) * 6, .8, Math.sin(a) * 6);
+      }
     }
   }
   // ---- what the joints are told ----
@@ -7084,6 +7145,112 @@ function mapMark(x, z, c, r, tag) {
   if (MAP.base) buildMap();
   return MAP.marks.length;
 }
+// **WAYPOINTS YOU SET, AND THAT STAND IN THE WORLD (c186, `WAY`).** *"Make it so you can set
+// waypoints on it that show up in the actual physical world. Once you set the waypoint and once
+// you run through the waypoint, they go away."*
+// A MARK IS ALREADY A POINT ON THE MAP (c181) -- what is new is the PILLAR, and that it is
+// CONSUMED. So a waypoint is a mark with a beam on it: one `mapMark` entry so the map needs
+// nothing new, plus a column of light that `stepWay` walks you out of.
+// **A BEAM, NOT A FLAG, AND THAT IS THE WHOLE POINT OF IT.** The thing a waypoint has to beat is
+// a building: from the street you cannot see a marker on the ground two blocks away, so it is a
+// tall unlit column you can see over the roofs, and the ground ring is what you actually arrive
+// at. Unlit and `depthWrite: false` so it reads at any distance and never z-fights the road.
+const WAY = {
+  r: 3.2,            // run inside this of it and it is spent
+  h: 90, rad: .55,   // the column: tall enough to clear the skyline, thin enough not to be a wall
+  ring: 2.6,
+  max: 8,            // more than a handful of these is a christmas tree, not a direction
+  list: [], g: null,
+};
+function wayBuild() {
+  if (WAY.g) return WAY.g;
+  WAY.g = new THREE.Group(); WAY.g.frustumCulled = false; scene.add(WAY.g);
+  return WAY.g;
+}
+function wayAdd(x, z) {
+  const g = wayBuild();
+  if (WAY.list.length >= WAY.max) wayDrop(WAY.list[0]);
+  // ON THE GROUND, WHICH IS NOT THE SAME AS "THE HIGHEST THING HERE". `blobFloor` takes any box
+  // top under the y it is given, so a y of four thousand puts a waypoint on whatever roof happens
+  // to be nearest -- the probe read 6.76 m at a spawn whose street is at zero. A waypoint is a
+  // place ON THE MAP, and the map is the road network, so the terrain is the reference and a box
+  // is only allowed to raise it by a step or two (a bridge deck, a forecourt).
+  const hm = hmAt(x, z);
+  const y = blobFloor(x, z, hm + 2.5);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(WAY.rad, WAY.rad, WAY.h, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffd76a, transparent: true, opacity: .28,
+      depthWrite: false, side: THREE.DoubleSide, fog: false, toneMapped: false }));
+  m.position.set(x, y + WAY.h * .5, z); m.frustumCulled = false;
+  m.userData.noHole = 1; m.userData.noPaint = 1;
+  const r = new THREE.Mesh(new THREE.RingGeometry(WAY.ring * .72, WAY.ring, 28),
+    new THREE.MeshBasicMaterial({ color: 0xffd76a, transparent: true, opacity: .55,
+      depthWrite: false, side: THREE.DoubleSide, fog: false, toneMapped: false }));
+  r.rotation.x = -Math.PI / 2; r.position.set(x, y + .06, z); r.frustumCulled = false;
+  r.userData.noHole = 1; r.userData.noPaint = 1;
+  g.add(m); g.add(r);
+  const w = { x, z, y, col: m, ring: r, mark: null };
+  w.mark = { x, z, c: '#ffd76a', r: 4, tag: 'way', way: w };
+  MAP.marks.push(w.mark); if (MAP.base) buildMap();
+  WAY.list.push(w);
+  return w;
+}
+function wayDrop(w) {
+  const i = WAY.list.indexOf(w); if (i < 0) return;
+  WAY.list.splice(i, 1);
+  const k = MAP.marks.indexOf(w.mark); if (k >= 0) MAP.marks.splice(k, 1);
+  for (const o of [w.col, w.ring]) { if (o.parent) o.parent.remove(o); o.geometry.dispose(); o.material.dispose(); }
+  if (MAP.base) buildMap();
+}
+// RUN THROUGH ONE AND IT IS SPENT. Measured in PLAN, never in 3D: a waypoint on a roof you are
+// standing under has not been reached, but one at the far end of a bridge you are on has -- and
+// the height you arrive at is not something the person who dropped it chose.
+function stepWay(dt) {
+  if (!WAY.list.length) return;
+  const p = player, t = FX.t;
+  for (let i = WAY.list.length - 1; i >= 0; i--) {
+    const w = WAY.list[i];
+    // the ring breathes, because a mark that does not move reads as a decal on the road
+    const k = .78 + .22 * Math.sin(t * 2.4 + i);
+    w.ring.scale.setScalar(k); w.col.material.opacity = .20 + .10 * k;
+    if (Math.hypot(w.x - p.pos.x, w.z - p.pos.z) < WAY.r) {
+      fxPop(w.x, w.y + .5, w.z, 'puff', 1.5);
+      snd.cash();
+      wayDrop(w);
+    }
+  }
+}
+// OPEN IT, PLACE ON IT, CLOSE IT. The canvas is the same one at both sizes, so the projection
+// `drawMap` already uses inverts directly -- a tap at (u,v) of the element is the world point
+// `MAP.x0 + (u*width - MAP.o) / MAP.k`. There is no second map and no second scale to keep in
+// step, which is the whole reason it is one element in two CSS sizes.
+function mapOpen(on) {
+  const el = MAP.ctx && MAP.ctx.canvas; if (!el) return;
+  MAP.big = on === undefined ? !MAP.big : !!on;
+  el.classList.toggle('open', MAP.big);
+  const sc = document.getElementById('mapScrim'), hi = document.getElementById('mapHint');
+  if (sc) sc.classList.toggle('on', MAP.big);
+  if (hi) hi.classList.toggle('on', MAP.big);
+}
+function mapAt(ev) {
+  const el = MAP.ctx.canvas, r = el.getBoundingClientRect();
+  const u = (ev.clientX - r.left) / r.width, v = (ev.clientY - r.top) / r.height;
+  if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+  return { x: MAP.x0 + (u * el.width - MAP.o) / MAP.k, z: MAP.z0 + (v * el.height - MAP.o) / MAP.k };
+}
+function mapStart() {
+  const el = document.getElementById('map'), sc = document.getElementById('mapScrim');
+  if (!el) return;
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    if (!MAP.big) { mapOpen(true); return; }          // closed, a tap is "open me"
+    const w = mapAt(e); if (!w) return;
+    // AND A TAP ON A WAYPOINT TAKES IT BACK, so a misplaced one costs a tap rather than a run
+    // across the city -- the same distance the world uses, so what you press is what you see.
+    for (const o of WAY.list) if (Math.hypot(o.x - w.x, o.z - w.z) < WAY.r * 2.2) { wayDrop(o); return; }
+    wayAdd(w.x, w.z);
+  });
+  if (sc) sc.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); mapOpen(false); });
+}
 function marksLoad() {
   try {
     const a = JSON.parse(localStorage.getItem(MAP.key) || '[]');
@@ -9339,7 +9506,19 @@ bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
 // RIGHT PAD: the camera on the ground, THE BOARD in the air. Up kickflip, down 360 flip
 // (a kickflip and a shove together, which is what a varial is), left and right the two
 // shove-its. All four are geometry on the deck; his pose does not change.
-bindStick(document.getElementById('stkR'), stick.R, null, boardFlick, true, far => { if (far < .42 && !actTake()) player.jump = 1; });
+// **A TAP JUMPS. A HOLD AND A RELEASE NO LONGER DOES (c186, `MOVE.tapT`).** *"When you press the
+// right stick and hold and then release he does a jump -- we're just gonna get rid of that since
+// we have the double jump and the jetpack, because now when I'm trying to adjust the camera and
+// then I let go, he jumps."* Right, and it is the one gesture on this pad that had no upper
+// bound: the charge jump was a wind-up and a release BY DESIGN, so `onRel` fired whatever the
+// hold had been -- which means every camera drag that ended near the middle was a jump.
+// `p.rHold` is already how long the pad has been down, so the tap is `rHold < MOVE.tapT`. The
+// SPRINT still rides that same hold, untouched: holding the pad is how you run, it just no
+// longer launches him when you stop.
+bindStick(document.getElementById('stkR'), stick.R, null, boardFlick, true, far => {
+  if (far >= .42 || player.rHold > MOVE.tapT) return;      // a look, or a hold: neither is a jump
+  if (!actTake()) player.jump = 1;
+});
 function boardFlick(dx, dy) {
   const p = player;
   if (p.ship) return;        // both pads are flying it
@@ -10075,6 +10254,12 @@ function buildLadders() {
     m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
     cityGroup.add(m);
     // the outward normal is the way it faces; forward is (sin, cos) as everywhere else
+    // `y1` STAYS THE BOUNDING-BOX TOP, and measuring the deck here was TRIED AND DID NOT HELP:
+    // `HANG.inset` lands the probe on the parapet, which IS the bbox top, so `blobFloor` came
+    // back agreeing with the number it was meant to correct. The real deck is further in and how
+    // much further is a property of each building. The loop is closed below instead, where the
+    // question is the one that matters -- is he UP, standing on something -- rather than here,
+    // where it would have to be a guess about a roof's plan.
     LADDERS.push({ x: sp.x, z: sp.z, y0: sp.y, y1: sp.top, nx: Math.sin(sp.rot), nz: Math.cos(sp.rot) });
   }
   // THE WAY UP IS PART OF THE DIRECTION. A dot on a ship 17 m in the air with nothing saying how
@@ -10092,7 +10277,17 @@ function ladGrab(p) {
     const L = LADDERS[i];
     const dx = p.pos.x - L.x, dz = p.pos.z - L.z;
     if (dx * dx + dz * dz > LAD.grab * LAD.grab) continue;
-    if (p.pos.y < L.y0 - 1.2 || p.pos.y > L.y1 - .4) continue;
+    // **UP THERE AND ON HIS FEET MEANS THE LADDER IS BEHIND HIM (c186).** This gate used to be
+    // `p.pos.y > L.y1 - .4` alone, and `y1` is the building's BOUNDING-BOX top out of `LAD.spots`
+    // -- on hotel_a the roof you stand on is 1.9 m under it. So: the mantle set him down at `y1`,
+    // he FELL to the real deck, and on the way he passed back through a window that was only
+    // 40 cm deep with the stick still held into the wall from the climb. `ladGrab` took him,
+    // `stepLadder` put him back at the top, the mantle ran again -- **that is his loop, 26 times
+    // in 25 seconds, on all six ladders.**
+    // Falling, the window stays tight, because catching one in mid-air is the fire-escape jump
+    // and it is deliberate. GROUNDED, it opens to `LAD.deck`: a man standing on something within
+    // a few metres of the top of a ladder has finished with it.
+    if (p.pos.y < L.y0 - 1.2 || p.pos.y > L.y1 - (p.grounded ? LAD.deck : .4)) continue;
     // he has to be ASKING for it: the thumb pointed into the wall, or simply falling past it
     const into = s.mag > .3 && (s.x * -L.nx + s.z * -L.nz) > .25;
     if (!into && p.grounded) continue;
@@ -10129,9 +10324,22 @@ function stepLadder(dt) {
   // own climb, which goes up and then in -- so a ladder ends the way a ledge does and there
   // is one piece of code that puts him on a roof.
   if (p.pos.y > L.y1 - LAD.lip) {
+    // **TOPPING OUT HAS TO LOCK THE LADDER OUT, OR IT IS A LOOP (c186).** *"At the top of the
+    // ladder he gets stuck in a loop of trying to climb over it, then being on the ladder, then
+    // trying to climb over it."* Two things, and they compound:
+    //   * this path never set `p.ladCool`. The bottom-out and the jump-off both do; the one
+    //     exit that hands him somewhere else did not, and `ladGrab` is called from `stepFoot`
+    //     every frame (c182) with the thumb STILL held into the wall -- because that is the
+    //     thumb that just climbed it.
+    //   * and the height gate could not save him, because `L.y1` is the building's BOUNDING-BOX
+    //     top out of `LAD.spots`, not its walkable deck. On hotel_a those are 1.9 m apart (the
+    //     same gap that had the ship floating, c185) -- so the mantle put him at `y1`, `settle`
+    //     dropped him to the real roof BELOW `y1 - .4`, and the gate let him straight back on.
+    // `blobFloor` is what the deck actually is, so the mantle now ends on it rather than above
+    // it, and `ladCool` closes the door on the way out regardless.
     p.lad = 0; p.hang = 1; p.climbT = HANG.climb;
     p.cx0 = p.pos.x; p.cy0 = p.pos.y; p.cz0 = p.pos.z;
-    p.cx1 = L.x - L.nx * HANG.inset; p.cy1 = L.y1; p.cz1 = L.z - L.nz * HANG.inset;
+    p.cx1 = L.x - L.nx * HANG.inset; p.cz1 = L.z - L.nz * HANG.inset; p.cy1 = L.y1;
     snd.jump();
     return;
   }
@@ -10485,7 +10693,11 @@ function stepHang(dt) {
     const up = clamp(e * 1.7, 0, 1), fwd = clamp((e - .4) / .6, 0, 1);
     p.pos.x = lerp(p.cx0, p.cx1, fwd); p.pos.z = lerp(p.cz0, p.cz1, fwd);
     p.pos.y = lerp(p.cy0, p.cy1 + .02, up);
-    if (p.climbT <= 0) { p.hang = 0; p.grounded = true; p.vel.set(0, 0, 0); p.speed = 0; p.hangCool = HANG.cool; p.goT = 0; }
+    // AND THE LOCK-OUT GOES HERE, AT THE END OF THE MANTLE, NOT AT THE START OF IT (c186). My
+    // first attempt set `ladCool` where the ladder hands over -- which is `HANG.climb` seconds
+    // before this line, so it had already run out by the time he was let go, and the probe read
+    // the same 26 re-grabs. It has to cover the fall from `y1` to whatever the roof really is.
+    if (p.climbT <= 0) { p.hang = 0; p.grounded = true; p.vel.set(0, 0, 0); p.speed = 0; p.hangCool = HANG.cool; p.ladCool = LAD.cool; p.goT = 0; }
     return;
   }
   const s = stickWorld();
@@ -10940,9 +11152,10 @@ function stepFoot(dt) {
       // A CHARGE JUMP. Held, it is higher AND longer -- the forward part goes along his TRAVEL
       // rather than his facing, so a wind-up into a run leaps, and a wind-up on the spot just
       // goes up. Both come off the same release, which is the tap that always jumped.
-      const k = clamp(p.charge / MOVE.chargeMax, 0, 1);
-      p.vel.y = MOVE.jump * (1 + MOVE.chargeUp * k);
-      if (k > .05 && sp0 > .5) { const inv = 1 / sp0; p.vel.x += p.vel.x * inv * MOVE.chargeOut * k; p.vel.z += p.vel.z * inv * MOVE.chargeOut * k; }
+      // ONE HEIGHT (c186). `MOVE.chargeUp` and `chargeOut` stay as constants -- the jump tables
+      // in this file were measured against them -- but nothing reads them now: a jump is a jump,
+      // and the height past it is the double and the pack, which is his own argument.
+      p.vel.y = MOVE.jump;
       p.charge = 0; p.jumps = 1;
       snd.jump();
     } else {
@@ -12009,7 +12222,13 @@ function camFree(tx, ty, tz, dx, dy, dz, want) {
 }
 function stepCam(dt) {
   // in the air on the board that pad is spending its travel on tricks, not on the lens
-  const rx = (player.board && !player.grounded) ? 0 : stick.R.x;
+  // **AND ABOARD THE SHIP THAT PAD IS THE RUDDER, NOT THE LENS (c186).** *"The camera still
+  // rotates when you're in the ship. It can't rotate, it just stays behind the ship, that way you
+  // can steer with the right stick."* Exactly the bug two writers on `cam.az` always is: the
+  // drag on this line and the follow below were both answering the same thumb, so steering
+  // swung the shot as well as the ship and the two fought every frame. It is `p.turning`'s own
+  // rule -- the aim owns the pad while it is live -- one vehicle along.
+  const rx = (player.ship || (player.board && !player.grounded)) ? 0 : stick.R.x;
   // THE AIM OWNS THE PAD WHILE IT IS LIVE. `stepAim` eases `cam.az` in behind the aim, and a
   // yaw drag on the same thumb in the same frame is two writers fighting over one number --
   // the loop would never settle and the picture would shake.
@@ -12186,6 +12405,7 @@ function frame() {
     if (el) { el.style.opacity = player.aim ? '1' : (out ? '.34' : '0'); el.style.setProperty('--c', (k || 1).toFixed(3)); }
   }
   actPaint();          // the pad's own offer, every frame: `stepShip` returns early with no GLB
+  stepWay(dt);
   stickWatch(dt);
   stepWrecks(dt);
   stepCash(dt);
@@ -12289,6 +12509,7 @@ frame();
     const sg = groundAt(player.pos.x, player.pos.z, 60, 0);
     player.pos.y = sg.hit ? sg.floor : hmAt(player.pos.x, player.pos.z); player.safe.copy(player.pos);
     hudGutter();                 // the chip may have whatever the key row is not using
+  mapStart();
   marksLoad();                 // his own points, before the base canvas is drawn from them
     buildMap();
     // AFTER the collider exists, because it is what the search reads.
@@ -12303,7 +12524,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { shipGear, shipPad, actScan, stepShip, shipPilot, PILOT, board: shipBoard, leave: shipLeave, stickWorld, ladGrab, DANCE, dance: danceGo, mark: markHere, marks: MAP.marks, ship: shipGo, mapMark, BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { shipGear, shipPad, actScan, WAY, wayAdd, mapOpen, stepWay, stepShip, shipPilot, PILOT, board: shipBoard, leave: shipLeave, stickWorld, ladGrab, DANCE, dance: danceGo, mark: markHere, marks: MAP.marks, ship: shipGo, mapMark, BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
