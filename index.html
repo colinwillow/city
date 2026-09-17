@@ -426,7 +426,7 @@
 <div id="mapScrim"></div>
 <canvas id="map" hidden></canvas>
 <div id="mapHint">tap the map to drop a waypoint &middot; tap outside to close</div>
-<div class="chip" id="build"><b id="buildN">c191</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c192</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -440,7 +440,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c191';
+const BUILD = 'c192';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -9779,7 +9779,10 @@ function boardFlick(dx, dy) {
 }
 document.getElementById('resetB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); respawn(); });
 document.getElementById('danceB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); danceGo(); });
-document.getElementById('actB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (player.ship) shipLeave(); else shipBoard(); });
+// **NO `actB` LINE HERE, AND ITS ABSENCE IS THE POINT (c192).** c185 deleted that element --
+// *"it doesn't even need its own button; the right stick lights up"* -- and left this binding
+// behind, so `getElementById` returned null and the module died on the spot. Boarding the ship
+// is `actTake`, on the tap the right pad already has.
 // THE KEY IS ONLY THERE WHEN IT DOES SOMETHING, which is the whole reason it can sit in the
 // middle of the screen: a prompt that is always visible is a HUD element, and a HUD element in
 // the play area is one that eats a thumb. Painted from `stepShip`, so it cannot disagree with

@@ -1198,6 +1198,41 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **`document.getElementById('actB')` RETURNED NULL, AND THE MODULE DIED ON THAT LINE (c192).**
+  Six builds of "stuck on the loading screen", and c191's overlay printed the whole answer in one
+  line on the first boot after it shipped:
+      TypeError: null is not an object (evaluating
+        'document.getElementById('actB').addEventListener')  @:9782
+      still loading . c191 . 0/13 files . loading shredworld
+  **`0/13 files` IS THE OTHER HALF OF THE DIAGNOSIS.** Not one `loadGLB` had started, so this is
+  not a network fault, not a stalled fetch, not the store, not the compositor -- it is a throw at
+  MODULE SCOPE, which is `check:boot`'s entire reason for existing.
+  **c185 DELETED THE ELEMENT AND LEFT THE BINDING.** *"It doesn't even need its own button -- the
+  right stick lights up."* Right, and the `<button id="actB">` went with it; the line that hung a
+  `pointerdown` on it did not. Boarding the ship has been `actTake` on the right pad ever since,
+  so the line was dead code that killed the game. **Every build from c185 to c191 was unreachable
+  on his phone**, and the five before this one were fixes to a boot that never ran.
+  **AND THE GATE COULD NOT SEE IT BECAUSE THE STUB INVENTED AN ELEMENT FOR EVERY ID.**
+      getElementById: id => { if (!NODES.has(id)) NODES.set(id, mkEl('div', id)); return ... }
+  **A stub that answers every question cannot catch a wrong one.** `getElementById('actB')`
+  succeeded here and returned null there, so the harness was running a DIFFERENT PAGE from the
+  browser -- this repo's oldest mistake, for the ninth time, and this time inside the one gate
+  written for precisely this class of fault. The id set is parsed out of `index.html` (markup
+  attributes AND `el.id = '...'`, so the settings panel and the kit row still resolve) and an id
+  that is not in the page returns **null**, exactly as the browser does.
+  **Verified by reverting the fix in a copy** -- the c167 discipline, and the only thing that
+  proves a gate is a gate: with the line put back, `check:boot` exits 1 with
+  `TypeError: Cannot read properties of null (reading 'addEventListener')`. **The first version
+  of that revert test silently patched nothing** (the anchor did not match) and duly reported a
+  pass, which would have shipped an inert gate -- check that the thing you are testing is really
+  broken before you believe the test that says it is caught.
+  **AND THE LIFTED BLOCK MAY ONLY DEPEND ON GLOBALS.** `optboot.mjs` runs the `STUBS:` text
+  through INDIRECT eval, so module-scope bindings -- `fs`, `html` -- are not in scope there and
+  the first two attempts died on each in turn. `process.getBuiltinModule('fs')` needs no import.
+  **THE REAL LESSON IS c191's, THOUGH.** Five builds were spent reasoning about a page that could
+  not report its own exceptions, and the answer arrived within one boot of it being able to. When
+  the same report comes back twice, stop fixing candidates and make the next report legible.
+
 - **THE WATCHDOG WAS KILLED BY THE VERY FAULT IT EXISTS TO REPORT, AND NOTHING HAS EVER CAUGHT AN
   EXCEPTION ON THAT PHONE (c191, `#crash`, `window.__crash`).** *"Still stuck at loading -- doesn't
   even say loading now, it just says the badge number."* Five builds of this report and every one

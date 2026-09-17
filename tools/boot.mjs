@@ -96,10 +96,32 @@ function mkEl(tag = 'div', id = '') {
   };
   return el;
 }
+// READ HERE RATHER THAN TAKEN FROM `html`, because this block is lifted verbatim by `jam.mjs`
+// and `optboot.mjs` and only one of the three had that binding in scope -- a gate that dies on
+// an unrelated harness is a gate nobody runs.
+// AND IT READS THE FILE THROUGH `process.getBuiltinModule`, which needs no import at all:
+// `optboot.mjs` runs this text through INDIRECT eval, so module-scope bindings -- `fs`, `html`
+// -- are simply not there. A block lifted by three harnesses may only depend on globals.
+const DOMSRC = process.getBuiltinModule('fs').readFileSync('index.html', 'utf8');
+const DOMIDS = new Set();
+for (const m of DOMSRC.matchAll(/\bid\s*=\s*["']([A-Za-z0-9_-]+)["']/g)) DOMIDS.add(m[1]);
+for (const m of DOMSRC.matchAll(/\.id\s*=\s*["'`]([A-Za-z0-9_-]+)["'`]/g)) DOMIDS.add(m[1]);
 const doc = {
   body: mkEl('body'), documentElement: mkEl('html'), head: mkEl('head'),
   createElement: t => mkEl(t), createElementNS: (n, t) => mkEl(t), createTextNode: () => mkEl('text'),
-  getElementById: id => { if (!NODES.has(id)) NODES.set(id, mkEl('div', id)); return NODES.get(id); },
+  // **A STUB THAT INVENTS AN ELEMENT FOR EVERY ID CAN NEVER CATCH A MISSING ONE (c192).** This
+  // returned a fresh div for whatever it was asked for, so `getElementById('actB')` succeeded
+  // here and returned NULL on the phone -- a TypeError at module scope, `init()` never running,
+  // and the boot card sitting for ever at the text it was born with. That is EXACTLY the failure
+  // this gate exists for, and it passed six builds running because the harness was answering a
+  // question the browser does not answer the same way. The repo's oldest mistake, in the gate.
+  // The id set comes from the page itself -- markup attributes AND `el.id = '...'` assignments,
+  // so anything the settings panel or the kit row builds at runtime still resolves.
+  getElementById: id => {
+    if (!DOMIDS.has(id)) return null;
+    if (!NODES.has(id)) NODES.set(id, mkEl('div', id));
+    return NODES.get(id);
+  },
   querySelector: () => null, querySelectorAll: () => [],
   addEventListener() {}, removeEventListener() {}, exitPointerLock() {}, hidden: false,
   visibilityState: 'visible', fonts: { ready: Promise.resolve(), load: () => Promise.resolve() },
