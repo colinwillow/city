@@ -71,6 +71,14 @@
   #boot .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7ee7ff,#e8fbff);transition:width .15s}
   #boot .msg{font-size:13px;letter-spacing:.2em;text-transform:uppercase;opacity:.75;text-shadow:0 2px 10px rgba(0,0,0,.8)}
   #boot .err{color:#ffb4b4;font-size:13px;max-width:80vw;text-align:center;white-space:pre-wrap;opacity:.9}
+  /* **THE BUILD NUMBER HAS TO BE ON THIS CARD (c190).** *"I can't check the badge."* He could
+     not: `#boot` is `z-index: 20` and `.chip` is 4, so the badge is behind the poster for the
+     whole load -- and "which build is he actually looking at" is HALF of every boot question,
+     because Pages caches `index.html` for ten minutes and a home-screen shortcut caches it
+     harder. A fix that has not arrived and a fix that did not work are the same picture without
+     it, which is the asset-hash note's own sentence applied to the page itself. */
+  #boot .bn{font-family:var(--disp);font-size:13px;color:var(--sky);opacity:.85;letter-spacing:.04em;
+    text-shadow:0 2px 0 rgba(8,20,44,.9),0 0 12px rgba(120,238,255,.6)}
   /* ---- title card ----
      THE PICTURE BEHIND IT IS THE GAME. Plutopia builds a whole second scene for its title
      (`DIO.*`) because its world is procedural and the card wants a thing that does not exist
@@ -346,7 +354,7 @@
 </style>
 </head>
 <body class="title">
-<div id="boot"><img id="bootArt" alt=""><h1 id="bootH1">Shredworld</h1><div class="foot"><div class="bar"><i id="bootBar"></i></div><div class="msg" id="bootMsg">loading shredworld</div><div class="err" id="bootErr"></div></div></div>
+<div id="boot"><img id="bootArt" alt=""><h1 id="bootH1">Shredworld</h1><div class="foot"><div class="bar"><i id="bootBar"></i></div><div class="msg" id="bootMsg">loading shredworld</div><div class="bn" id="bootBN"></div><div class="err" id="bootErr"></div></div></div>
 <div id="title"><img id="titleArt" class="word" alt="Shredworld"><div id="charName"><img id="charArt" alt=""><b id="charTxt"></b></div><div class="sub">tap a character &middot; or swipe</div><button id="startB">Start</button></div>
 <div id="sticks">
   <div class="stick" id="stkL"><div class="knob"></div><div class="lbl">MOVE</div></div>
@@ -376,7 +384,7 @@
 <div id="mapScrim"></div>
 <canvas id="map" hidden></canvas>
 <div id="mapHint">tap the map to drop a waypoint &middot; tap outside to close</div>
-<div class="chip" id="build"><b id="buildN">c189</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c190</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -390,7 +398,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c189';
+const BUILD = 'c190';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -6392,6 +6400,7 @@ const BOOT = { art: 'images/splash_screen_01.webp', png: 'images/splash_screen_0
 const TITLE_ART = 'images/shredworld_title_02.webp';
 const TITLE_ART_PNG = 'images/shredworld_title_02.png';
 const bootBar = document.getElementById('bootBar'), bootMsg = document.getElementById('bootMsg'), bootErr = document.getElementById('bootErr');
+{ const bn = document.getElementById('bootBN'); if (bn) bn.textContent = BUILD; }
 const bootEl = document.getElementById('boot');
 {
   // STARTED HERE RATHER THAN IN `init()`, which is three awaits and fifteen megabytes of GLB
@@ -6473,15 +6482,51 @@ setTimeout(function bootWatch() {
   setTimeout(bootWatch, BOOT.every * 1000);
 }, BOOT.watch * 1000);
 // HOW MANY GOES A FILE GETS, AND WHAT A DEAD ONE COSTS.
-const LOADT = { tries: 3, wait: 1.2, again: 8, rounds: 4 };
+const LOADT = { tries: 3, wait: 1.2, again: 8, rounds: 4, stall: 45 };
 const draco = new DRACOLoader(); draco.setDecoderPath('vendor/draco/'); draco.setDecoderConfig({ type: 'wasm' });
 const loader = new GLTFLoader(); loader.setDRACOLoader(draco);
+// **THE CARD ONLY EVER SPOKE FROM THE PROGRESS CALLBACK, AND THAT CALLBACK CAN NEVER FIRE
+// (c190).** `if (!e.total) return` -- `total` is the `Content-Length`, and a response served
+// without one (chunked, which is what a CDN does to a big file often enough) produces **no
+// `setBoot` call at all for that whole file**. For the FIRST load that leaves the card showing
+// the string it was BORN with in the HTML, "loading shredworld", with the bar at zero --
+// **which is pixel for pixel what `init()` never running looks like.** His screenshot is that,
+// and it has been unreadable for every "stuck on the loading screen" report this file has had.
+// So the label and the SLOT go up the moment a load STARTS. The bar then advances a whole file
+// at a time even with no byte counts, and "stuck" becomes "stuck at 1 of 13" -- which is a
+// different sentence and an actionable one.
+//
+// **AND A STALLED FETCH NEVER REJECTS, SO THE RETRY COULD NEVER REACH IT.** c140 gave the
+// transport `LOADT.tries`, and every one of them is armed by a REJECTION -- but a phone that
+// switches network, sleeps, or half-opens a connection leaves the request pending for ever:
+// no bytes, no error, no timeout anywhere in `fetch` or in GLTFLoader. That is a boot that
+// waits until the tab is closed, and it is invisible to every harness here because a disk-backed
+// `fetch` cannot stall. `LOADT.stall` is the floor under it: no progress and no completion for
+// that long is a dead connection, so it rejects and `loadGLB` opens a fresh one.
+// The timer is reset by ANY progress event, including one with no `total` -- a slow ten-megabyte
+// download on a phone is not a stall and must never be treated as one.
 function loadOne(url, label, slot) {
-  return new Promise((res, rej) => loader.load(A(url), res, e => {
-    if (!e.total) return;
-    const f = Math.max(0, Math.min(1, e.loaded / e.total));
-    setBoot(label + ' ' + (f * 100 | 0) + '%', (slot + f) / PROG.total);
-  }, rej));
+  setBoot(label, slot / PROG.total);           // say it at the START, not only on progress
+  return new Promise((res, rej) => {
+    let done = 0, t = 0;
+    const clear = () => { done = 1; clearTimeout(t); };
+    const arm = () => { clearTimeout(t); t = setTimeout(() => {
+      if (done) return;
+      done = 1; rej(new Error('stalled: no bytes for ' + LOADT.stall + 's'));
+    }, LOADT.stall * 1000); };
+    arm();
+    loader.load(A(url), g => { if (done) return; clear(); res(g); }, e => {
+      if (done) return;
+      if (!e.total) { arm(); return; }          // ANY byte is life: a slow file is not a stalled one
+      const f = Math.max(0, Math.min(1, e.loaded / e.total));
+      // AND THE TIMER GUARDS THE DOWNLOAD, NOT THE PARSE. The last byte is followed by a DRACO
+      // decode on a Worker that reports nothing and can take seconds on an old phone -- arming
+      // through that would reject a load that arrived perfectly, which is a far worse bug than
+      // the one this is here for. Disarm at 100%; a parse that never ends is not a stall.
+      if (f >= 1) clearTimeout(t); else arm();
+      setBoot(label + ' ' + (f * 100 | 0) + '%', (slot + f) / PROG.total);
+    }, err => { if (done) return; clear(); rej(err); });
+  });
 }
 // A FAILED FETCH ON A SPOTTY CONNECTION IS NOT A MISSING FILE (c140). Every `loadGLB` in this
 // file is wrapped in a `try` whose `catch` is a `console.warn` -- which is the right shape for

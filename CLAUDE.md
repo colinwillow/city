@@ -1198,6 +1198,42 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **HIS SCREENSHOT WAS THE ANSWER: THE CARD WAS AT ITS BIRTH TEXT, AND A STALLED FETCH NEVER
+  REJECTS (c190).** *"I can't check the badge."* -- and the shot shows `LOADING SHREDWORLD` with
+  the bar at zero and nothing else on screen.
+  **THAT STRING IS IN THE HTML.** `<div class="msg" id="bootMsg">loading shredworld</div>` is what
+  the card is BORN with, so nothing had overwritten it -- which is this file's oldest landmine
+  wearing a new face, except that `init()` had almost certainly run. Two faults, and the first is
+  why every "stuck on the loading screen" report so far has been unreadable.
+  **1. THE CARD ONLY EVER SPOKE FROM THE PROGRESS CALLBACK, AND THAT CALLBACK CAN NEVER FIRE.**
+      loader.load(A(url), res, e => { if (!e.total) return; setBoot(label + ...); }, rej)
+  `total` is the `Content-Length`. A response served WITHOUT one -- chunked, which is what a CDN
+  does to a big file often enough -- produces **no `setBoot` call at all for that entire file**,
+  so the card keeps whatever text it had. For the FIRST load that is the birth text with the bar
+  at zero, which is **pixel for pixel what `init()` never running looks like**. The two failures
+  this file most needs to tell apart were rendering as the same screen.
+  So the label and the SLOT are set the moment a load STARTS. The bar advances a whole file at a
+  time even with no byte counts, and "stuck" becomes "stuck at 1 of 13" -- a different sentence,
+  and an actionable one. `bootAsk`'s rule: a failure you cannot act on is a hang, and so is
+  progress you cannot see.
+  **2. AND A STALLED FETCH NEVER REJECTS, SO `LOADT.tries` COULD NEVER REACH IT.** c140 gave the
+  transport three tries and a backoff, and **every one of them is armed by a REJECTION** -- but a
+  phone that switches network, sleeps, or half-opens a connection leaves the request pending for
+  ever: no bytes, no error, and there is no timeout anywhere in `fetch` or in GLTFLoader. That is
+  a boot that waits until the tab is closed, on the biggest file in the repo, first on the wire.
+  **It is invisible to every harness here by construction -- a disk-backed `fetch` cannot stall.**
+  `LOADT.stall` (45 s) is the floor under it.
+  **AND THE TIMER GUARDS THE DOWNLOAD, NOT THE PARSE**, which was a hazard in my own first
+  version: the last byte is followed by a DRACO decode on a Worker that reports nothing and can
+  take seconds on an old phone, so arming through it would reject a load that arrived perfectly --
+  a worse bug than the one it is here for. It disarms at 100% and ANY progress event re-arms it,
+  including one carrying no `total`, because a slow ten-megabyte download is not a stalled one.
+  **3. AND THE BUILD NUMBER IS ON THE CARD NOW.** He could not check the badge because `#boot` is
+  `z-index: 20` and `.chip` is 4 -- the badge is behind the poster for the whole load. **"Which
+  build is he actually looking at" is HALF of every boot question**, because Pages caches
+  `index.html` for ten minutes and a home-screen shortcut caches it harder, so a fix that has not
+  arrived and a fix that did not work are the same picture. That is the asset-hash note's own
+  sentence turned on the page itself, and it should have been there from c106.
 - **STILL STUCK -- SO THE RETRY WAS THE SUSPECT, AND `npm run check:opt` KILLED THE OTHER ONE
   (c189).** c188 shipped one candidate and two reporting changes and it was not enough. Two more
   hypotheses measured here, one dead and one REAL:
