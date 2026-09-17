@@ -1198,6 +1198,97 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **DANCING (c181, `DANCE`, `danceGo`, `danceStep`, the key beside the gear).** *"I need to add
+  a way to make the characters dance. We have the dances baked in their animations."* Six of
+  them, and they are the longest clips in the file by a distance -- `dance_hiphop_01/02/03` at
+  13.8 / 16.7 / 16.0 s, `dance_twerking` 15.2, `dance_wiggle_feet` 6.4, `dance_moonwalk` 1.1 --
+  against a 0.67 s run cycle. They are PERFORMANCES, not cycles, which is why this is a state you
+  enter rather than a pose blended into the gait.
+  **AND THEY ARE NOT IN `ONCE`, WHICH IS THE POINT.** A dance loops for as long as he is left
+  alone, so a screen recording runs as long as he wants -- which is what the c170 music/effects
+  split was built for and is almost certainly what this is for too.
+  **ONE KEY, TAPPED, CYCLING -- BECAUSE EVERY GESTURE ON BOTH PADS IS SPENT.** The left pad is the
+  body and steers; the right pad is tap-jump, flick-strike, hold-charge. A press-and-hold
+  somewhere would be a hidden gesture, which is the argument that killed the radial kit menu. So
+  it is a key that says what it is by being on screen, and a second tap takes the NEXT dance
+  rather than opening a menu of six. It sits at `right: 206`, the next slot in the row's own
+  48 px pitch (14 / 62 / 110 / 158 / 206) -- arithmetic rather than taste, the kit ring's rule.
+  The map hangs below that row at `top: 62`, so the two cannot meet.
+  **ANYTHING ELSE HE DOES ENDS IT**, so there is no way to be stuck in one and no second press to
+  learn. `danceStep` runs at the TOP of `stepPlayer`, above the board/foot branch, so the stick
+  that cancels the dance is the same stick that moves him on that frame -- and **`p.jump` has to
+  be read there** because `stepSkate` and `stepFoot` both clear it further down.
+  **HE KEEPS HIS PICK.** Pressed while already dancing it advances; pressed when he is not, it
+  RESUMES the one he last chose. Settling on a dance and recording it should not mean cycling all
+  the way round six every time the stick is nudged.
+  **AND IT ONLY EVER PLAYS A CLIP THE WORN SKIN HAS.** `npm run wear` says Colin and `moussa_toon`
+  carry all six of their own (Moussa drives his raw, c123) and `alien_orange` has none and borrows
+  them through `skinClips`. A key that silently does nothing on one character is `weapFit`'s rule
+  unlearnt, so `danceGo` filters `DANCE.list` against `colin.actions` and says so when it comes
+  back empty.
+  **THE CHIP SAYS WHICH ONE.** One key cycling six is blind without it -- he cannot ask for "the
+  twerk one" if the only way to know which he is on is to recognise it. `COLLIDERS`' rule.
+  Driven through the shipped `danceGo` and the shipped `stepPlayer`
+  (`JAM_PROBE=tools/probe-dance.mjs`; the six clip names are fabricated as actions, because no
+  harness here can build a skin -- which is the FILTER working, not a way round it):
+      eight presses   hiphop_01 -> 02 -> 03 -> twerking -> wiggle_feet -> moonwalk -> 01 -> 02
+      nothing at all / a nudge under `DANCE.quit`      still dancing
+      stick pushed / right-pad tap / board out /
+        hit by a car / blaster armed / off the ground  STOPPED, all six
+      picked 02, walked away, pressed again            02, and speed 0.00 m/s
+- **POINTS ON THE MAP, AND THE SHIP IS ON IT (c181, `MAP.marks`, `mapMark`, `city.mark`).**
+  *"Can I set points on the map so I can find the ship? I still haven't been able to find the
+  ship."* A mark is `{ x, z, c, r }` and ANYTHING can push one, so the ship gets a red dot the
+  moment `buildShip` succeeds and the console can drop a yellow one wherever he is standing. It
+  is the ramps' and the bars' own argument -- a thing you cannot find is a thing that is not in
+  the game -- generalised so the next one costs a line.
+  **THE LADDER FEET ARE MARKED TOO, AND THAT IS THE HALF THAT ACTUALLY ANSWERS HIM.** The ship is
+  on hotel_a's roof at 17.1 m, and a charge jump into a double tops out at 10.2 m: `npm run
+  ladders` put a ladder up that building for exactly this reason. A dot on the ship with no way
+  up to it is half a direction. Six green dots, one per ladder.
+  **THE MARK IS PUSHED FROM `buildShip`, NOT FROM `buildMap`**, so it cannot be drawn for a ship
+  whose GLB never arrived -- which would be the worst possible version of this feature.
+  **AND THE WORLD BOX HAS TO CONTAIN EVERY MARK.** That box is what the whole picture is scaled
+  to, so a point dropped past the last road tile would be drawn off the edge of its own canvas,
+  which reads exactly like the mark not working.
+  **A MARK HE SETS HIMSELF SURVIVES A RELOAD** -- `city.marks`, a FOURTH `localStorage` key. The
+  standing rule is that `city.kit` / `city.char` / `city.opt` must never be RENAMED, not that
+  there may be no others. A point you have to re-drop on every build is a point nobody drops
+  twice. `city.mark()` drops one where he stands, `city.mark(x, z)` anywhere, `city.mark(0)`
+  clears HIS (never the ship's or the ladders', which belong to the thing that placed them).
+  **AND `city.ship()` PUTS HIM BESIDE IT**, which is `city.bar()`'s rule exactly: if it is plainly
+  there once you are standing on the roof, then FINDING it was the problem and not the prop.
+  **THE CHIP CARRIES `· NO SHIP GLB` NOW, AND THAT GAP IS THE REAL LESSON.** `init()` catches that
+  load with a `console.warn`, which is invisible on a phone -- so for four builds *"it is on a
+  roof you have not climbed"* and *"it never loaded"* were indistinguishable, and his sentence is
+  exactly the shape of a bug wearing two faces. `NO COP GLB`'s rule, one prop along, and it should
+  have been there from c127.
+  **`npm run jam` CANNOT LOAD THE SHIP**: `models/alien_ship_orange.glb` is draco-compressed
+  (`KHR_draco_mesh_compression`, read out of the file) and `jam.mjs` decompresses only
+  `city.glb`, so it fails headless with `Worker is not defined` exactly as every character GLB
+  does. A stated gap. What the probe still proves is that the mark is pushed from `buildShip` and
+  correctly does NOT appear without it, and that all six ladder marks land on the canvas.
+- **THE FLYABLE SHIP IS ITS OWN BUILD, AND IT IS THE SAME FILE PLUTOPIA ALREADY FLIES (c181).**
+  *"I do want to make it flyable and animate it just like it is in Plutopia."* Checked rather than
+  assumed, and the answer is better than expected: **`models/alien_ship_orange.glb` is
+  BYTE-IDENTICAL in the two repos** (md5 `508f769813e3cd...`), and every node Plutopia's flight
+  model keys on is in City's copy -- all 33 of them:
+      hatch_pivot, hatch_rim                       the canopy, `SHIP.hatch` -.95 measured on the
+                                                   2317 vertices the hatch owns
+      leg_L / leg_R / leg_back  + _pivot + _foot   the gear, folded from the GEOMETRY rather than
+                                                   from an authored 'up' pose
+      back_jet_L/R_flame + _direction              the mains and their vectoring
+      side_jet_L/R + _direction                    the attitude jets
+      light_L_1_ .. light_R_3                      six lamps, headlights on the front pair
+      body_pivot, stick_shift, seat, root
+  So the port is mechanical rather than a rebuild: `SHIP` there carries the flame cones, the gear
+  fold, `yawOut`/`pitchTilt` vectoring, `bank`/`nose`, the claw arm and a `sortie` autopilot, all
+  measured off those bones. **What does NOT port is the camera and the collider**, for the reason
+  the aim loop's angle formula did not (c101): Plutopia's `cam.az` is the bearing player-to-camera
+  and City's is the direction the lens LOOKS, and its world is a chart with an orbit over it
+  while this one is a triangle collider and thirty thousand boxes.
+  Not started here -- it is a build on its own, and c181 is the two things that make it findable
+  first.
 - **A FINISHED TRICK IS OVER, AND ON THE BOARD IT NEVER WAS (c180, `TRICK.tail`).** *"I did a
   double jump, which does a flip, and then used my jetpack in the air, and it held the end of the
   flip rather than going back to the skateboard idle."* Exactly that, and it is one line's worth

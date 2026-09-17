@@ -226,6 +226,11 @@
     border:1.5px solid rgba(157,247,255,.30);box-shadow:0 4px 16px rgba(0,0,0,.45)}
   /* ---- the settings panel ---- */
   #gearB{top:calc(14px + env(safe-area-inset-top));right:calc(158px + env(safe-area-inset-right));width:40px;height:40px;font-size:17px}
+  /* THE NEXT SLOT IN THE SAME 48 px PITCH (14 / 62 / 110 / 158 / 206), which is arithmetic
+     rather than taste and is the same reason the kit keys ring the stick. The map hangs below
+     this row at top 62, so the two cannot meet; on a 390 px phone held portrait the far key
+     still ends 144 px from the left edge. */
+  #danceB{top:calc(14px + env(safe-area-inset-top));right:calc(206px + env(safe-area-inset-right));width:40px;height:40px;font-size:17px}
   #opt{position:fixed;z-index:9;top:calc(62px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));
     width:min(280px,calc(100vw - 28px));max-height:calc(100vh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;
@@ -312,9 +317,10 @@
 <div class="key on" id="musicB">&#9834;</div>
 <div class="key on" id="sfxB">&#128266;</div>
 <div class="key" id="gearB">&#9881;</div>
+<div class="key" id="danceB">&#128378;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c180</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c181</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -328,7 +334,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c180';
+const BUILD = 'c181';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -3419,7 +3425,11 @@ function buildShip(gl) {
   SHIP.g = g; SHIP.size = long * k;
   const hx = _shv.x * k * .5, hz = _shv.z * k * .5, hy = _shv.y * k;
   SHIP.box = { minx: 0, maxx: 0, minz: 0, maxz: 0, miny: 0, maxy: 0, hl: Math.max(hx, hz), hw: Math.min(hx, hz), hh: hy };
-  console.log('[ship] ' + (long).toFixed(2) + ' in file units -> x' + k.toFixed(2) + ' = ' + SHIP.size.toFixed(2) + ' m, on the roof at ' + SHIP.at.join(', '));
+  // AND IT PUTS ITSELF ON THE MAP (c181). It is one prop on one roof in a kilometre of city and
+  // he has never once found it; the mark is placed HERE rather than in `buildMap` so it cannot
+  // be drawn for a ship whose GLB failed to arrive.
+  mapMark(SHIP.at[0], SHIP.at[2], '#ff6197', 4.5, 'ship');
+  console.log('[ship] ' + (long).toFixed(2) + ' in file units -> x' + k.toFixed(2) + ' = ' + SHIP.size.toFixed(2) + ' m, on the roof at ' + SHIP.at.join(', ') + '  -- city.ship() puts you beside it');
 }
 function stepShip(dt) {
   const g = SHIP.g; if (!g) return;
@@ -4746,6 +4756,15 @@ function missing() {
   if (!ENV.tex) m += ' · NO SKY JPG';
   if (SFX.miss.length) m += ' · NO SND ' + SFX.miss.length;
   if (CHARS.cur !== 'colin') m += ' · ' + CHARS.cur;
+  // WHICH DANCE THIS IS. One key cycling six is blind without it -- he cannot press "the twerk
+  // one" if the only way to know which he is on is to recognise it. `COLLIDERS`' rule: a toggle
+  // whose state you have to infer from the picture is a toggle you cannot aim.
+  if (player.dance) m += ' · ' + player.dance.replace('dance_', '');
+  // *"I still haven't been able to find the ship."* -- and until c181 there was no way to tell
+  // "it is on a roof you have not climbed" from "it never loaded", which are different problems
+  // that look identical from a phone. `init()` catches the load with a `console.warn`, and a
+  // console warn is invisible there. `NO COP GLB`'s rule, one prop along.
+  if (ready && !SHIP.g) m += ' · NO SHIP GLB';
   if (CHARS.miss) m += ' · NO SKIN ' + CHARS.miss;
   // "HIS FLAG ISN'T THERE" IS FOUR BUGS WEARING ONE FACE, and they are identical from a phone:
   // the file never arrived, it arrived unrigged, it is rigged to a joint this character has not
@@ -6629,7 +6648,62 @@ function buildRamps(gltf) {
 // it is what he navigates by, and `tiles` already holds every road slab's footprint.
 // The static half is drawn ONCE into an offscreen canvas; the frame only blits it and puts an
 // arrow on top, at MAP.every rather than every frame, because none of it moves.
-const MAP = { on: 1, px: 116, pad: 7, every: .07, k: 1, x0: 0, z0: 0, o: 0, t: 9, base: null, ctx: null };
+// POINTS ON THE MAP (c181, `MAP.marks`, `mapMark`, `city.mark`). *"Can I set points on the map
+// so I can find the ship? I still haven't been able to find the ship."* Two things, and the
+// general one is the more useful: a mark is `{ x, z, c, r }` and ANYTHING can push one, so the
+// ship gets a red dot the moment it is built and the console can drop a dot wherever he is
+// standing. It is the ramps' and the bars' own argument -- the map exists because a thing you
+// cannot find is a thing that is not in the game -- generalised so the next one costs a line.
+// **THE LADDER FEET ARE MARKED TOO, AND THAT IS THE HALF THAT ACTUALLY ANSWERS HIM.** The ship
+// is on hotel_a's roof at 17 m, which is over the 10.2 m a charge jump into a double can reach:
+// `npm run ladders` put a ladder up that building for exactly this reason, and a dot on the ship
+// with no way up to it is half a direction.
+// **A MARK HE SETS HIMSELF SURVIVES A RELOAD** (`city.marks`, a fourth key beside `city.kit` /
+// `city.char` / `city.opt` -- the rule is that those three must never be RENAMED, not that there
+// may be no others). A point you have to re-drop on every build is a point nobody drops twice.
+const MAP = { on: 1, px: 116, pad: 7, every: .07, k: 1, x0: 0, z0: 0, o: 0, t: 9, base: null, ctx: null,
+  marks: [], key: 'city.marks' };
+// PUSH A MARK AND REDRAW. The base canvas is built once and only blitted per frame, so a mark
+// costs one rebuild of that canvas when it is added and nothing at all afterwards.
+function mapMark(x, z, c, r, tag) {
+  MAP.marks.push({ x, z, c: c || '#ff6197', r: r || 4, tag: tag || '' });
+  if (MAP.base) buildMap();
+  return MAP.marks.length;
+}
+function marksLoad() {
+  try {
+    const a = JSON.parse(localStorage.getItem(MAP.key) || '[]');
+    if (Array.isArray(a)) for (const m of a) if (isFinite(m.x) && isFinite(m.z)) MAP.marks.push({ x: m.x, z: m.z, c: m.c || '#ffd76a', r: m.r || 4, tag: m.tag || '', mine: 1 });
+  } catch (e) {}
+}
+function marksSave() {
+  try { localStorage.setItem(MAP.key, JSON.stringify(MAP.marks.filter(m => m.mine))); } catch (e) {}
+}
+// `city.mark()` drops one where he is standing, `city.mark(x, z)` puts one anywhere, and
+// `city.mark(0)` clears the ones he set (never the ship's or the ladders' -- those belong to
+// the thing that placed them and come back on their own).
+function markHere(x, z) {
+  if (x === 0 && z === undefined) {
+    MAP.marks = MAP.marks.filter(m => !m.mine); marksSave(); if (MAP.base) buildMap();
+    return 'marks cleared';
+  }
+  const mx = x === undefined ? player.pos.x : x, mz = x === undefined ? player.pos.z : z;
+  MAP.marks.push({ x: mx, z: mz, c: '#ffd76a', r: 4, tag: '', mine: 1 });
+  marksSave(); if (MAP.base) buildMap();
+  return 'marked ' + mx.toFixed(0) + ', ' + mz.toFixed(0) + '  (' + MAP.marks.filter(m => m.mine).length + ' of yours)';
+}
+// AND A WAY TO GET TO THE SHIP AT ALL, which is `city.bar()`'s rule: if it is plainly there when
+// you are put on top of it, then FINDING it was the problem and not the thing itself.
+function shipGo() {
+  if (!SHIP.g) { console.log('[ship] no ship -- the GLB never loaded'); return null; }
+  const p = player, d = Math.hypot(SHIP.at[0] - p.pos.x, SHIP.at[2] - p.pos.z);
+  if (p.board) dropBoard();
+  p.hit = ''; p.hang = 0; p.lad = 0; p.mel = ''; p.bar = null; p.rollT = 0;
+  p.pos.set(SHIP.at[0] + SHIP.size * .8, SHIP.at[1] + .2, SHIP.at[2]);
+  p.vel.set(0, 0, 0); p.speed = 0; p.grounded = true;
+  console.log('[ship] on the roof beside it at ' + SHIP.at.join(', ') + '  (it was ' + d.toFixed(0) + ' m away)');
+  return SHIP.at;
+}
 function buildMap() {
   const el = document.getElementById('map'); if (!el || !tiles.length) return;
   const dpr = Math.min(devicePixelRatio || 1, 2);
@@ -6638,6 +6712,10 @@ function buildMap() {
   let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
   for (const t of tiles) { if (t.minx < x0) x0 = t.minx; if (t.maxx > x1) x1 = t.maxx; if (t.minz < z0) z0 = t.minz; if (t.maxz > z1) z1 = t.maxz; }
   for (const s of PARK.spots) { x0 = Math.min(x0, s.x - 12); x1 = Math.max(x1, s.x + 12); z0 = Math.min(z0, s.z - 12); z1 = Math.max(z1, s.z + 12); }
+  // A MARK OUTSIDE THE ROADS STILL HAS TO BE ON THE MAP. The box is what the whole picture is
+  // scaled to, so a point dropped out past the last road tile would otherwise be drawn off the
+  // edge of its own canvas -- which reads exactly like the mark not working.
+  for (const m of MAP.marks) { x0 = Math.min(x0, m.x - 12); x1 = Math.max(x1, m.x + 12); z0 = Math.min(z0, m.z - 12); z1 = Math.max(z1, m.z + 12); }
   if (!(x1 > x0)) return;
   // square the world box so the city is not stretched into the canvas
   const w = x1 - x0, h = z1 - z0, side = Math.max(w, h);
@@ -6664,6 +6742,14 @@ function buildMap() {
     const X = MAP.o + (s.x - MAP.x0) * MAP.k, Y = MAP.o + (s.z - MAP.z0) * MAP.k;
     c.fillStyle = 'rgba(127,233,255,.28)'; c.beginPath(); c.arc(X, Y, 5.5 * dpr, 0, 6.283); c.fill();
     c.fillStyle = '#7fe9ff'; c.beginPath(); c.arc(X, Y, 2.6 * dpr, 0, 6.283); c.fill();
+  }
+  // THE MARKS GO ON LAST, so nothing is drawn over them. A HALO under a solid dot, because a
+  // four-pixel dot on a 116 px map of a kilometre of city has to survive being glanced at on a
+  // phone -- which is the drawn word's rule and the star's, one canvas along.
+  for (const m of MAP.marks) {
+    const X = MAP.o + (m.x - MAP.x0) * MAP.k, Y = MAP.o + (m.z - MAP.z0) * MAP.k;
+    c.fillStyle = 'rgba(0,0,0,.55)'; c.beginPath(); c.arc(X, Y, (m.r + 1.6) * dpr, 0, 6.283); c.fill();
+    c.fillStyle = m.c; c.beginPath(); c.arc(X, Y, m.r * dpr, 0, 6.283); c.fill();
   }
   MAP.base = b; MAP.dpr = dpr;
   el.hidden = false;
@@ -7374,6 +7460,32 @@ function pushPhase() {
 // riding with the blaster out, THEY are what actually plays (see c115), and a rule that only
 // covers the base name silently stops applying in the one state the gun is out.
 const BLENDIN = /^skate_push_/;
+// DANCING (c181, `DANCE`, `danceGo`, `danceStep`). *"I need to add a way to make the characters
+// dance. We have the dances baked in their animations."* Six of them, and they are the longest
+// clips in the file by a distance -- 13.8, 16.7, 16.0, 15.2 and 6.4 seconds, against a 0.67 s
+// run cycle. They are performances, not cycles, which is the whole reason this is a state you
+// enter rather than a pose blended in.
+// **AND THEY ARE NOT IN `ONCE`, WHICH IS THE POINT.** A dance loops for as long as he is left
+// alone, so a screen recording can run as long as he wants -- which is what the c170 music split
+// was built for and is almost certainly what this is for too.
+// **ONE KEY, TAPPED, CYCLING.** Both pads are full: the left one is the body and steers, the
+// right one is tap-jump / flick-strike / hold-charge, and every gesture on both is spent. A
+// press-and-hold somewhere would be a hidden gesture, which is the argument that killed the
+// radial kit menu. So it is a key that says what it is by being on screen, and a second tap
+// takes the next dance rather than opening a menu of six.
+// **ANYTHING ELSE HE DOES CANCELS IT**, so there is no way to be stuck in one and no second
+// press to learn: push the stick, jump, punch, get on the board, get hit -- any of them and he
+// is doing that instead. That is `optStore`'s rule about modes you can be in without knowing.
+// **AND IT ONLY EVER PLAYS A CLIP THE WORN SKIN ACTUALLY HAS.** Moussa ships all six of his own
+// and drives them raw (c123); the alien has none and borrows Colin's through `skinClips`. A key
+// that silently does nothing on one character is `weapFit`'s rule unlearnt, so `danceGo` filters
+// the list against `colin.actions` and says so when it comes back empty.
+const DANCE = {
+  list: ['dance_hiphop_01', 'dance_hiphop_02', 'dance_hiphop_03', 'dance_twerking',
+    'dance_wiggle_feet', 'dance_moonwalk'],
+  i: -1,
+  quit: .12,       // how far the left stick has to move to say he would rather be walking
+};
 const ONCE = ['jump_going_up', 'jump_coming_down', 'landing_roll', 'idle_jump_init', 'run_jump_init',
   'skate_ollie_init_air', 'skate_ollie_air', 'skate_ollie_landing', 'back_flip', 'front_flip',
   'flying_backwards', 'flying_forwards', 'fall_to_back', 'fall_to_face_down',
@@ -7437,6 +7549,10 @@ function colinAnim(dt) {
   // A MELEE OWNS HIM WHOLE. One clip at weight 1 and nothing of the gait underneath: a punch
   // with a walk cycle blended into it is a man waving while he strolls.
   if (p.mel) { t[p.mel] = 1; colinSet(t, dt); return; }
+  // A DANCE OWNS HIM WHOLE FOR THE SAME REASON, and it goes BELOW the hit and the melee so that
+  // being knocked down while dancing is a knock-down. `colinSet` still eases it in and out --
+  // nothing in this game cuts, and a dance is the last thing that should.
+  if (p.dance) { t[p.dance] = 1; colinSet(t, dt); return; }
   // THE BAR. His own three clips, and which one is playing IS the state: hanging under the bar,
   // kipping while the swing builds, and the release on the way off. `bar_hang_idle` doubles as
   // the giant pose, which is his own note -- *"this could be used for both when he's hanging but
@@ -8837,6 +8953,7 @@ function boardFlick(dx, dy) {
   snd.trick();
 }
 document.getElementById('resetB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); respawn(); });
+document.getElementById('danceB').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); danceGo(); });
 // ---------- the kit key ----------
 // IS THE THING IN HIS HAND OUT? The board's answer is `player.board` and nothing else --
 // deriving it rather than mirroring it is the whole fix for c84's worst bug.
@@ -9262,10 +9379,10 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), vel: new THREE.Vector3(), heading: SPAWN.heading, grounded: true, board: false, jump: 0, coyote: 0,
-  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushSync: 0, pushNm: '', pushOff: 9, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, melHit: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, copPass: 0, melEntry: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
+  speed: 0, steer: 0, lean: 0, pushing: false, pushT: 0, pushSync: 0, pushNm: '', pushOff: 9, pushPeriod: SK8.pushDur, preVx: 0, preVz: 0, strideD: 0, charge: 0, shoveV: 0, shoveT: 0, shoveDur: .35, shoveDir: 1, rail: null, railS: 0, railV: 0, railDir: 1, turnT: 0, turnFull: SK8.turnDur, turnRem: 0, turnSide: 1, braked: 0, trick: '', trickT: 0, trickDur: 0, bRoll: 0, bYaw: 0, bRollA: 0, bYawA: 0, popT: 0, pushK: 0, airT: 0, rHold: 0, faceH: SPAWN.heading, goT: 0, crouch: 0, landT: 0, rollT: 0, rollDur: 1.6, rollV: 6, rollH: 0, mel: '', melAir: 0, airKick: 0, melT: 0, melDur: 0, bar: null, barA: 0, barW: 0, barT: 0, barSide: 1, barAz: 0, barRel: 0, barCool: 0, pumping: 0, melStep: 0, melWin: 0, melH: 0, melV: 0, melI: 0, melFx: 0, melLock: null, melHit: 0, aim: 0, aimT: 0, chg: 0, shotT: 0, jetK: 0, jetT: 0, jetLit: 0, jetFlew: 0, fuel: 1, jumps: 0, air: '', airDur: 0, airFT: 0, airWant: '', hang: 0, hangY: 0, hangNX: 0, hangNZ: 0, lad: 0, ladCool: 0, climbT: 0, cx0: 0, cy0: 0, cz0: 0, cx1: 0, cy1: 0, cz1: 0, hangCool: 0, dance: '', hit: '', hitT: 0, upDur: 1.4, proneT: 0, hitFwd: false, hitFace: false, hitCool: 0, hitSnap: false, copPass: 0, melEntry: 0, safe: new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z), safeT: 0, wall: false, moving: 0 };
 const cam = { az: SPAWN.heading, el: CAM.el, idle: 9, pos: new THREE.Vector3(), tgt: new THREE.Vector3(), rush: 0 };
 function toggleBoard() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.board = !player.board; kitPaint(); board.visible = player.board; if (player.board) { player.pushing = false; player.pushT = 0; } }
-function respawn() { player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
+function respawn() { player.dance = ''; player.turnT = 0; player.turnRem = 0; player.rail = null; player.air = ''; player.jumps = 0; player.mel = ''; player.melStep = 0; player.hang = 0; player.climbT = 0; player.lad = 0; player.trick = ''; player.trickT = 0; player.bRoll = player.bYaw = player.bRollA = player.bYawA = 0; player.pos.copy(player.safe); player.vel.set(0, 0, 0); player.speed = 0; player.grounded = true; player.hit = ''; player.hitSnap = true; player.rollT = 0; }
 const gN = new THREE.Vector3(0, 1, 0), _boxes = [], _cars = [];
 function stickWorld() {
   // left stick -> world direction, relative to the camera azimuth
@@ -9460,6 +9577,9 @@ function buildLadders() {
     // the outward normal is the way it faces; forward is (sin, cos) as everywhere else
     LADDERS.push({ x: sp.x, z: sp.z, y0: sp.y, y1: sp.top, nx: Math.sin(sp.rot), nz: Math.cos(sp.rot) });
   }
+  // THE WAY UP IS PART OF THE DIRECTION. A dot on a ship 17 m in the air with nothing saying how
+  // to reach it is half an answer, and a charge jump into a double tops out at 10.2 m.
+  for (const l of LADDERS) mapMark(l.x, l.z, '#7fffa8', 3, 'ladder');
   console.log('ladders: ' + LADDERS.length + ' built');
 }
 // WALK INTO ONE AND HE IS ON IT. No button: the ladder is a place, and pushing toward a place
@@ -9893,6 +10013,37 @@ function airStart(kind) {
 // his local +X is his LEFT (he faces +Z, so Ry(faceH) sends +X to (cos h, -sin h), which is
 // -right) -- so a > 0 tips his head toward his right. Derived, not felt: if it comes out
 // mirrored on the phone this is the one sign to flip.
+// START ONE, OR TAKE THE NEXT. Pressed while he is ALREADY dancing it advances; pressed when he
+// is not, it resumes whichever one he last chose -- so settling on a dance and recording it does
+// not mean cycling all the way round six every time the stick is nudged.
+function danceGo(pick) {
+  const p = player;
+  if (p.hit || p.bar || p.lad || p.hang) return '';
+  const have = DANCE.list.filter(n => colin.actions[n]);
+  if (!have.length) { console.warn('[dance] ' + (CHARS.cur || 'this character') + ' has no dance clips'); return ''; }
+  if (pick === 0) { danceStop(); return ''; }
+  if (typeof pick === 'string') DANCE.i = Math.max(0, have.indexOf(pick));
+  else if (p.dance) DANCE.i = (DANCE.i + 1) % have.length;
+  else if (DANCE.i < 0 || DANCE.i >= have.length) DANCE.i = 0;
+  if (p.board) dropBoard();
+  p.dance = have[DANCE.i];
+  // he stands still to do it: a dance carrying the last of a run reads as a man sliding
+  p.mel = ''; p.melStep = 0; p.rollT = 0; p.trick = ''; p.goT = 0;
+  p.vel.x = 0; p.vel.z = 0; p.speed = 0;
+  danceKey();
+  return p.dance;
+}
+function danceStop() { player.dance = ''; danceKey(); }     // `DANCE.i` is KEPT: it is his pick
+function danceKey() { const el = document.getElementById('danceB'); if (el) el.classList.toggle('on', !!player.dance); }
+// AND ANYTHING ELSE HE DOES ENDS IT. Called at the top of `stepPlayer`, above the board/foot
+// branch, so the stick that cancels the dance is the same stick that moves him on that frame --
+// and `p.jump` is read HERE because `stepSkate` and `stepFoot` both clear it further down.
+function danceStep() {
+  const p = player;
+  if (!p.dance) return;
+  if (p.hit || p.mel || p.bar || p.lad || p.hang || p.board || p.aim || p.rollT
+    || !p.grounded || p.jump || (stick.L.mag || 0) > DANCE.quit) danceStop();
+}
 function trickFlip(kind) {
   const p = player, nm = kind === 'front' ? 'front_flip' : kind === 'back' ? 'back_flip' : null;
   if (nm && !colin.actions[nm]) return false;
@@ -10692,6 +10843,7 @@ function stepPlayer(dt) {
   player.ladCool = Math.max(0, player.ladCool - dt);
   if (player.melWin <= 0 && !player.mel) player.melStep = 0;
   player.airT = player.grounded ? 0 : player.airT + dt;
+  danceStep();
   if (player.hit) { player.hang = 0; player.climbT = 0; player.lad = 0; stepHit(dt); return; }
   // THE BAR OWNS THE BODY, BOARD OR NOT, so it is tested above the branch rather than inside one
   // of them -- the same place `p.rHold` had to move to at c117, and for the same reason.
@@ -11580,6 +11732,7 @@ frame();
     copsLearnFlight();
     const sg = groundAt(player.pos.x, player.pos.z, 60, 0);
     player.pos.y = sg.hit ? sg.floor : hmAt(player.pos.x, player.pos.z); player.safe.copy(player.pos);
+    marksLoad();                 // his own points, before the base canvas is drawn from them
     buildMap();
     // AFTER the collider exists, because it is what the search reads.
     try { titleAimClear(); } catch (e) { console.warn('[title] aim search failed', e); }
@@ -11593,7 +11746,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { DANCE, dance: danceGo, mark: markHere, marks: MAP.marks, ship: shipGo, mapMark, BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>
