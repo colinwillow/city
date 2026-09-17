@@ -320,7 +320,7 @@
 <div class="key" id="danceB">&#128378;</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c181</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c182</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -334,7 +334,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c181';
+const BUILD = 'c182';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -625,8 +625,25 @@ const SHIP = {
   url: 'models/alien_ship_orange.glb',
   at: [298.2, 17.1, -13.1], yaw: -.85,
   len: 4.4,                       // how long it should BE, in metres
-  lift: .35,                      // how far it hovers over the deck
-  bob: .16, bobT: 4.2, roll: .035,
+  // **A PARKED SHIP IS LANDED, NOT HOVERING (c182).** *"It's not quite landed on the roof, it's
+  // likely above it, but its landing gear is out."* Both halves of that were mine: `lift` .35
+  // stood it off the deck and `stepShip` bobbed it +/-.16 on top, so a ship with its legs down
+  // floated a third of a metre over the roof and breathed. `buildShip` already sits the model on
+  // its own bounding-box min, and with the gear DOWN that min IS the pads -- so at `lift` 0 the
+  // feet are on the deck with nothing typed.
+  // The hover, the bob and the roll are what a ship in the AIR does, and they come back with the
+  // flight model: `hover` is kept here for it rather than deleted.
+  lift: 0, hover: .35,
+  bob: 0, bobT: 4.2, roll: 0,
+  // THE LANDING GEAR, AND IT IS PLUTOPIA'S TABLE UNCHANGED BECAUSE IT IS THE SAME FILE. The two
+  // repos' `alien_ship_orange.glb` are byte-identical (md5 508f7698...), so the bones, the hinge
+  // axes and the amounts all mean exactly what they mean there: each hip is a lever with the pad
+  // on the end and NO AUTHORED 'UP' POSE, so the fold is chosen from the geometry -- about the
+  // hip's lateral hinge, in the direction that swings the foot outward and up -- and the pad
+  // counter-folds by the same amount so it stays flat against the rim. Left and right mirror.
+  // `gear` is 0 down and 1 up; parked it is 0, which is the pose he is looking at.
+  gear: { leg_L: ['z', 1.2], leg_R: ['z', -1.2], leg_back: ['x', 1.2] },
+  gearK: 0, gearRest: null, bones: null,
   g: null, box: null, size: 0,
 };
 const LAD = {
@@ -3422,6 +3439,18 @@ function buildShip(gl) {
   g.position.set(SHIP.at[0], SHIP.at[1] + SHIP.lift, SHIP.at[2]);
   g.rotation.y = SHIP.yaw;
   scene.add(g);
+  // THE BONES, AND THEIR REST POSE, TAKEN ONCE. The fold is applied RELATIVE to whatever the
+  // file authored, so nothing here has an opinion about the pose it arrives in -- `barPlace`'s
+  // rule and `weapFit`'s: read the export, do not restate it.
+  SHIP.bones = {}; SHIP.gearRest = {};
+  m.traverse(o => { if (o.name) SHIP.bones[o.name] = o; });
+  for (const n in SHIP.gear) {
+    const hip = SHIP.bones[n], pad = SHIP.bones[n + '_pivot'];
+    if (hip) SHIP.gearRest[n] = { hip: hip.rotation.clone(), pad: pad ? pad.rotation.clone() : null };
+  }
+  const miss = Object.keys(SHIP.gear).filter(n => !SHIP.gearRest[n]);
+  if (miss.length) console.warn('[ship] no gear bones: ' + miss.join(', '));
+  shipGear(SHIP.gearK);
   SHIP.g = g; SHIP.size = long * k;
   const hx = _shv.x * k * .5, hz = _shv.z * k * .5, hy = _shv.y * k;
   SHIP.box = { minx: 0, maxx: 0, minz: 0, maxz: 0, miny: 0, maxy: 0, hl: Math.max(hx, hz), hw: Math.min(hx, hz), hh: hy };
@@ -3430,6 +3459,21 @@ function buildShip(gl) {
   // be drawn for a ship whose GLB failed to arrive.
   mapMark(SHIP.at[0], SHIP.at[2], '#ff6197', 4.5, 'ship');
   console.log('[ship] ' + (long).toFixed(2) + ' in file units -> x' + k.toFixed(2) + ' = ' + SHIP.size.toFixed(2) + ' m, on the roof at ' + SHIP.at.join(', ') + '  -- city.ship() puts you beside it');
+}
+// 0 is down and locked, 1 is folded up under the rim. Smoothstepped, because a leg that moves
+// linearly reads as a lever being cranked rather than as a mechanism.
+function shipGear(k) {
+  SHIP.gearK = clamp(k, 0, 1);
+  if (!SHIP.gearRest) return SHIP.gearK;
+  const gk = smooth(0, 1, SHIP.gearK);
+  for (const n in SHIP.gear) {
+    const r = SHIP.gearRest[n]; if (!r) continue;
+    const hip = SHIP.bones[n], pad = SHIP.bones[n + '_pivot'];
+    const ax = SHIP.gear[n][0], amt = SHIP.gear[n][1];
+    hip.rotation[ax] = r.hip[ax] + amt * gk;
+    if (pad && r.pad) pad.rotation[ax] = r.pad[ax] - amt * gk;
+  }
+  return SHIP.gearK;
 }
 function stepShip(dt) {
   const g = SHIP.g; if (!g) return;
@@ -10451,7 +10495,22 @@ function stepFoot(dt) {
   p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.pos.y += p.vel.y * dt;
   const g = groundUnder(p.pos, MOVE.step, p.vel, py); p.wall = g.wall;
   const vy0 = p.vel.y;
+  // **THE LADDERS AND THE LEDGE HANGS WERE ONLY EVER REACHABLE BY BEING HIT BY A CAR (c182).**
+  // *"I still can't use the ladders. I thought the whole point was we put the climbing animations
+  // in there so you could climb ladders."* He is right and the reason is not in `ladGrab` at all:
+  // **`ladGrab` and `ledgeGrab` were called from exactly ONE place in the file, `hitMove`** --
+  // the integrator for the three KNOCK-DOWN stages. So the only way to catch a ladder or a lip
+  // was to be launched by a car or a bullet and fly past one. `stepFoot` integrates itself and
+  // never asked. Walking at a ladder did nothing; jumping at a parapet did nothing.
+  // **FIFTH TIME: WHEN A FEATURE DOES NOTHING, CHECK WHERE IT IS CALLED BEFORE WHAT IT DOES** --
+  // after `barCatch` under the collider (c150), `colinAnim` skipped on the bar (c167),
+  // `p.rHold` counted inside `stepFoot` (c117) and the aim test baked into it (c108).
+  // Same two lines, same order, same place in the step as the copy in `hitMove`: after the move
+  // and the settle, on the way UP as well as down, so a jump that just clears a parapet catches
+  // it rather than bouncing off the face.
   const howF = settle(p, g, MOVE.step, px, pz);
+  if (!p.lad && !p.hang && ladGrab(p)) return;
+  if (!p.grounded && p.vel.y < MOVE.jump * .55 && ledgeGrab(p)) return;
   if (howF === 'landed') snd.land(clamp(-vy0 / 16, 0, 1), false);
   // A STRIDE, NOT A TIMER. Distance covered rather than seconds elapsed, so the sound stays
   // with the foot at every speed instead of drifting the moment the gait blend moves.
@@ -11746,7 +11805,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { DANCE, dance: danceGo, mark: markHere, marks: MAP.marks, ship: shipGo, mapMark, BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { shipGear, stickWorld, ladGrab, DANCE, dance: danceGo, mark: markHere, marks: MAP.marks, ship: shipGo, mapMark, BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

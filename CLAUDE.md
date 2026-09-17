@@ -1198,6 +1198,68 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE LADDERS AND THE LEDGE HANGS WERE ONLY EVER REACHABLE BY BEING HIT BY A CAR (c182).**
+  *"I still can't use the ladders. I thought the whole point was we put the climbing animations
+  in there so you could climb ladders -- can't figure out how to climb the ladders, but I did jet
+  back up to the roof."* He is right, and the reason is not in `ladGrab` at all -- every line of
+  it, `stepLadder`, `LAD.spots`, the six placements and the `climb_ladder` clip were correct and
+  have been since c100.
+  **`ladGrab` AND `ledgeGrab` WERE CALLED FROM EXACTLY ONE PLACE IN THE FILE: `hitMove`** -- the
+  integrator shared by the three KNOCK-DOWN stages. So the only way to catch a ladder or a lip
+  was to be launched by a car or a bullet and fly past one. `stepFoot` integrates itself and
+  never asked. Walking at a ladder did nothing; jumping at a parapet did nothing. **Two whole
+  features, both written up in this file at length, unreachable in normal play the entire time.**
+  **FIFTH TIME: WHEN A FEATURE DOES NOTHING, CHECK WHERE IT IS CALLED BEFORE WHAT IT DOES** --
+  after `barCatch` sitting under the collider (c150), `colinAnim` skipped on the bar (c167),
+  `p.rHold` counted inside `stepFoot` (c117) and the aim test baked into it (c108). The fix is
+  the same two lines `hitMove` already had, in the same order, in the same place in the step.
+  **AND THE PROBE CAUGHT MY OWN SLIP ON THE FIRST RUN.** The insert replaced the `const howF =
+  settle(...)` line instead of sitting under it: `howF is not defined`, a ReferenceError inside
+  `stepFoot` that **neither gate can see** -- `check:syntax` parses and `check:boot` stops at
+  `init()` and never steps a player. That is the same class `check:boot` exists for, one function
+  deeper than it can reach.
+  Driven through the shipped `stepPlayer` over the real collider
+  (`JAM_PROBE=tools/probe-ladder.mjs`), the only input being the stick held toward the wall --
+  and the ladders are PROCEDURAL, so unlike anything to do with a skin this is a feature the jam
+  harness can drive end to end:
+      ladder 0  291,-13   rise 16.7 m   latched at once   climbed 15.4 m in 4.02 s -> the mantle
+      ladder 1  279,222        13.4                             12.0 in 3.13
+      ladders 2-5              10.6-10.7                         9.7 in 2.45-2.47
+      6 of 6 climbable
+  **AND THE TWO NEGATIVE CASES ARE A STATED GAP, NOT A RESULT.** "Standing at the foot with no
+  input" and "walking along the wall past one" both report GRABBED, and both report
+  `grounded false` -- and the frame trace says why: he is held at y 0.39 while **the real collider
+  floor at that spot is 0.00**, so `LAD.spots` records a foot about 0.4 m above the ground the
+  collider actually has there. Placing him at the recorded foot therefore puts him in the AIR,
+  and `ladGrab`'s deliberate catch-a-man-falling-past-it branch fires -- *"which is what makes a
+  jump onto a fire escape work"*. That is the feature working; the rows do not yet test what they
+  claim. A player walking up to a ladder is at the real floor and grounded every frame, which is
+  what the six passing rows measure. **The placement has to come from the collider, not from
+  `LAD.spots`** -- and the 0.4 m gap is worth a look on its own, because it is also a small hop
+  onto the first rung (`p.pos.y` is raised to `L.y0` on the grab).
+  **A harness that places the player in a state the game never puts him in is measuring a
+  different game**, which is this repo's oldest mistake wearing yet another hat. Three runs went
+  into establishing that this was the harness and not the rule, which is still cheaper than
+  shipping a "fix" to a gate that was correct.
+- **A PARKED SHIP IS LANDED, NOT HOVERING (c182, `SHIP.lift`, `SHIP.gear`, `shipGear`).** *"It's
+  not quite landed on the roof, it's likely above it, but its landing gear is out."* Both halves
+  were mine: `lift` .35 stood it off the deck and `stepShip` bobbed it +/-.16 on top, so a ship
+  with its legs down floated a third of a metre over the roof and breathed. `buildShip` already
+  sits the model on its own bounding-box min, and with the gear DOWN that min IS the pads -- so
+  at `lift` 0 the feet are on the deck with nothing typed. `hover` keeps the old number for the
+  flight model rather than deleting it; the bob and the roll are what a ship in the AIR does.
+  **THE GEAR IS PLUTOPIA'S TABLE UNCHANGED, BECAUSE IT IS THE SAME FILE.** `alien_ship_orange.glb`
+  is byte-identical in the two repos (md5 `508f7698...`), so the bones, the hinge axes and the
+  amounts all mean exactly what they mean there:
+      gear: { leg_L: ['z', 1.2], leg_R: ['z', -1.2], leg_back: ['x', 1.2] }
+  Each hip is a lever with the pad on the end and **no authored 'up' pose**, so the fold was
+  chosen from the geometry over there -- about the hip's lateral hinge, in the direction that
+  swings the foot outward and up -- and the pad counter-folds by the same amount so it stays flat
+  against the rim. `shipGear(k)` is 0 down and 1 up, smoothstepped because a leg that moves
+  linearly reads as a lever being cranked rather than as a mechanism.
+  **THE REST POSE IS READ, NEVER RESTATED.** The fold is applied RELATIVE to whatever the file
+  authored, so a re-export at any pose lands right -- `barPlace`'s rule and `weapFit`'s.
+  Parked it is 0, which is what a landed ship looks like. `city.shipGear(1)` folds them up.
 - **DANCING (c181, `DANCE`, `danceGo`, `danceStep`, the key beside the gear).** *"I need to add
   a way to make the characters dance. We have the dances baked in their animations."* Six of
   them, and they are the longest clips in the file by a distance -- `dance_hiphop_01/02/03` at
