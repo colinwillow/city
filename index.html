@@ -211,6 +211,22 @@
   #retic.lock path[fill]{fill:rgba(255,222,150,.95)}
   /* The charge, wound round the right stick: it is the one thing on screen that says how big
      the shot you are about to take is, and it belongs where the thumb already is. */
+  /* INTERACTION IS THE STICK LIGHTING UP, NOT A BUTTON (c185). *"It doesn't even need its own
+     button -- the way I do this in all my games, the right stick lights up, there's a halo
+     around it, a ring, it kind of pulses and glows, and the stick shows a little icon of
+     whatever it is you're going to interact with. You just tap it to interact."*
+     A ring that PULSES round the pad plus the thing's own glyph on the knob, and the tap that
+     already lives on that pad does it. It costs no HUD element and no new gesture -- and a
+     prompt drawn ON the control that performs it cannot be somewhere the thumb is not.
+     The animation is CSS, so it runs on the compositor and the loop writes nothing per frame --
+     the reticle's own argument. `pointer-events: none` without exception: it sits on a pad. */
+  #sticks .stick .act{position:absolute;inset:-10px;border-radius:50%;pointer-events:none;opacity:0;
+    border:2px solid rgba(255,215,106,.9);box-shadow:0 0 18px rgba(255,190,70,.5),inset 0 0 18px rgba(255,190,70,.25);
+    transition:opacity .18s}
+  #sticks .stick .act i{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    font-style:normal;font-size:26px;line-height:1;text-shadow:0 2px 6px rgba(0,0,0,.6)}
+  #sticks .stick.offer .act{opacity:1;animation:actRing 1.15s ease-in-out infinite}
+  @keyframes actRing{0%,100%{transform:scale(1);opacity:.62}50%{transform:scale(1.07);opacity:1}}
   #sticks .stick .chg{position:absolute;inset:-6px;border-radius:50%;pointer-events:none;opacity:0;
     background:conic-gradient(rgba(198,156,255,.9) calc(var(--c,0) * 360deg),rgba(198,156,255,0) 0);
     -webkit-mask:radial-gradient(circle,transparent 66%,#000 69%);mask:radial-gradient(circle,transparent 66%,#000 69%)}
@@ -234,14 +250,6 @@
      `right: 206` -- the fifth slot of a single row -- and the build chip was sitting on top of
      it. Beside the reset key it is both visible and where a player VERB belongs. */
   #danceB{top:calc(14px + env(safe-area-inset-top));right:calc(62px + env(safe-area-inset-right));width:40px;height:40px;font-size:17px}
-  /* A CONTEXTUAL PROMPT BELONGS WHERE THE EYE IS, NOT IN THE SETTINGS ROW. It exists only when
-     it is usable -- near the ship on foot, or aboard -- so it can afford the middle of the
-     screen, and the gap between the two pads at the bottom is the one place on a phone that is
-     always empty. Centred on the viewport rather than on either pad, so it lands in that gap
-     at every width. */
-  #actB{left:50%;transform:translateX(-50%);bottom:calc(30px + env(safe-area-inset-bottom));
-    width:auto;min-width:96px;padding:0 16px;height:40px;font-size:13px;letter-spacing:.08em}
-  #actB.on{color:var(--hot)}
   #opt{position:fixed;z-index:9;top:calc(62px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));
     width:min(280px,calc(100vw - 28px));max-height:calc(100vh - 110px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;
@@ -314,7 +322,7 @@
 <div id="title"><img id="titleArt" class="word" alt="Shredworld"><div id="charName"><img id="charArt" alt=""><b id="charTxt"></b></div><div class="sub">tap a character &middot; or swipe</div><button id="startB">Start</button></div>
 <div id="sticks">
   <div class="stick" id="stkL"><div class="knob"></div><div class="lbl">MOVE</div></div>
-  <div class="stick" id="stkR"><div class="chg" id="stkRChg"></div><div class="knob"></div><div class="lbl">LOOK</div></div>
+  <div class="stick" id="stkR"><div class="chg" id="stkRChg"></div><div class="act" id="stkRAct"><i></i></div><div class="knob"></div><div class="lbl">LOOK</div></div>
 </div>
 <div id="kitRow"></div>
 <div id="retic" hidden><svg viewBox="0 0 64 64" fill="none">
@@ -336,10 +344,9 @@
 <div class="key on" id="sfxB">&#128266;</div>
 <div class="key" id="gearB">&#9881;</div>
 <div class="key" id="danceB">&#128378;</div>
-<div class="key" id="actB" hidden>BOARD</div>
 <div id="opt" hidden></div>
 <canvas id="map" hidden></canvas>
-<div class="chip" id="build"><b id="buildN">c184</b><i id="perf">···</i></div>
+<div class="chip" id="build"><b id="buildN">c185</b><i id="perf">···</i></div>
 <button id="upd" hidden></button>
 <div class="chip" id="speed"><b>0</b>km/h</div>
 <div class="chip" id="cash"><b id="cashN">$0</b></div>
@@ -353,7 +360,7 @@ import { DRACOLoader } from './vendor/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { clone as skelClone } from './vendor/SkeletonUtils.js';
 
-const BUILD = 'c184';
+const BUILD = 'c185';
 const MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && innerWidth < 1400);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -643,6 +650,21 @@ const CASH = {
 const SHIP = {
   url: 'models/alien_ship_orange.glb',
   at: [298.2, 17.1, -13.1], yaw: -.85,
+  // **AND THE PAD IS SEARCHED, NOT TYPED (c185).** *"The ship is still off the top of the tower,
+  // probably because the tower is not flat -- it has like little boxes. It kind of just looks
+  // like it's flying above the thing."* Right on both counts: `at[1]` was a typed 17.1 taken off
+  // `npm run ladders`' roof CENTRE, and hotel_a's deck carries plant and lift housings, so the
+  // one height that is correct somewhere is wrong everywhere else on it. `shipPad` sweeps a grid
+  // round the given point and scores each candidate by how much its own footprint DISAGREES with
+  // itself, which is what "flat" means -- `npm run spots`' rule, applied to a roof.
+  // It sits on the HIGHEST sample under the hull, never the lowest, so nothing can poke through.
+  scan: 6, step: 1.2,       // +/- 7.2 m of roof searched, at 1.2 m
+  // **AND THE SEARCH HAS TO STAY ON THE ROOF, WHICH THE FIRST VERSION DID NOT.** Scored on
+  // flatness alone it walked 7.2 m sideways, off the parapet, and picked the STREET -- which is
+  // gloriously flat (0.00 m of disagreement) and seventeen metres down. The probe read
+  // `found 305.4, 0.10, -13.1` and that is what it was saying. A candidate more than `band`
+  // from the height it started at is a different surface, not a better patch of this one.
+  band: 3,
   len: 4.4,                       // how long it should BE, in metres
   // **A PARKED SHIP IS LANDED, NOT HOVERING (c182).** *"It's not quite landed on the roof, it's
   // likely above it, but its landing gear is out."* Both halves of that were mine: `lift` .35
@@ -3523,6 +3545,15 @@ function buildShip(gl) {
     if (SHIP.bones[n]) SHIP.gearRest[n] = { hip: SHIP.bones[n].rotation.clone(), pad: null };
   SHIP.hatchRest = SHIP.bones.hatch_pivot ? SHIP.bones.hatch_pivot.rotation.x : 0;
   shipGear(SHIP.gearK);
+  // SIT IT ON THE ROOF IT IS ACTUALLY OVER, rather than on the height somebody typed.
+  const pad = shipPad(SHIP.at[0], SHIP.at[2], SHIP.size * .38, SHIP.at[1]);
+  if (pad) {
+    console.log('[ship] pad searched: ' + SHIP.at.map(v => v.toFixed(1)).join(',')
+      + ' -> ' + pad.x.toFixed(1) + ',' + pad.y.toFixed(2) + ',' + pad.z.toFixed(1)
+      + '   the roof disagrees with itself by ' + pad.flat.toFixed(2) + ' m under the hull');
+    SHIP.at[0] = pad.x; SHIP.at[1] = pad.y; SHIP.at[2] = pad.z;
+    g.position.set(SHIP.at[0], SHIP.at[1] + SHIP.lift, SHIP.at[2]);
+  }
   SHIP.pos = new THREE.Vector3(SHIP.at[0], SHIP.at[1], SHIP.at[2]);
   SHIP.vel = new THREE.Vector3();
   SHIP.heading = SHIP.yaw;
@@ -3597,6 +3628,28 @@ function shipFlames() {
     sR: cone(b.side_jet_R, SHIP.side, '#eaf6ff', '#2f7dff', Math.PI / 2),
   };
 }
+// THE FLATTEST PATCH OF ROOF NEAR A POINT. `blobFloor` is the one function that answers "what is
+// the real surface here" for BOTH the triangle collider and the solid boxes -- and a building's
+// roof is only ever a box, which is the whole reason c183's flare needed it too.
+function shipPad(x, z, half, from) {
+  const y = from + 3;
+  let best = null;
+  for (let i = -SHIP.scan; i <= SHIP.scan; i++) for (let k = -SHIP.scan; k <= SHIP.scan; k++) {
+    const cx = x + i * SHIP.step, cz = z + k * SHIP.step;
+    let lo = 1e9, hi = -1e9;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      const f = blobFloor(cx + a * half, cz + b * half, y);
+      if (f < lo) lo = f; if (f > hi) hi = f;
+    }
+    // DISAGREEMENT FIRST, DISTANCE SECOND -- and both in metres, so the weighting means something.
+    // A patch whose nine samples agree to a centimetre is flat; the tie-break keeps it near where
+    // it was asked for rather than wandering off across the roof.
+    if (Math.abs(hi - from) > SHIP.band) continue;     // that is a different surface, not this roof
+    const flat = hi - lo, score = flat + Math.hypot(cx - x, cz - z) * .04;
+    if (!best || score < best.score) best = { x: cx, z: cz, y: hi, flat, score };
+  }
+  return best;
+}
 // 0 is down and locked, 1 is folded up under the rim. Smoothstepped, because a leg that moves
 // linearly reads as a lever being cranked rather than as a mechanism.
 function shipGear(k) {
@@ -3625,7 +3678,6 @@ function shipBoard() {
   p.vel.set(0, 0, 0); p.speed = 0;
   colin.root.visible = false;
   SHIP.grounded = 1; SHIP.power = 0; SHIP.vel.set(0, 0, 0); SHIP.yawRate = 0;
-  actPaint();
   console.log('[ship] aboard. LEFT pad thrust and strafe, RIGHT pad turn and climb. Hold up to lift off.');
   return true;
 }
@@ -3639,7 +3691,6 @@ function shipLeave() {
   const fx = Math.sin(SHIP.heading), fz = Math.cos(SHIP.heading);
   p.pos.set(SHIP.pos.x + fx * (SHIP.rad + .8), SHIP.pos.y + .2, SHIP.pos.z + fz * (SHIP.rad + .8));
   p.vel.set(0, 0, 0); p.speed = 0; p.grounded = false; p.jumps = 1; p.air = ''; p.coyote = 0;
-  actPaint();
   return true;
 }
 // THE FLIGHT. Read the pads RAW, not through `stickWorld`: thrust is along the ship's OWN nose
@@ -3769,7 +3820,6 @@ function stepShip(dt) {
   b.minx = g.position.x - hx; b.maxx = g.position.x + hx;
   b.minz = g.position.z - hz; b.maxz = g.position.z + hz;
   b.miny = g.position.y; b.maxy = g.position.y + b.hh;
-  actPaint();
 }
 // GEAR, NOZZLES, HATCH AND FLAMES -- every one of them read off a bone the export already has.
 function shipJoints(dt, t) {
@@ -7795,6 +7845,26 @@ function deriveClips(list) {
 // bookkeeping that breaks the first time two transitions overlap. Asking for a set of
 // weights each frame and damping toward it cannot get into that state.
 function colinScale(name, s) { const a = colin.actions[name]; if (a) a.setEffectiveTimeScale(s); }
+// **RE-ENTERING A `ONCE` CLIP HAS TO REWIND IT, AND THE WEIGHT CANNOT BE WHAT DECIDES (c185).**
+// *"I did the dodge roll once and then again, and the second one he just begins the animation --
+// he doesn't do the full roll, he kinda does this forward step thing. If you don't let the
+// previous roll finish all the way through, when you do it again he gets frozen into the first
+// frame."* Exactly right, and it is one line in `skinWeights`:
+//     if (cur < .01 && want > .01) { a.reset(); a.play(); ... }
+// The rewind is conditional on the DAMPED weight having fallen under .01, which is right for a
+// clip you have left alone and wrong for one you are re-entering immediately: the weight has not
+// decayed, so the reset never happens -- and three ends a `LoopOnce` clip with
+// `clampWhenFinished ? paused = true : enabled = false`, so the action is sitting PAUSED on its
+// last frame and simply goes on applying it. What he is looking at is the roll's END pose, held.
+// **THAT IS THE `isRunning()` LANDMINE'S OTHER FACE.** That one was a finished clip never turned
+// OFF; this is a finished clip never turned back ON. Both come from a paused action being
+// indistinguishable from a live one from the outside, and both are answered the same way: ask
+// the STATE, not the action. A state that STARTS a clip rewinds it, here, explicitly.
+function colinRewind(name) {
+  const a = colin.actions[name]; if (!a) return;
+  a.reset(); a.play();                       // reset clears `paused` and puts `time` back to 0
+  if (TRIM_IN[name]) a.time = TRIM_IN[name];
+}
 // WHICH PUSH CLIP, IN ONE PLACE. `stepSkate` needs it to know where the plant is and `colinAnim`
 // needs it to play the thing; the same test written twice is two things to keep in step, which
 // is this file's oldest structural complaint about itself.
@@ -7940,7 +8010,15 @@ function colinAnim(dt) {
   if (p.lad) {
     const nm = colin.actions[LAD.clip] ? LAD.clip : LAD.fallback;
     const rise = Math.max(.05, LAD.cycle * LAD.rung);
-    colinScale(nm, clamp(LAD.speed * clipLen(nm, .83) / rise, .5, LAD.tsMax));
+    // **IT PLAYS AT THE RATE HE IS ACTUALLY CLIMBING, NOT AT `LAD.speed` (c185).** *"The animation
+    // when he's on the ladder just plays nonstop as if he's climbing, even when he's still."*
+    // `LAD.speed` is the TOP climb rate, a constant -- so the hands went hand over hand whether
+    // the thumb was on the stick or not. `p.speed` is what `stepLadder` already measures off the
+    // thumb's own component along the wall, so the clip is driven by the same number the motion
+    // is: hold still and the cycle stops where it is, which is a man hanging on a ladder.
+    // It floors at ZERO rather than at `.5`, which is the one case a gait's minimum is wrong for
+    // -- a gait blends DOWN into an idle, and there is no ladder idle to blend into.
+    colinScale(nm, clamp(p.speed * clipLen(nm, .83) / rise, 0, LAD.tsMax));
     t[nm] = 1; colinSet(t, dt); return;
   }
   if (p.board) {
@@ -9261,7 +9339,7 @@ bindStick(document.getElementById('stkL'), stick.L, null, (dx, dy) => {
 // RIGHT PAD: the camera on the ground, THE BOARD in the air. Up kickflip, down 360 flip
 // (a kickflip and a shove together, which is what a varial is), left and right the two
 // shove-its. All four are geometry on the deck; his pose does not change.
-bindStick(document.getElementById('stkR'), stick.R, null, boardFlick, true, far => { if (far < .42) player.jump = 1; });
+bindStick(document.getElementById('stkR'), stick.R, null, boardFlick, true, far => { if (far < .42 && !actTake()) player.jump = 1; });
 function boardFlick(dx, dy) {
   const p = player;
   if (p.ship) return;        // both pads are flying it
@@ -9346,14 +9424,35 @@ function hudGutter() {
 addEventListener('resize', hudGutter);
 addEventListener('orientationchange', () => setTimeout(hudGutter, 320));
 hudGutter();      // and once now: the chip is on screen from the first paint, well before init()
-function actPaint() {
-  const el = document.getElementById('actB'); if (!el) return;
+// WHAT THE PAD IS OFFERING, IF ANYTHING. One place decides, so the ring, the glyph and the tap
+// cannot disagree about what is on offer -- which is `kitOut()`'s rule and `shotH()`'s.
+// `ACT.list` is the whole extension point: a second thing to interact with is a line here.
+const ACT = { cur: null, icon: '', list: [] };
+function actScan() {
   const p = player;
-  const near = SHIP.g && SHIP.pos && !p.hit && !p.ship && SHIP.grounded
-    && Math.hypot(SHIP.pos.x - p.pos.x, SHIP.pos.z - p.pos.z) < SHIP.near;
-  const show = !!(p.ship || near);
-  el.hidden = !show || TITLE.on;
-  if (show) { el.textContent = p.ship ? 'LEAVE' : 'BOARD'; el.classList.toggle('on', !!p.ship); }
+  if (TITLE.on || p.hit) return null;
+  if (p.ship) return { kind: 'leave', icon: '\u{1F6F8}' };
+  if (SHIP.g && SHIP.pos && SHIP.grounded && !p.board
+    && Math.hypot(SHIP.pos.x - p.pos.x, SHIP.pos.z - p.pos.z) < SHIP.near) return { kind: 'board', icon: '\u{1F6F8}' };
+  return null;
+}
+// AND THE PAD SAYS SO ITSELF. `offer` is on the STICK, so the ring and the glyph ride the pad the
+// thumb is already on -- there is nothing to find and nothing new to press.
+function actPaint() {
+  const a = actScan();
+  ACT.cur = a ? a.kind : null;
+  const st = document.getElementById('stkR'), ic = document.getElementById('stkRAct');
+  if (st) st.classList.toggle('offer', !!a);
+  if (ic && a && ic.firstChild && ic.firstChild.textContent !== a.icon) ic.firstChild.textContent = a.icon;
+}
+// THE TAP TAKES IT. That thumb already taps to jump and to ollie, and a prompt drawn on the
+// control that performs it is the whole point -- so while something is on offer the tap does
+// THAT instead, and the ring is what says so. Returns true when it has eaten the tap.
+function actTake() {
+  if (!ACT.cur) return false;
+  if (ACT.cur === 'leave') return shipLeave();
+  if (ACT.cur === 'board') return shipBoard();
+  return false;
 }
 // ---------- the kit key ----------
 // IS THE THING IN HIS HAND OUT? The board's answer is `player.board` and nothing else --
@@ -10000,6 +10099,16 @@ function ladGrab(p) {
     p.lad = i + 1;
     p.pos.set(L.x + L.nx * LAD.hold, Math.max(p.pos.y, L.y0), L.z + L.nz * LAD.hold);
     p.heading = p.faceH = Math.atan2(-L.nx, -L.nz);
+    // **AND THE LENS COMES ROUND BEHIND HIM.** *"When he climbs the ladder he's facing towards
+    // the camera instead of facing the building."* He is not -- measured on all six ladders, his
+    // forward dots +0.37 to +0.98 with the direction to the building, so the heading above is
+    // right and flipping it would break what works. What he is looking at is the CAMERA, which
+    // keeps whatever bearing it had when he walked up: approach a ladder sideways and you get a
+    // broadside shot of a man on a wall, which reads exactly as "he is facing the wrong way".
+    // Latching is a commitment to a direction, so the shot takes it -- the bar's own rule (c154),
+    // where the fix was likewise the camera and not the facing. `cam.idle = 0` so the auto-follow
+    // cannot argue with it on the way out.
+    cam.az = p.heading; cam.idle = 0;
     p.vel.set(0, 0, 0); p.speed = 0; p.grounded = false; p.jumps = 0; p.air = '';
     return true;
   }
@@ -10397,6 +10506,7 @@ function airStart(kind) {
   const h = Math.max(0, p.pos.y - (gy.hit ? gy.floor : p.pos.y));
   const t = (p.vel.y + Math.sqrt(p.vel.y * p.vel.y + 2 * MOVE.g * h)) / MOVE.g;
   p.air = nm; p.airDur = clamp(t * AIR.fill, AIR.min, AIR.max); p.airFT = 0;
+  colinRewind(nm);
   colinScale(nm, clipLen(nm, p.airDur) / p.airDur);
   snd.flip();
 }
@@ -10456,7 +10566,7 @@ function trickFlip(kind) {
   // ONLY `TRICK.tail` OF THE CLIP, OVER THE WHOLE OF `trickDur`. The scale is what decides how
   // much of it is reached: covering `clipLen * tail` seconds of clip in `trickDur` of real time
   // is `clipLen * tail / trickDur`, so the landing recovery at the end is never played.
-  if (nm) colinScale(nm, clipLen(nm, p.trickDur) * TRICK.tail / p.trickDur);
+  if (nm) { colinRewind(nm); colinScale(nm, clipLen(nm, p.trickDur) * TRICK.tail / p.trickDur); }
   snd.flip();
   return true;
 }
@@ -10508,12 +10618,19 @@ function meleeGo(kind, h) {
   else {
     // the chain lapses on its own, so a flick after a pause opens again at the first strike
     if (p.melWin <= 0) p.melStep = 0;
-    nm = (p.melStep === 0 && p.speed > MELEE.runAt) ? MELEE.slide : MELEE.chain[p.melStep % MELEE.chain.length];
+    // **THE GROUND FLICK IS ALWAYS THE PUNCH CHAIN NOW (c185).** *"I'm gonna change the slide
+    // tackle so that when you're on the ground and you flick the right stick he doesn't slide
+    // tackle, he just does his melee. I still like the slide tackle in the air -- it's like a
+    // flying kick."* So the opening stops being chosen by SPEED: running at somebody and flicking
+    // is the first punch. `MELEE.slide` survives as `meleeAir`'s clip, which is where he wants it
+    // and is the pose that earned it -- a body thrown forward legs-first IS a flying kick.
+    nm = MELEE.chain[p.melStep % MELEE.chain.length];
     p.melStep++; p.melI = 0;
   }
   if (!colin.actions[nm]) return;
   p.mel = nm; p.melLock = null; p.melHit = 0;
   p.melT = p.melDur = kind === 'roll' ? MELEE.rollDur : nm === MELEE.slide ? MELEE.slideDur : MELEE.strike;
+  colinRewind(nm);                           // or a re-entry holds the LAST frame of the last one
   colinScale(nm, clipLen(nm, p.melDur) / p.melDur);
   p.melWin = 0;
   // HE COMMITS TO THE DIRECTION OF THE FLICK, AND THAT DIRECTION WAS BEING THROWN AWAY.
@@ -12068,6 +12185,7 @@ function frame() {
     const k = player.aim ? (WEAP.min + (1 - WEAP.min) * player.chg) : 0;
     if (el) { el.style.opacity = player.aim ? '1' : (out ? '.34' : '0'); el.style.setProperty('--c', (k || 1).toFixed(3)); }
   }
+  actPaint();          // the pad's own offer, every frame: `stepShip` returns early with no GLB
   stickWatch(dt);
   stepWrecks(dt);
   stepCash(dt);
@@ -12185,7 +12303,7 @@ frame();
     try { const k = localStorage.getItem(CHARS.key); if (k && k !== 'colin' && CHARS.list.some(c => c.key === k)) pickChar(k, 1, 1); } catch (e) {}
   } catch (e) { console.error(e); bootErr.textContent = 'could not load: ' + (e && e.message || e); }
 })();
-window.shred = window.city = { shipGear, stepShip, shipPilot, PILOT, board: shipBoard, leave: shipLeave, stickWorld, ladGrab, DANCE, dance: danceGo, mark: markHere, marks: MAP.marks, ship: shipGo, mapMark, BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
+window.shred = window.city = { shipGear, shipPad, actScan, stepShip, shipPilot, PILOT, board: shipBoard, leave: shipLeave, stickWorld, ladGrab, DANCE, dance: danceGo, mark: markHere, marks: MAP.marks, ship: shipGo, mapMark, BAR, bars, barCatch, stepBar, barLetGo, boardFlick, stepCam, camFree, stepJet, stepPlayer, AIR, wearFit, WEARS, meleeLock, meleeGo, stepMelee, copsPunched, copHit, stepAim, aimPoint, shotH, pickTarget, barsFrom, barDraw, bar: barGo, stick, COLIN_HEIGHT, WRECK, WRECKS, carHurt, carChunks, stepWrecks, boom: boomNear, CASH, CITY, BOOT, TITLE, PARADE, MELEE, HANG, LAD, LADDERS, startGame, CHARS, pickChar, cycleChar, BOARD, MAP, HOLE, PARK, GRIND, RAILS, SFX, MUSIC, WHEELS, JETSND, snd, copGhost, copPlough, musicSet, sfxSet, music: v => { musicSet(v === undefined ? !MUSIC.on : !!v); optSave(); return 'music ' + (MUSIC.on ? 'ON' : 'off'); }, sfx: v => { sfxSet(v === undefined ? !SFX.on : !!v); optSave(); return 'effects ' + (SFX.on ? 'ON' : 'off'); }, TRICK, STRIDE, TOON, COLINM, SKY, CLOUDS, ENV, PAINT, PAL, LINE, SHIPFLY, SHIP, HIT, ROLL, clouds, SK8, MOVE, GAIT, CAM, POST, LIGHT, SHADOW, SHADE, BLOB, SLASH, BOXES, boxes: (v) => { BOXES.on = v === undefined ? (BOXES.on ? 0 : 1) : (v ? 1 : 0); return 'colliders ' + (BOXES.on ? 'ON' : 'off'); }, OPT, optToggle, opt: optDump, JAM, TRAF, COP, cops, copGunFit, gunFit: copGunFit, grip: gripFit, KIT, WEAP, BOLT, JET, SHOT, HEAT, FX, fx: fxTry, fxSheet, gear, weapFit, kitTap, kitPick: kitTap, slash: slashTry, sun, player, cam, cars, tiles, solids, hmAt, stepTraffic, stepCops, jamScan, stepBoxes, titleFrame, get ready() { return ready; }, renderer, scene, camera, compMat, cityGroup, colin };
 </script>
 </body>
 </html>

@@ -1198,6 +1198,83 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **INTERACTION IS THE STICK LIGHTING UP, NOT A BUTTON (c185, `ACT`, `actScan`, `actTake`).**
+  *"The button to get into the ship is always on screen. It doesn't even need its own button --
+  the way I do this in all my games, the right stick lights up, there's a halo around it, a ring,
+  it kind of pulses and glows, and the stick shows a little icon of whatever it is you're going to
+  interact with. You just tap it to interact."*
+  **AND "ALWAYS ON SCREEN" WAS A REAL BUG WITH A ONE-WORD CAUSE.** `actPaint` set `el.hidden`, and
+  `hidden` works by the UA stylesheet's `display: none` -- which an AUTHOR rule beats. `.key` sets
+  `display: flex`, so the attribute did nothing at all. **`[hidden]` is not a guarantee; it is a
+  low-specificity default**, and anything in this file with a `display` rule has to be hidden some
+  other way.
+  The whole element is gone now. A ring pulses round the right pad and the thing's own glyph sits
+  on the knob, and the tap that already lives on that pad takes it -- **a prompt drawn ON the
+  control that performs it cannot be somewhere the thumb is not**, and it costs no HUD element and
+  no new gesture. `ACT` is one place deciding, so the ring, the glyph and the tap cannot disagree
+  about what is on offer (`kitOut()`'s rule and `shotH()`'s). The animation is CSS, so it runs on
+  the compositor and the loop writes nothing per frame -- the reticle's own argument.
+  **`actScan` IS THE EXTENSION POINT**: a second thing to interact with is a line in it.
+- **THE SHIP'S PAD IS SEARCHED, NOT TYPED (c185, `shipPad`).** *"The ship is still off the top of
+  the tower, probably because the tower is not flat -- it has little boxes. It kind of just looks
+  like it's flying above the thing."* Right on both counts, and measured through the shipped
+  function against the real collider:
+      typed   298.2, 17.10, -13.1
+      found   298.2, 15.20, -15.5    -- the deck is **1.90 m BELOW** where it was parked
+  `at[1]` came off `npm run ladders`' roof CENTRE, and hotel_a's deck carries plant housings, so
+  the one height that is right somewhere is wrong everywhere else on it. `shipPad` sweeps +/-7.2 m
+  and scores each candidate by how much its own footprint DISAGREES with itself, which is what
+  flat means. It sits on the HIGHEST sample under the hull, never the lowest, so nothing pokes
+  through: 0.24 m of disagreement at the best patch, against 1.90 m of air before.
+  **AND THE FIRST VERSION WALKED OFF THE ROOF.** Scored on flatness alone it went 7.2 m sideways,
+  over the parapet, and picked the STREET -- gloriously flat (0.00 m) and seventeen metres down.
+  The probe read `found 305.4, 0.10, -13.1`. `SHIP.band` is the fix: a candidate more than three
+  metres from the height it started at is a DIFFERENT SURFACE, not a better patch of this one.
+- **RE-ENTERING A `ONCE` CLIP HAS TO REWIND IT, AND THE WEIGHT CANNOT BE WHAT DECIDES (c185,
+  `colinRewind`).** *"I did the dodge roll once and then again, and the second one he just begins
+  the animation -- he doesn't do the full roll, he kinda does this forward step thing. If you
+  don't let the previous roll finish all the way through, when you do it again he gets frozen into
+  the first frame."* Exactly right, and it is one line in `skinWeights`:
+      if (cur < .01 && want > .01) { a.reset(); a.play(); ... }
+  The rewind is conditional on the DAMPED weight having fallen under .01 -- right for a clip you
+  have left alone, wrong for one you are re-entering immediately. The weight has not decayed, so
+  the reset never happens; three ends a `LoopOnce` clip with `clampWhenFinished ? paused = true`,
+  so the action sits PAUSED on its last frame and goes on applying it. What he is looking at is
+  the roll's END pose, held -- which on that clip is a forward step.
+  **THAT IS THE `isRunning()` LANDMINE'S OTHER FACE.** That one was a finished clip never turned
+  OFF; this is a finished clip never turned back ON. Both come from a paused action being
+  indistinguishable from a live one from outside, and both are answered the same way: **ask the
+  STATE, not the action.** A state that STARTS a clip rewinds it explicitly -- `meleeGo`,
+  `airStart` and `trickFlip`, which are the three places a `ONCE` clip is entered.
+- **THE GROUND FLICK IS ALWAYS THE PUNCH CHAIN (c185).** *"I'm gonna change the slide tackle so
+  that when you're on the ground and you flick the right stick he doesn't slide tackle, he just
+  does his melee. I still like the slide tackle in the air -- it's like a flying kick."* So the
+  opening stops being chosen by SPEED: running at somebody and flicking is the first punch.
+  `MELEE.slide` survives as `meleeAir`'s clip, which is where he wants it and is the pose that
+  earned it -- a body thrown forward legs-first IS a flying kick. `MELEE.runAt` is now read only
+  by the air kick and by `copGhostWant`'s speed test.
+- **THE LADDER CLIP PLAYS AT THE RATE HE IS CLIMBING (c185).** *"The animation when he's on the
+  ladder just plays nonstop as if he's climbing, even when he's still."* `colinAnim` scaled it by
+  `LAD.speed`, which is the TOP climb rate and a CONSTANT -- so the hands went hand over hand
+  whether the thumb was on the stick or not. `p.speed` is what `stepLadder` already measures off
+  the thumb's own component along the wall, so the clip is now driven by the same number the
+  motion is. Measured: 3.80 m/s climbing, **0.00 with the thumb off**, and the cycle holds where
+  it is, which is a man hanging on a ladder. It floors at ZERO rather than at a gait's `.5` --
+  a gait blends down into an idle and there is no ladder idle to blend into.
+- **AND HE IS NOT FACING THE WRONG WAY ON THE LADDER -- THE CAMERA IS (c185).** *"When he climbs
+  the ladder he's facing towards the camera instead of facing the building, so he needs to flip
+  180."* **Measured before touching it, because this file gets handedness backwards half the time
+  when it argues instead of running**: the building is FOUND (the tallest solid box near the foot)
+  and his forward dotted against the direction to it.
+      ladders 0-5   facing-the-building  +0.63  +0.37  +0.98  +0.98  +0.98  +0.79
+      0 of 6 face the wrong way
+  So `atan2(-L.nx, -L.nz)` is correct on every ladder in the city and **flipping it would have
+  broken what works** -- which is exactly what "he needs to flip 180" would have got if it had
+  been done on the report alone. What he is looking at is the LENS, which keeps whatever bearing
+  it had when he walked up: approach a ladder sideways and you get a broadside shot of a man on a
+  wall, which reads precisely as "he is facing the wrong way". Latching is a commitment to a
+  direction, so the shot takes it -- **c154's own answer for the bar, where the fix was likewise
+  the camera and not the facing.**
 - **THE BUILD CHIP ATE TWO KEYS, AND THE RESERVE WAS A TYPED NUMBER (c184, `hudGutter`).**
   *"I don't see the dance button, also you've like removed the debug menu."* **One bug, not two.**
   `#build` carried `max-width: calc(100vw - 190px)` -- a gutter hand-sized for the THREE keys that
