@@ -1198,6 +1198,41 @@ resolve, and a gate whose pass looks like a hang is a gate nobody runs.
   FOR EVER however hard you push -- `JAM_PROBE=tools/probe-bar.mjs` read **w = 0.00 after fourteen
   seconds** of holding forward. Below `BAR.kick` the thumb picks the direction instead. Driven
   rather than argued, which is the only reason it was not shipped.
+- **THE WATCHDOG WAS KILLED BY THE VERY FAULT IT EXISTS TO REPORT, AND NOTHING HAS EVER CAUGHT AN
+  EXCEPTION ON THAT PHONE (c191, `#crash`, `window.__crash`).** *"Still stuck at loading -- doesn't
+  even say loading now, it just says the badge number."* Five builds of this report and every one
+  of them has been unreadable for the same structural reason, which is now fixed rather than
+  guessed at again.
+  **1. `bootWatch` READ `ready`, AND `let ready = false` SAT NINE THOUSAND LINES BELOW IT.** So a
+  module that died anywhere above line 12529 left that timer reading a binding in its TEMPORAL
+  DEAD ZONE: a `ReferenceError` at eight seconds, thrown inside a `setTimeout` nobody is
+  watching -- and because the re-arm was the LAST statement in the body, **it never ran again.**
+  c188 shipped it, c189 and c190 both leant on it, and in the one case it was built for -- a dead
+  module -- it was silent by construction. **This file's oldest landmine, for the fifth time, and
+  the first time INSIDE a diagnostic.** The declaration is hoisted (it is `= false`, so nothing
+  else moves) and the re-arm is in a `finally`.
+  **2. AND THERE WAS NO `window.onerror` ANYWHERE IN THE FILE.** Every throw on that device went
+  to a console that does not exist on it. A caught step warned to the console; the IIFE's own
+  catch wrote to `bootErr`, which lives INSIDE `#boot` -- so a throw after the card faded out
+  painted its message onto something already invisible. **The message existed and could not be
+  read**, which is `missing()`'s rule broken at the one moment it matters most.
+  So the page catches its own errors and PAINTS them: `#crash`, `z-index: 999`, above the boot
+  card (20) and the title, monospaced and selectable so it can be copied or read out, with the
+  file and line in it. **It is the FIRST thing in the head**, before the import map and before
+  the module, because an error the trap is not installed for is an error nobody sees -- that
+  includes a module that fails to PARSE and an `import` that never resolves, which is why the
+  listener is registered with CAPTURE (a failed subresource fires `error` at its element).
+  **AND THE WATCHDOG ESCALATES OFF THE CARD.** Sixteen seconds in, `still loading · cN · N/M
+  files · <label>` goes onto that same overlay, ONCE. "Is the card still up" is exactly the
+  thing these reports cannot settle -- a line that is only readable while the card is unfaded
+  cannot answer it.
+  **WHAT IS STILL NOT KNOWN IS WHICH SCREEN HE IS LOOKING AT**, and that is stated rather than
+  guessed: `#boot` is `z-index: 20` and `.chip` is 4, so a visible badge means the card has
+  lifted -- but c190 put a build number ON the card too, and both readings fit his sentence.
+  `#build`'s `<i>` (fps, draw calls, `missing()`) is only ever written inside `frame()`, so a
+  badge reading nothing but the build number means **no frame has ever completed**. That is the
+  discriminator to reach for next, and c191 is what makes the answer arrive on its own.
+
 - **HIS SCREENSHOT WAS THE ANSWER: THE CARD WAS AT ITS BIRTH TEXT, AND A STALLED FETCH NEVER
   REJECTS (c190).** *"I can't check the badge."* -- and the shot shows `LOADING SHREDWORLD` with
   the bar at zero and nothing else on screen.
